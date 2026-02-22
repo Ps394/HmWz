@@ -2,7 +2,7 @@ import sys
 import logging
 from HmWz import setup_logging, Client, Intents, Token
 
-setup_logging(log_file="bot.log", level=logging.DEBUG)
+setup_logging(log_file="bot.log", level=logging.INFO)
 
 logging.getLogger("discord").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)
@@ -23,7 +23,7 @@ intents.members = True
 intents.message_content = True
 
 if __name__ == "__main__":
-    bot = Client(intents=intents, global_command_sync=False)
+    bot = Client(intents=intents, global_command_sync=True)
     logger.info("Starting bot...")
     bot.run(TOKEN)
     logger.info("Bot stopped...")
