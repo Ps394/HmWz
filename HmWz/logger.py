@@ -84,7 +84,7 @@ def setup_logging(level: int = logging.INFO, log_folder: str= "./logs", log_file
 		maxBytes=mb,
 		backupCount=backup_count
 	)
-	file_handler.setFormatter(StyledFormatter(base_format, date_format, style='{'))
+	file_handler.setFormatter(Formatter(base_format, date_format, style='{'))
 	
 	console_handler = logging.StreamHandler()
 	console_handler.setFormatter(StyledFormatter(base_format, date_format, style='{'))
