@@ -23,7 +23,7 @@ intents.members = True
 intents.message_content = True
 
 if __name__ == "__main__":
-    bot = Client(intents=intents, global_command_sync=True)
+    bot = Client(intents=intents, global_command_sync=False)
     logger.info("Starting bot...")
     bot.run(TOKEN)
     logger.info("Bot stopped...")
