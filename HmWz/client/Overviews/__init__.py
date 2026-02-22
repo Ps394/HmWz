@@ -1,6 +1,7 @@
 """
 Dieses Modul enthält die Definition des Managers für Übersichten, der für die Verwaltung aller Übersichtsinstanzen in diesem Bot verantwortlich ist.
 """
+from __future__ import annotations
 import asyncio
 import logging
 from typing import Type
