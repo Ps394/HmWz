@@ -5,6 +5,7 @@ from typing import Optional
 
 from ..database import Database
 from ..base import Base
+from ...types import id
 
 class WzConfig(Base):
     """
@@ -19,7 +20,7 @@ class WzConfig(Base):
     @dataclass(frozen=True)
     class Data:
         guild: Guild
-        channel_id: Optional[int]
+        channel_id: Optional[id]
         score_mod_lvl: bool
         matchmaker: bool
 
@@ -72,7 +73,7 @@ class WzConfig(Base):
             self.logger.exception(f"{self.log_prefix(guild)} Failed to get WZ config: {e}")
             return None
 
-    async def upsert(self, *, guild: Guild, channel_id: Optional[int] = None, score_mod_lvl: Optional[bool] = None, matchmaker: Optional[bool] = None) -> bool:
+    async def upsert(self, *, guild: Guild, channel_id: Optional[id] = None, score_mod_lvl: Optional[bool] = None, matchmaker: Optional[bool] = None) -> bool:
         """
         Fügt eine neue WZ-Konfiguration für einen Server (Guild) hinzu oder aktualisiert eine vorhandene Konfiguration in der Datenbank.
 

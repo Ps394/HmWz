@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 from discord import Guild, TextChannel, Message
 
-from ...utils import fetch_channel, fetch_message, DiscordChannel, DiscordMessage, Id
+from ...types import fetch_channel, fetch_message, DiscordChannel, DiscordMessage, Id
 from ..database import Database
 from ..base import Base
 
@@ -45,8 +45,8 @@ class WzRegistration(Base):
     @dataclass(frozen=True)
     class Data:
         guild: Guild
-        channel: DiscordChannel
-        message: DiscordMessage
+        channel: Id
+        message: Optional[Id]
         title: Optional[str]
         description: Optional[str]
         link: Optional[str]

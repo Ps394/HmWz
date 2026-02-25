@@ -5,10 +5,10 @@ import logging
 from typing import Optional, Sequence, Union, List, Tuple
 from discord import Guild, TextChannel, Message
 
-from ...utils import fetch_channel, fetch_message, DiscordChannel, DiscordMessage, Id, Ids
 from ..database import Database
 from ..base import Base
 
+from ...types import Id, Ids
 
 class WzList(Base):
     """
@@ -41,8 +41,8 @@ class WzList(Base):
     @dataclass(frozen=True)
     class Data:
         guild: Guild
-        channel: DiscordChannel
-        message: DiscordMessage
+        channel: Id
+        message: Id
         title: Optional[str]
         text: Optional[str]
 
@@ -93,46 +93,26 @@ class WzList(Base):
             if not records:
                 return None
 
-            async def resolve_records(rec) -> tuple[dict, WzList.Record]:
+            async def resolve_records(rec) -> Records:
                 """
                 Hilfsfunktion, um die Channel- und Message-IDs in den Datenbankeinträgen aufzulösen.
                 
-                :param rec: Ein einzelner Datenbankeintrag mit Channel- und Message-IDs.
+                :param rec: Ein einzelner Datenbankeintrag.
                 :type rec: dict
-                :return: Ein Tuple bestehend aus dem ursprünglichen Datenbankeintrag und einem WzList.Record mit den aufgelösten Discord-Objekten.
-                :rtype: tuple[dict, WzList.Record]
+                :return: Tuple mit Record
+                :rtype: Records
                 """
-                c = await fetch_channel(guild=guild, channel_id=rec["Channel"])
-                m = await fetch_message(channel=c, message_id=rec["Message"]) if isinstance(c, TextChannel) else c
-                return rec, self.Data(
+                return self.Data(
                     guild=guild,
-                    channel=c,
-                    message=m,
+                    channel=rec["Channel"],
+                    message=rec["Message"],
                     title=rec["Title"],
                     text=rec["Text"]
                 )
+
+            out : self.Records = await asyncio.gather(*(resolve_records(rec) for rec in records))
             
-            resolved_records = await asyncio.gather(*(resolve_records(rec) for rec in records))
-            
-            valid_records = []
-            stale_records = []
-
-            for raw_record, record in resolved_records:
-                if isinstance(record.channel, TextChannel) and isinstance(record.message, Message):
-                    valid_records.append(record)
-                else:
-                    stale_records.append(raw_record["Message"])
-                    self.logger.debug(f"{self.log_prefix(guild)} WZ list message {raw_record['Message']} in channel {raw_record['Channel']} is stale and will be removed.")
-                
-            cleanup_tasks = []
-            if stale_records:
-                cleanup_tasks.append(self.remove(guild=guild, messages=stale_records))
-
-            if cleanup_tasks:
-                await asyncio.gather(*cleanup_tasks)
-                self.logger.debug(f"{self.log_prefix(guild)} Removed {len(stale_records)} stale WZ list message(s).")
-
-            return tuple(valid_records) if valid_records else None
+            return out if out else None
         except Exception as e:
             self.logger.exception(f"{self.log_prefix(guild)} Failed to get WZ lists: {e}")
             return None
