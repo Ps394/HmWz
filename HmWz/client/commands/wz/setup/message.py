@@ -5,6 +5,7 @@ from discord.app_commands import checks
 from .....emojis import Emojis
 from .....services import Services
 from ....overviews import Manager
+from ....overviews.registration import RegistrationOverview
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,8 @@ async def message(interaction: Interaction, title: Optional[str] = None, message
         
         if await services.wz.registration.setup_message(guild=interaction.guild,title=title, description=decoded_message[:4095] if decoded_message else None):
             await interaction.followup.send(MESSAGES["SUCCESS"], ephemeral=True)
-            await overview.sync(guild=interaction.guild)
+
+            await overview.sync(guild=interaction.guild, sync_config=True)
             await overview.ensure(guild=interaction.guild)
             logger.debug(LOGS["MESSAGE_SET"])
         else:

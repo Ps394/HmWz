@@ -2,18 +2,24 @@
 Modul, das die Definition der Instance-Schnittstelle enthält, die von allen Übersichtsinstanzen implementiert werden muss.
 """
 from __future__ import annotations
-from typing import Sequence, Protocol, Type, runtime_checkable
+from typing import Optional, Sequence, Protocol, Type, runtime_checkable
 from discord import RawMessageDeleteEvent
+import enum
 
 @runtime_checkable
 class Instance(Protocol):
     """
     Interface für alle Übersichtsinstanzen, die in diesem Bot verwendet werden.
     """
-    async def sync(self) -> bool: 
+
+    async def sync(self, startup: bool = False, sync_data: bool = False, sync_config: bool = False, sync_discord: bool = False) -> bool: 
         """
         Soll die Übersicht synchronisieren, wenn diese eingerichtet ist.
 
+        :param startup: Vollständige Synchronisation beim Startup.
+        :param sync_data: Synchronisiert nur Daten (Registrierungen).
+        :param sync_config: Synchronisiert nur Konfiguration.
+        :param sync_discord: Synchronisiert Discord-Mitglieder mit DB.
         :return: True, wenn die Synchronisierung erfolgreich war, sonst False.
         :rtype: bool
         """

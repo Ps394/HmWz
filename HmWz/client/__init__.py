@@ -7,6 +7,8 @@ from typing import Optional
 from discord import app_commands
 from discord import Client as DiscordClient, Intents, app_commands, Interaction
 
+from HmWz.client.overviews.registration import RegistrationOverview
+
 from . import overviews
 from . import commands
 from .. import services
@@ -276,7 +278,8 @@ class Client(DiscordClient):
 
             if overviews:
                 for overview in overviews:
-                    await overview.sync()
+                    if isinstance(overview, RegistrationOverview):
+                        await overview.sync(sync_config=True)
                     await overview.ensure()
 
         except Exception as e:
@@ -307,7 +310,7 @@ class Client(DiscordClient):
             overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
             if overviews:
                 for overview in overviews:
-                    await overview.sync()
+                    await overview.sync(sync_config=True)
                     await overview.ensure()
         except Exception as e:
             logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to remove deleted role '{role.name}' from WZ registration: {e}")
@@ -327,7 +330,7 @@ class Client(DiscordClient):
                 overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
                 if overviews:
                     for overview in overviews:
-                        await overview.sync()
+                        await overview.sync(sync_data=True)
                         await overview.ensure()
         except Exception as e:
             logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to remove registration for departed member '{member}': {e}")
@@ -350,7 +353,7 @@ class Client(DiscordClient):
                 overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
                 if overviews:
                     for overview in overviews:
-                        await overview.sync()
+                        await overview.sync(sync_data=True)
                         await overview.ensure()
         except Exception as e:
             logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to update registration for member '{before}': {e}")

@@ -4,7 +4,7 @@ Dieses Modul enthält die Definition des Managers für Übersichten, der für di
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Type
+from typing import Type, Optional
 from discord import RawMessageDeleteEvent, Guild, Client
 from .registry import REGISTRY
 from .instance import Instance, Instances, InstanceType
@@ -27,7 +27,7 @@ class Manager:
         self.instances_cache = {}
         """Cache für Übersicht-Instanzen pro Gilde."""
 
-    async def get_instance(self, guild: Guild, instance_type: InstanceType) -> Instance:
+    async def get_instance(self, guild: Guild, instance_type: InstanceType) -> InstanceType:
         """
         Gibt die Übersicht-Instanz für die angegebene Gilde und den angegebenen Instanztyp zurück.
 
@@ -36,7 +36,7 @@ class Manager:
         :param instance_type: Der Typ der Übersicht-Instanz, die zurückgegeben werden soll.
         :type instance_type: InstanceType
         :return: Die Übersicht-Instanz.
-        :rtype: Instance
+        :rtype: InstanceType
         :raise: Exception: Wenn keine Übersicht-Instanz des angegebenen Typs gefunden wird.
         """
         instances = await self.get_instances(guild)
@@ -88,19 +88,22 @@ class Manager:
         instances = await self.get_instances(guild)
         for instance in instances:
             try:
-                await instance.sync()
-                await instance.delete()
+                await instance.sync(startup=True)
                 await instance.ensure()
                 logger.debug(f"Overview instance {instance.__class__.__name__} for guild {guild.id} synced successfully.")
             except Exception as e:
                 logger.exception(f"Failed to sync overview instance for guild {guild.id}: {e}")
 
-    async def sync(self, guild: Guild) -> bool:
+    async def sync(self, guild: Guild, startup: bool = False, sync_data: bool = False, sync_config: bool = False, sync_discord: bool = False) -> bool:
         """
         Synchronisiert die Übersicht-Instanzen für die angegebene Gilde.
 
         :param guild: Die Discord-Gilde, für die die Übersicht erstellt wird.
         :type guild: discord.Guild
+        :param startup: Vollständige Synchronisation beim Startup.
+        :param sync_data: Synchronisiert nur Daten (Registrierungen).
+        :param sync_config: Synchronisiert nur Konfiguration.
+        :param sync_discord: Synchronisiert Discord-Mitglieder mit DB.
         :return: True, wenn die Synchronisierung erfolgreich war, sonst False.
         :rtype: bool
         """
@@ -108,7 +111,7 @@ class Manager:
         status = True
         for instance in instances:
             try:
-                await instance.sync()
+                await instance.sync(startup=startup, sync_data=sync_data, sync_config=sync_config, sync_discord=sync_discord)
             except Exception as e:
                 logger.exception(f"Failed to sync overview instance for guild {guild.id}: {e}")
                 status = False

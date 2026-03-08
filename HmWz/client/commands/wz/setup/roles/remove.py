@@ -62,10 +62,19 @@ async def remove(interaction: Interaction, role: str):
             await interaction.followup.send(MESSAGES["MIN_ROLES"], ephemeral=True)
             logger.warning(LOGS["MIN_ROLES"])
             return
+        
+        role_to_removed = services.wz.roles.get(guild=interaction.guild, role=role_obj.id)  
+        for member in interaction.guild.members:
+            if role_obj in member.roles:
+                try:
+                    await member.remove_roles(role_obj, reason="WZ Registration Role Removal")
+                    logger.debug(f"{log_context} Removed role {role_obj.name} from member {member}.")
+                except (HTTPException, Forbidden) as e:
+                    logger.exception(f"{log_context} Failed to remove role {role_obj.name} from member {member}: {e}")
 
         if await services.wz.roles.remove(guild=interaction.guild, role=role_obj.id):
             await interaction.followup.send(MESSAGES["SUCCESS"].format(role_name=role_obj.name), ephemeral=True)
-            await overview_manager.sync(guild=interaction.guild)
+            await overview_manager.sync(guild=interaction.guild, sync_config=True, sync_data=True)
             await overview_manager.ensure(guild=interaction.guild)
             logger.debug(LOGS["ROLE_REMOVED"].format(role_name=role_obj.name))
         else:

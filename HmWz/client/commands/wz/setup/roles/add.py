@@ -48,7 +48,7 @@ async def add(interaction: Interaction, role: Role, permanent: Optional[bool] = 
             return
  
         if await services.wz.roles.add(guild=interaction.guild, role=role.id, permanent=permanent):
-            await overview_manager.sync(guild=interaction.guild)
+            await overview_manager.sync(guild=interaction.guild, sync_config=True)
             await overview_manager.ensure(guild=interaction.guild)
             await interaction.followup.send(MESSAGES["SUCCESS"].format(role_name=role.name), ephemeral=True)
             logger.debug(LOGS["ROLE_ADDED"])
