@@ -1,7 +1,8 @@
+import asyncio
 import logging
 from discord import app_commands, Interaction, HTTPException, Forbidden, NotFound, InteractionResponded
 from .....emojis import Emojis
-from .....services import Services, wz
+from .....services import Services
 from ....overviews import Manager
 from ....overviews.registration import RegistrationOverview, Configuration, Data
 
@@ -48,6 +49,7 @@ async def reset(interaction: Interaction, ephemeral: bool = True):
             try: 
                 if member.member and member.role and not member.role.permanent:
                     await member.member.remove_roles(member.role.role, reason="WZ Registration Reset")
+                    await asyncio.sleep(0.05)
             except (HTTPException, Forbidden, NotFound) as e:
                 logger.warning(f"{LOG_CONTEXT} Failed to remove role {member.role.role.id} from member {member.member.id} during WZ reset: {e}")
         

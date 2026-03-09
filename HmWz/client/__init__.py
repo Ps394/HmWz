@@ -2,10 +2,10 @@ from __future__ import annotations
 import logging
 import asyncio
 import os
+import discord
 
 from typing import Optional
-from discord import app_commands
-from discord import Client as DiscordClient, Intents, app_commands, Interaction
+from discord import Client as DiscordClient, Intents, app_commands, Interaction, AuditLogAction
 
 from HmWz.client.overviews.registration import RegistrationOverview
 
@@ -344,17 +344,34 @@ class Client(DiscordClient):
         :param after: Das Mitglied nach der Aktualisierung
         :type after: discord.Member
         """
+        await asyncio.sleep(1) 
+        if after.roles != before.roles:
+            async for entry in after.guild.audit_logs(limit=1, action=AuditLogAction.member_role_update):
+                if entry.user.id == self.user.id and entry.target.id == after.id:
+                    return
         guild = before.guild
         try:
-            registration : services.wz.RegistrationsRecords = await self.services.wz.registrations.get(guild=guild, member=before.id)
-            if not registration:
+            instance : overviews.registration.RegistrationOverview = await self.overview_manager.get_instance(guild=guild, instance_type=overviews.registration.RegistrationOverview)
+            configuration : overviews.registration.Configuration = instance.configuration if instance else None
+            data : overviews.registration.Data = instance.data if instance else None
+
+            if not instance or not configuration or not data:
                 return
-            else:
-                overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
-                if overviews:
-                    for overview in overviews:
-                        await overview.sync(sync_data=True)
-                        await overview.ensure()
+            if configuration.is_valid == False:
+                return
+            
+            config_role_ids = {r.role.id for r in configuration.roles}
+
+            has_before = config_role_ids & {r.id for r in before.roles} 
+            has_after = config_role_ids & {r.id for r in after.roles}
+
+            if len(has_after) > 1:
+                await self.services.wz.registrations.remove(guild=guild, member=before.id)
+                await after.remove_roles(*[r.role for r in configuration.roles if r.role.id in has_before], reason="Wz-Registrierung - Rolle entfernt")
+
+            if after in [m.member for m in data.members] or has_after or has_before:
+                await instance.sync(sync_data=True, sync_discord=True)
+                await instance.ensure()
         except Exception as e:
             logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to update registration for member '{before}': {e}")
 

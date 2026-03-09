@@ -56,7 +56,7 @@ class State():
         
     
     def reset(self, event: Optional[Event] = None):
-        if event is not None or event == self.Event.STARTUP:
+        if event is None or event == self.Event.STARTUP:
              self.on_startup = False
              self.sync_from_discord = False
              self.sync_configuration = False
@@ -380,6 +380,7 @@ class RegistrationOverview(BasicOverview):
 
                 await interaction.followup.send(message, ephemeral=True)
                 await self.sync(sync_data=True)
+                await self.ensure()
                 await self.sleep(self.WAIT_INTERVAL)
                 logger.debug(f"{self.log_context} {interaction.user} registration action({action}) for role {role.id}.")
             except (HTTPException, Forbidden, NotFound, InteractionResponded, Exception) as e:

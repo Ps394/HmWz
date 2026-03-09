@@ -18,8 +18,8 @@ class BasicOverview(Instance):
     Basisklasse für alle Übersichten, die in diesem Bot verwendet werden.
     """
 
-    WAIT_INTERVAL : float = 0.2
-    WAIT_INTERVAL_LONG : float = 1.0
+    WAIT_INTERVAL : float = 0.5 
+    WAIT_INTERVAL_LONG : float = 2.5
 
     class BotEmbed(Embed):
         def __init__(self, title: str, description: str, color: Color, client_avatar: Optional[Asset] = None):
