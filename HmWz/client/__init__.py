@@ -346,9 +346,13 @@ class Client(DiscordClient):
         """
         await asyncio.sleep(1) 
         if after.roles != before.roles:
-            async for entry in after.guild.audit_logs(limit=1, action=AuditLogAction.member_role_update):
-                if entry.user.id == self.user.id and entry.target.id == after.id:
-                    return
+            try:
+                async for entry in after.guild.audit_logs(limit=5, action=AuditLogAction.member_role_update):
+                    if entry.user.id == self.user.id and entry.target.id == after.id:
+                        return
+            except Forbidden:
+                # Bot doesn't have permission to view audit logs, continue anyway
+                pass
         guild = before.guild
         try:
             instance : overviews.registration.RegistrationOverview = await self.overview_manager.get_instance(guild=guild, instance_type=overviews.registration.RegistrationOverview)
