@@ -46,7 +46,7 @@ class Client(DiscordClient):
         self.overview_manager = overviews.Manager(self)
         self.global_command_sync = global_command_sync
 
-    async def update_loop(self, interval: int = 900):
+    async def update_loop(self, interval: int = 3600):
         """
         Periodische Aktualisierungsschleife für die Übersichten.
         
@@ -58,7 +58,7 @@ class Client(DiscordClient):
             for guild in self.guilds:            
                 try:
                     logger.info(f"{guild.name} (ID: {guild.id}) - Starting overview update.")
-                    await self.overview_manager.update(guild=guild)
+                    await self.overview_manager.sync(guild=guild, sync_data=True, sync_discord=True)
                     await asyncio.sleep(1)
                 except Exception as e:
                     logger.exception(f"{guild.name} (ID: {guild.id}) - Error updating overviews: {e}")
