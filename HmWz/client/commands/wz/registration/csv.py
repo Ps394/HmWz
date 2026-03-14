@@ -8,6 +8,7 @@ from .....i18n import CommandLocalizations, t
 
 logger = logging.getLogger(__name__)
 
+@app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
 @app_commands.checks.bot_has_permissions(attach_files=True)
 @app_commands.command(
     name="csv",

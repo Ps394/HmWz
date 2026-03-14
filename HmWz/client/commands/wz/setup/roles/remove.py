@@ -28,7 +28,6 @@ async def remove_autocomplete(interaction: Interaction, current: str) -> tuple[a
     ][:25] 
 
 @checks.has_permissions(manage_roles=True, manage_messages=True, manage_channels=True)
-@app_commands.default_permissions(manage_roles=True, manage_messages=True, manage_channels=True)
 @app_commands.command(
     name="role-remove",     
     description=app_commands.locale_str(

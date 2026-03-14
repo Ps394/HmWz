@@ -10,8 +10,7 @@ from .....i18n import CommandLocalizations, t
 
 logger = logging.getLogger(__name__)
 
-@checks.has_permissions(manage_roles=True, manage_messages=True, manage_channels=True)
-@app_commands.default_permissions(manage_roles=True, manage_messages=True, manage_channels=True)
+@app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
 @app_commands.command(
     name="message",
     description=app_commands.locale_str(
