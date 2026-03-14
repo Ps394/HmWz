@@ -73,14 +73,14 @@ RuntimeMessages: Dict[str, Dict[str, str]] = {
     "de": {
         "command.error.generic": f"{Emojis.ERROR.value} Es ist ein Fehler bei der Ausführung des Befehls aufgetreten.",
         "command.error.permissions": f"{Emojis.WARNING.value} Du hast nicht die erforderlichen Berechtigungen, um diesen Befehl auszuführen.",
-        "command.error.cooldown": f"{Emojis.ERROR.value} Warte {{retry_after:.1f}} Sekunden, bevor du diesen Befehl erneut verwenden kannst.",
+        "command.error.cooldown": f"{Emojis.ERROR.value} Warte {{retry_after}} Sekunden, bevor du diesen Befehl erneut verwenden kannst.",
         "command.error.bot_permissions": f"{Emojis.ERROR.value} Mir fehlen die erforderlichen Berechtigungen, um diesen Befehl auszuführen.",
         "command.error.not_found": f"{Emojis.WARNING.value} Der angeforderte Befehl oder die Ressource wurde nicht gefunden.",
         "command.error.invalid_input": f"{Emojis.WARNING.value} Ungültige Eingabe. Bitte überprüfe deine Eingaben und versuche es erneut.",
         "command.error.unexpected": f"{Emojis.ERROR.value} Ein unerwarteter Fehler ist aufgetreten.",
         "wz.registration.error.not_configured": f"{Emojis.WARNING.value} Die WZ-Registrierung ist nicht konfiguriert.",
+        # About-Me 
         "wz.about.title": "### {bot_name}",
-        # About-Me
         "wz.about.line1": "- Ich bin ein in Python geschriebener Discord-Bot, der speziell für die Verwaltung von WZ-Registrierungen entwickelt wurde.",
         "wz.about.line2": "- Meine Aufgabe ist es, Anmeldungen komfortabel zu gestalten, indem ich automatisierte Prozesse, Übersichten und Ausdrücke bereitstelle.",
         "wz.about.line3": "- Ich stehe unter der MIT-Lizenz, was bedeutet, dass du mich kostenlos nutzen, modifizieren und weiterverbreiten kannst, solange du die ursprünglichen Urheberrechtsvermerke und Lizenzhinweise beibehältst.",

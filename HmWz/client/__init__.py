@@ -5,7 +5,7 @@ import os
 import discord
 
 from typing import Optional
-from discord import Client as DiscordClient, Intents, app_commands, Interaction, AuditLogAction
+from discord import AutoShardedClient as DiscordClient, Intents, app_commands, Interaction, AuditLogAction
 
 from HmWz.client.overviews.registration import RegistrationOverview
 
@@ -172,7 +172,7 @@ class Client(DiscordClient):
             Globaler Fehlerhandler für Befehlsfehler. Versucht, die Fehlerbehandlung des Clients aufzurufen und protokolliert alle Fehler.
             """
             try:
-                await self.on_appplication_command_error(interaction, error)
+                await self.on_application_command_error(interaction, error)
             except Exception:
                 logger.exception(f"Error while handling app command error: {error}")
 
@@ -290,10 +290,10 @@ class Client(DiscordClient):
             reg_roles = await self.services.wz.roles.get(guild=guild)
             if not reg_roles or before.id not in [r.role.id for r in reg_roles]:
                 return
-            overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
+            views : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
 
-            if overviews:
-                for overview in overviews:
+            if views:
+                for overview in views:
                     if isinstance(overview, RegistrationOverview):
                         await overview.sync(sync_config=True)
                     await overview.ensure()
@@ -321,11 +321,11 @@ class Client(DiscordClient):
             tasks.append(self.services.wz.roles.remove(guild=guild, role=role.id))
             tasks.append(self.services.wz.registrations.remove(guild=guild, role=role.id))
         
-            asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
-            overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
-            if overviews:
-                for overview in overviews:
+            views : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
+            if views:
+                for overview in views:
                     await overview.sync(sync_config=True)
                     await overview.ensure()
         except Exception as e:
@@ -343,9 +343,9 @@ class Client(DiscordClient):
             registration : services.wz.RegistrationsRecord = await self.services.wz.registrations.get(guild=guild, member=member.id)
             if registration:
                 await self.services.wz.registrations.remove(guild=guild, member=member.id)
-                overviews : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
-                if overviews:
-                    for overview in overviews:
+                views : overviews.Instances = await self.overview_manager.get_instances(guild=guild)
+                if views:
+                    for overview in views:
                         await overview.sync(sync_data=True)
                         await overview.ensure()
         except Exception as e:
@@ -407,7 +407,7 @@ class Client(DiscordClient):
             return
         await self.overview_manager.on_message_delete(payload)
 
-    async def on_appplication_command_error(self, interaction: Interaction, error: app_commands.AppCommandError):
+    async def on_application_command_error(self, interaction: Interaction, error: app_commands.AppCommandError):
         """
         Globaler Fehlerhandler für Befehlsfehler. Sendet eine Fehlermeldung an den Benutzer und protokolliert den Fehler.
         

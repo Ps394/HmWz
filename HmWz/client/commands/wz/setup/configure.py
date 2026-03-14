@@ -1,6 +1,5 @@
-from asyncio.log import logger
-from typing import Optional
 import logging
+from typing import Optional
 from discord import app_commands, Interaction, TextChannel, Role, HTTPException, Forbidden, NotFound
 from discord.app_commands import checks
 from .....emojis import Emojis
@@ -52,7 +51,7 @@ async def configure(interaction: Interaction, channel: TextChannel, role: Option
             logger.error(LOGS["NO_CONFIGURED_ROLE"])
             await interaction.followup.send(t(interaction, "wz.setup.configure.error_no_configured_role"), ephemeral=True)
             return
-        
+        success_role = None
         if role:
             if role >= interaction.guild.me.top_role:
                 await interaction.followup.send(t(interaction, "wz.setup.configure.error_role_hierarchy"), ephemeral=True)

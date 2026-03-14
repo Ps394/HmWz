@@ -1,7 +1,6 @@
 from __future__ import annotations
 from asyncio import Event
 from enum import Enum
-from sched import Event
 from dataclasses import dataclass
 from typing import Optional
 
