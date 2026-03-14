@@ -426,11 +426,11 @@ class Client(DiscordClient):
                 message = t(interaction, "command.error.bot_permissions")
                 logger.error(f"{log_context} - Bot missing permissions: {error}")
             elif isinstance(error, app_commands.CommandOnCooldown):
-                message = t(interaction, "command.error.cooldown").format(retry_after=error.retry_after)
+                message = t(interaction, "command.error.cooldown", retry_after=f"{error.retry_after:.1f}")
                 logger.info(f"{log_context} - Command on cooldown: {error}")
             
             else:
-                message = t(interaction, "command.error.unexpected").format(error=error)
+                message = t(interaction, "command.error.unexpected")
                 logger.exception(f"{log_context} - Unexpected error: {error}")
             await send(message, ephemeral=True)
         except Exception as e:

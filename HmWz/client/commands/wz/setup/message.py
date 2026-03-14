@@ -1,7 +1,6 @@
 import logging
 from typing import Optional
 from discord import app_commands, Interaction, Attachment, HTTPException, Forbidden, NotFound, InteractionResponded
-from discord.app_commands import checks
 from .....services import Services
 from ....overviews import Manager
 from ....overviews.registration import RegistrationOverview
