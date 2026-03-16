@@ -84,12 +84,16 @@ class BasicOverview(Instance):
         except ValueError as e:
             raise e
 
-    async def wait_while_syncing(self):
+    async def wait_while_syncing(self, timeout: Optional[float] = 60) -> bool:
         """
         Wartet, bis die Synchronisierung abgeschlossen ist.
         """
+        elapsed = 0
         while self.IS_SYNCING:
-            await self.sleep()
+            if elapsed >= timeout:
+                self.IS_SYNCING = False
+            await self.sleep(self.WAIT_INTERVAL)
+            elapsed += self.WAIT_INTERVAL
 
     async def wait_while_working(self):
         """
@@ -150,8 +154,8 @@ class BasicOverview(Instance):
         :return: True, wenn die Synchronisierung gestoppt wurde, sonst False.
         :rtype: bool
         """
-        await self.sleep(self.WAIT_INTERVAL)
         self.IS_SYNCING = False
+        await self.sleep(self.WAIT_INTERVAL)
         return not self.IS_SYNCING
 
     async def work_stop(self) -> bool:
@@ -161,8 +165,8 @@ class BasicOverview(Instance):
         :return: True, wenn die Arbeit gestoppt wurde, sonst False.
         :rtype: bool
         """
-        await self.sleep(self.WAIT_INTERVAL)
         self.IS_WORKING = False
+        await self.sleep(self.WAIT_INTERVAL)
         return not self.IS_WORKING
 
     async def delete_stop(self) -> bool:
@@ -172,8 +176,8 @@ class BasicOverview(Instance):
         :return: True, wenn die Löschung gestoppt wurde, sonst False.
         :rtype: bool
         """
-        await self.sleep(self.WAIT_INTERVAL)
         self.IS_DELETING = False
+        await self.sleep(self.WAIT_INTERVAL)
         return not self.IS_DELETING
 
     @property

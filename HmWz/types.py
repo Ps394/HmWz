@@ -2,7 +2,28 @@ from dataclasses import dataclass, field
 from typing import Union, Optional, Sequence, Tuple, List, Callable
 from discord import Guild, Member, Role, TextChannel, Message, Embed
 
-__all__ = ("dataclass", "Union", "Optional", "Sequence", "Tuple", "List", "Guild", "Member", "Role", "TextChannel", "Message")
+__all__ = (
+    "dataclass",
+    "field", 
+    "Union", 
+    "Optional", 
+    "Sequence", 
+    "Tuple", 
+    "List",
+    "Callable",
+    "Guild", 
+    "Member", 
+    "Role", 
+    "TextChannel", 
+    "Message",
+    "Embed",
+    "Id",
+    "Ids",
+    "DiscordMember",
+    "DiscordRole",
+    "DiscordChannel",
+    "DiscordMessage",
+    )
 
 type Id = int
 """

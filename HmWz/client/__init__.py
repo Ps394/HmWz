@@ -5,7 +5,7 @@ import os
 import discord
 
 from typing import Optional
-from discord import AutoShardedClient as DiscordClient, Intents, app_commands, Interaction, AuditLogAction
+from discord import AutoShardedClient as DiscordClient, Intents, app_commands, Interaction, AuditLogAction, abc
 
 from HmWz.client.overviews.registration import RegistrationOverview
 
@@ -275,6 +275,40 @@ class Client(DiscordClient):
             logger.info(f"{guild.name} (ID: {guild.id}) - Removed guild from database on leave.")
         else:
             logger.error(f"{guild.name} (ID: {guild.id}) - Failed to remove guild from database on leave.")
+
+
+    async def on_guild_channel_delete(self, channel: abc.GuildChannel):
+        """
+        Wird aufgerufen, wenn ein Kanal in einer Gilde gelöscht wird. Leitet das Ereignis an den Overview-Manager weiter.
+
+        :param channel: Der gelöschte Kanal
+        :type channel: discord.TextChannel
+        """
+        pass
+
+    async def on_guild_channel_update(self, before: abc.GuildChannel, after: abc.GuildChannel):
+        """
+        Wird aufgerufen, wenn ein Kanal in einer Gilde aktualisiert wird. Leitet das Ereignis an den Overview-Manager weiter.
+
+        :param before: Der Kanal vor der Aktualisierung
+        :type before: discord.TextChannel
+        :param after: Der Kanal nach der Aktualisierung
+        :type after: discord.TextChannel
+        """
+        pass
+
+    async def on_guild_channel_create(self, channel: abc.GuildChannel):
+        """
+        Wird aufgerufen, wenn ein Kanal in einer Gilde erstellt wird. Leitet das Ereignis an den Overview-Manager weiter.
+
+        :param channel: Der erstellte Kanal
+        :type channel: discord.TextChannel
+        """
+        pass
+
+    
+
+
 
     async def on_guild_role_update(self, before: Role, after: Role):
         """

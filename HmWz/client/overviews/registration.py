@@ -452,7 +452,7 @@ class RegistrationOverview(BasicOverview):
                         message = await fetch_message(self.configuration.channel, record.message)
                         if message is not None and isinstance(message, Message):
                             self.data.messages.append(message)  
-
+                #await self.sync_list_messages_from_db()
                 self.stats.total = len(self.data.members)
                 self.stats.permanent = len([m for m in self.data.members if m.role.permanent])
                 self.stats.non_permanent = len([m for m in self.data.members if not m.role.permanent])
@@ -548,10 +548,6 @@ class RegistrationOverview(BasicOverview):
             logger.exception(f"{self.log_context} Failed to sync registration overview: {e}")
             return False
         finally:
-            self.on_startup = False
-            self.discord_member_changed = False
-            self.database_registrations_changed = False
-            self.database_configuration_changed = False
             await self.sync_stop()
 
     async def ensure(self) -> bool:
