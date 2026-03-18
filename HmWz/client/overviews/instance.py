@@ -2,9 +2,8 @@
 Modul, das die Definition der Instance-Schnittstelle enthält, die von allen Übersichtsinstanzen implementiert werden muss.
 """
 from __future__ import annotations
-from typing import Optional, Sequence, Protocol, Type, runtime_checkable
+from typing import Sequence, Protocol, Type, runtime_checkable
 from discord import RawMessageDeleteEvent
-import enum
 
 @runtime_checkable
 class Instance(Protocol):

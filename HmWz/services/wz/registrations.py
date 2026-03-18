@@ -7,7 +7,7 @@ from ..database import Database
 from ..base import Base
 from .roles import WzRoles
 
-from ...types import dataclass, Optional, Union, Tuple, Id, Ids, Guild
+from ...types import dataclass, Optional, Tuple, Id, Ids, Guild
 
 class WzRegistrations(Base):
     """

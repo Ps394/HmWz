@@ -1,7 +1,6 @@
 import logging
 from typing import Optional
 from discord import Guild
-from ..utils import log_guild
 from .database import Database
 
 logger = logging.getLogger(__name__)

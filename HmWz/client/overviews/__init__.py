@@ -4,14 +4,13 @@ Dieses Modul enthält die Definition des Managers für Übersichten, der für di
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Type, Optional
 from discord import RawMessageDeleteEvent, Guild, Client
 from .registry import REGISTRY
 from .instance import Instance, Instances, InstanceType
 
 from . import registration
 
-__all__ = ["Manager", "Instance", "Instances", "Registration"]
+__all__ = ["Manager", "Instance", "Instances", "registration"]
 
 logger = logging.getLogger(__name__)
 

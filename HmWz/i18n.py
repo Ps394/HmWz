@@ -85,7 +85,7 @@ RuntimeMessages: Dict[str, Dict[str, str]] = {
         "wz.about.line2": "- Meine Aufgabe ist es, Anmeldungen komfortabel zu gestalten, indem ich automatisierte Prozesse, Übersichten und Ausdrücke bereitstelle.",
         "wz.about.line3": "- Ich stehe unter der MIT-Lizenz, was bedeutet, dass du mich kostenlos nutzen, modifizieren und weiterverbreiten kannst, solange du die ursprünglichen Urheberrechtsvermerke und Lizenzhinweise beibehältst.",
         "wz.about.line4": "- Meine Github-Seite ist öffentlich zugänglich, und ich lade alle ein, den Code zu prüfen, Fehler zu melden oder zum Projekt beizutragen.",
-        "wz.about.link": "  - [HmWZ GitHub Repository](https://github.com/Ps394/HsBot)",
+        "wz.about.link": "  - [HmWZ GitHub Repository](https://github.com/Ps394/HmWz)",
         # Wz Registration CSV
         "wz.registration.csv.success": f"{Emojis.SUCCESS.value} Die Registrierungen wurden als CSV-Datei exportiert.",
         "wz.registration.csv.error": f"{Emojis.ERROR.value} Es ist ein Fehler beim Exportieren der Registrierungen als CSV-Datei aufgetreten.",
@@ -94,7 +94,7 @@ RuntimeMessages: Dict[str, Dict[str, str]] = {
         "wz.registration.reset.success": f"{Emojis.SUCCESS.value} Alle nicht permanenten Registrierungen wurden zurückgesetzt.",
         "wz.registration.reset.error": f"{Emojis.ERROR.value} Beim Zurücksetzen der Registrierungen ist ein Fehler aufgetreten.",
         # Wz Setup Configure
-        "wz.setup.configure.success": f"{Emojis.SUCCESS.value} WZ-Registrierung wurde erfolgreich eingerichtet. \nKanal: {{channel_name}}",
+        "wz.setup.configure.success": f"{Emojis.SUCCESS.value} WZ-Registrierung wurde erfolgreich eingerichtet. \nChannel: {{channel_name}}",
         "wz.setup.configure.error": f"{Emojis.ERROR.value} Fehler beim Einrichten der WZ-Registrierung.",
         "wz.setup.configure.error_role_hierarchy": f"{Emojis.ERROR.value} Die angegebene Rolle ist höher als die Bot-Rolle. Bitte wähle eine andere Rolle oder ändere die Bot-Rollenhierarchie.",
         "wz.setup.configure.error_no_configured_role": f"{Emojis.ERROR.value} Es muss mindestens eine Rolle für die WZ-Registrierung festgelegt sein, wenn kein Kanal konfiguriert ist.",
@@ -123,7 +123,14 @@ RuntimeMessages: Dict[str, Dict[str, str]] = {
         "wz.overview.registration.remove_registration": f"{Emojis.UNREGISTER.value} Abmeldung von **{{role_name}}** erfolgreich.",
         "wz.overview.registration.error_registration" : f"{Emojis.ERROR.value} Fehler bei der Verarbeitung der Anmeldung."
     },
-    "en": {
+        "en": {
+        "command.error.generic": f"{Emojis.ERROR.value} An error occurred while executing the command.",
+        "command.error.permissions": f"{Emojis.WARNING.value} You do not have the required permissions to execute this command.",
+        "command.error.cooldown": f"{Emojis.ERROR.value} Please wait {{retry_after}} seconds before using this command again.",
+        "command.error.bot_permissions": f"{Emojis.ERROR.value} I lack the required permissions to execute this command.",
+        "command.error.not_found": f"{Emojis.WARNING.value} The requested command or resource was not found.",
+        "command.error.invalid_input": f"{Emojis.WARNING.value} Invalid input. Please check your entries and try again.",
+        "command.error.unexpected": f"{Emojis.ERROR.value} An unexpected error occurred.",
         "wz.registration.error.not_configured": f"{Emojis.WARNING.value} The WZ registration is not configured.",
         # About-Me
         "wz.about.title": "### {bot_name}",
@@ -131,7 +138,7 @@ RuntimeMessages: Dict[str, Dict[str, str]] = {
         "wz.about.line2": "- My goal is to make registrations easier by providing automated processes, overviews, and workflows.",
         "wz.about.line3": "- I am released under the MIT License, so you can use, modify, and redistribute me for free as long as the original copyright and license notices are kept.",
         "wz.about.line4": "- My GitHub page is public, and everyone is welcome to review the code, report issues, or contribute to the project.",
-        "wz.about.link": "  - [HmWZ GitHub Repository](https://github.com/Ps394/HsBot)",
+        "wz.about.link": "  - [HmWZ GitHub Repository](https://github.com/Ps394/HmWz)",
         # Wz Registration CSV
         "wz.registration.csv.success": f"{Emojis.SUCCESS.value} The registrations have been exported as a CSV file.",
         "wz.registration.csv.error": f"{Emojis.ERROR.value} An error occurred while exporting the registrations as a CSV file.",
@@ -140,7 +147,7 @@ RuntimeMessages: Dict[str, Dict[str, str]] = {
         "wz.registration.reset.success": f"{Emojis.SUCCESS.value} All non-permanent registrations have been reset.",
         "wz.registration.reset.error": f"{Emojis.ERROR.value} An error occurred while resetting the registrations.",
        # Wz Setup Configure
-        "wz.setup.configure.success": f"{Emojis.SUCCESS.value} WZ registration has been configured successfully.\nKanal: {{channel_name}}",
+        "wz.setup.configure.success": f"{Emojis.SUCCESS.value} WZ registration has been configured successfully.\nChannel: {{channel_name}}",
         "wz.setup.configure.error": f"{Emojis.ERROR.value} An error occurred while configuring the WZ registration.",
         "wz.setup.configure.error_role_hierarchy": f"{Emojis.ERROR.value} The specified role is higher than the bot's role. Please choose a different role or change the bot's role hierarchy.",
         "wz.setup.configure.error_no_configured_role": f"{Emojis.ERROR.value} At least one role must be set for WZ registration if no channel is configured.",

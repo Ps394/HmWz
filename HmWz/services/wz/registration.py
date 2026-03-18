@@ -2,9 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 from typing import Optional
-from discord import Guild, TextChannel, Message
+from discord import Guild
 
-from ...types import  Id, Optional, Guild
+from ...types import  Id
 from ..database import Database
 from ..base import Base
 
