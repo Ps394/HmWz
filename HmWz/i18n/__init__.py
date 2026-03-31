@@ -10,8 +10,10 @@ from discord import Locale, app_commands
 
 from . import command, runtime
 
-CommandLocalizations = command.locals
-RuntimeLocalizations = runtime.locals
+CommandLocalizations = command.translations
+"""Alias für die Lokalisierungen von Befehlen. Diese Datenstruktur enthält Übersetzungen für Befehlsbeschreibungen und andere statische Texte, die in den Befehlen verwendet werden."""
+RuntimeLocalizations = runtime.translations
+"""Alias für die Lokalisierungen zur Laufzeit. Diese Datenstruktur enthält Übersetzungen für Nachrichten, die zur Laufzeit generiert werden."""
 
 __all__ = ["t", "CommandTranslator", "CommandLocalizations", "RuntimeLocalizations"]
 
@@ -36,8 +38,8 @@ def t(interaction, key: str, **kwargs) -> str:
     """Übersetzt einen Schlüssel basierend auf der Discord-Benutzersprache und formatiert Platzhalter."""
     try:
         language = get_user_language(interaction)
-        catalog = runtime.locals.get(language, runtime.locals["de"])
-        template = catalog.get(key) or runtime.locals["de"].get(key, key)
+        catalog = RuntimeLocalizations.get(language, RuntimeLocalizations["de"])
+        template = catalog.get(key) or RuntimeLocalizations["de"].get(key, key)
         return template.format(**kwargs)
     except Exception as e:
         logger.exception(f"Error in translation for key '{key}' with language '{language}': {e}")
@@ -58,16 +60,16 @@ class CommandTranslator(app_commands.Translator):
                 return None
 
             locale_name = str(locale)
-            catalog = command.locals.get(locale_name)
+            catalog = CommandLocalizations.get(locale_name)
             if catalog and key in catalog:
                 return catalog[key]
 
             short_locale = locale_name.split("-")[0].lower()
-            catalog = command.locals.get(short_locale)
+            catalog = CommandLocalizations.get(short_locale)
             if catalog and key in catalog:
                 return catalog[key]
 
-            return command.locals.get("de", {}).get(key)
+            return CommandLocalizations.get("de", {}).get(key)
         except Exception as e:
             logger.exception(f"Error in command translation for key '{key}' with locale '{locale}': {e}")
             return None
