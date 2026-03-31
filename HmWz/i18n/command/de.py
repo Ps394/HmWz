@@ -26,4 +26,4 @@ translation : Translation = {
         "wz.setup.message.title.description": "Titel für die Nachricht (max. 256 Zeichen)",
         "wz.setup.message.message.description": "Text für die Nachricht (max. 4096 Zeichen)",
         "wz.setup.message.message_upload.description": "TXT-Datei (UTF-8 codiert) mit der Nachricht (max. 4096 Zeichen)",
-    },
+    }

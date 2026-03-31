@@ -1,6 +1,6 @@
+from __future__ import annotations
 from ..type import Translations
 from . import de, en
-
 
 translations : Translations = {
     "de": de.translation,

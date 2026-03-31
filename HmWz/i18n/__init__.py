@@ -3,7 +3,6 @@ Lokalisierungsmodul für HmWz.
 Dieses Modul enthält Funktionen und Datenstrukturen, die für die Übersetzung von Texten in der Anwendung verwendet werden.
 Es bietet eine zentrale Anlaufstelle für die Verwaltung von Übersetzungen, sowohl für statische Texte, die in den Befehlen verwendet werden, als auch für dynamische Nachrichten, die zur Laufzeit generiert werden.
 """
-
 from __future__ import annotations
 import logging
 from discord import Locale, app_commands
