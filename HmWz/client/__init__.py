@@ -46,6 +46,7 @@ class Client(DiscordClient):
         self.tree = app_commands.CommandTree(self)
         self.overview_manager = overviews.Manager(self)
         self.global_command_sync = global_command_sync
+        self._commands_initialized = False
 
     async def update_loop(self, interval: int = 3600):
         """
@@ -177,18 +178,17 @@ class Client(DiscordClient):
         """
         try:
             
-            logger.info("Clearing global commands...")
-            self.tree.clear_commands(guild=None) 
-            await asyncio.sleep(1)
-            
-            logger.info("Clearing guild-specific commands...")
-            for guild in self.guilds:
-                logger.info(f"{guild.name} (ID: {guild.id}) - Clearing commands...")
-                self.tree.clear_commands(guild=guild)
-                await self.tree.sync(guild=guild)
-            
-            await self.tree.sync()
-            await asyncio.sleep(1)
+            if not self.global_command_sync:
+                logger.info("Clearing global commands...")
+                self.tree.clear_commands(guild=None)
+                await self.tree.sync()
+            else:
+                logger.info("Clearing guild-specific commands...")
+                for guild in self.guilds:
+                    logger.info(f"{guild.name} (ID: {guild.id}) - Clearing commands...")
+                    self.tree.clear_commands(guild=guild)
+                    await self.tree.sync(guild=guild)
+        
             logger.info("All commands cleared successfully.")
         except Exception as e:
             logger.exception(f"Failed to clear commands: {e}")
@@ -200,8 +200,6 @@ class Client(DiscordClient):
         await self.services.setup()
 
         await self.tree.set_translator(CommandTranslator())
-        
-        await self.clear_commands()
 
         await self.register_commands()
 
@@ -216,11 +214,14 @@ class Client(DiscordClient):
         logger.info(f'Logged in as {self.user} (ID: {self.user.id})')
         logger.info('------')
 
+        if not self._commands_initialized:
+            await self.clear_commands()
+            await self.sync_commands_guilds()
+            await self.sync_commands_global()
+            self._commands_initialized = True
+
         for guild in self.guilds: 
             await self.services.servers.add(guild=guild)
-
-        await self.sync_commands_guilds()
-        await self.sync_commands_global()
 
         await self.overview_manager.startup()
         logger.debug("Overview manager startup complete.")
@@ -278,10 +279,6 @@ class Client(DiscordClient):
         :type channel: discord.TextChannel
         """
         pass
-
-    
-
-
 
     async def on_guild_role_update(self, before: Role, after: Role):
         """
