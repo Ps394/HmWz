@@ -16,7 +16,7 @@ translation : Translation = {
         "wz.about.line2": "- Meine Aufgabe ist es, Anmeldungen komfortabel zu gestalten, indem ich automatisierte Prozesse, Übersichten und Ausdrücke bereitstelle.",
         "wz.about.line3": "- Ich stehe unter der MIT-Lizenz, was bedeutet, dass du mich kostenlos nutzen, modifizieren und weiterverbreiten kannst, solange du die ursprünglichen Urheberrechtsvermerke und Lizenzhinweise beibehältst.",
         "wz.about.line4": "- Meine Github-Seite ist öffentlich zugänglich, und ich lade alle ein, den Code zu prüfen, Fehler zu melden oder zum Projekt beizutragen.",
-        "wz.about.link": "  - [HmWZ GitHub Repository](https://github.com/Ps394/HmWz)",
+        "wz.about.link": "- [HmWZ GitHub Repository](https://github.com/Ps394/HmWz)",
         # Wz Registration CSV
         "wz.registration.csv.success": f"{Emojis.SUCCESS.value} Die Registrierungen wurden als CSV-Datei exportiert.",
         "wz.registration.csv.error": f"{Emojis.ERROR.value} Es ist ein Fehler beim Exportieren der Registrierungen als CSV-Datei aufgetreten.",

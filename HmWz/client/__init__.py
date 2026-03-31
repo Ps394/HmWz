@@ -65,7 +65,7 @@ class Client(DiscordClient):
                     logger.exception(f"{guild.name} (ID: {guild.id}) - Error updating overviews: {e}")
             await asyncio.sleep(interval)
     
-    async def resource_monitor_loop(self, interval: int = Monitoring.Interval.value):
+    async def resource_monitor_loop(self, interval: int = Monitoring.INTERVAL.value):
         """
         Periodische Überwachung der Ressourcen (CPU, Speicher, Festplatte).
         

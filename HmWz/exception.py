@@ -15,3 +15,17 @@ from discord import (
     DiscordServerError,
     InteractionResponded
 )
+
+__all__ = [
+    "RateLimited",
+    "NotFound",
+    "Forbidden",
+    "HTTPException",
+    "DiscordException",
+    "ClientException",
+    "LoginFailure",
+    "ConnectionClosed",
+    "PrivilegedIntentsRequired",
+    "DiscordServerError",
+    "InteractionResponded"
+]

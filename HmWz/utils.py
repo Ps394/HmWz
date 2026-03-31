@@ -14,6 +14,7 @@ from .types import (
     DiscordRole
 )
 from .exception import Forbidden, NotFound, HTTPException, RateLimited
+from .configuration import Bot
 """
 Hilfsfunktionen und Typdefinitionen für Discord-Objekte, sowie ein Dekorator für das Protokollieren von Funktionsaufrufen und Ausnahmen. 
 Diese Funktionen erleichtern den Zugriff auf Discord-Kanäle, Nachrichten, Mitglieder und Rollen, indem sie versuchen, die entsprechenden Objekte zu holen und bei Fehlern die IDs zurückgeben. 
@@ -85,7 +86,7 @@ async def fetch_channel(guild: Guild, channel_id: int, attempts: int = 3) -> Opt
         except Forbidden as e:
             logger.warning(f"channel {channel_id} for guild {log_guild(guild)} permission denied!")
             return None
-    await asyncio.sleep(DELAY)
+    await asyncio.sleep(Bot.DELAY.value)
     return None
     
 async def fetch_message(channel: TextChannel, message_id: int, attempts: int = 3) -> Optional[Message]:
@@ -113,7 +114,7 @@ async def fetch_message(channel: TextChannel, message_id: int, attempts: int = 3
         except Forbidden as e:
             logger.warning(f"message {message_id} in channel {channel.id} for guild {log_guild(channel.guild)} permission denied!")
             return None
-    await asyncio.sleep(DELAY)
+    await asyncio.sleep(Bot.DELAY.value)
     return None
 
 async def fetch_member(guild: Guild, member_id: int, attempts: int = 3) -> Optional[Member]:
@@ -147,7 +148,7 @@ async def fetch_member(guild: Guild, member_id: int, attempts: int = 3) -> Optio
         except Forbidden as e:
             logger.warning(f"member {member_id} for guild {log_guild(guild)} permission denied!")
             return None
-    await asyncio.sleep(DELAY)
+    await asyncio.sleep(Bot.DELAY.value)
     return None
 
 
@@ -177,4 +178,4 @@ async def fetch_role(guild: Guild, role_id: int) -> Optional[Role]:
         return None
     finally:
         logger.debug(f"fetched role {role_id} for guild {log_guild(guild)}: {role}")
-        await asyncio.sleep(DELAY)
+        await asyncio.sleep(Bot.DELAY.value)

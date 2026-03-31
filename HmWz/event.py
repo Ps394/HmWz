@@ -11,3 +11,13 @@ from discord import (
     RawReactionActionEvent,
     RawReactionClearEvent
 )
+
+__all__ = [
+    "RawMessageDeleteEvent",
+    "RawMessageUpdateEvent",
+    "RawMemberRemoveEvent",
+    "RawThreadDeleteEvent",
+    "RawThreadUpdateEvent",
+    "RawReactionActionEvent",
+    "RawReactionClearEvent"
+]

@@ -1,7 +1,7 @@
 from enum import Enum
 
 class Monitoring(Enum):
-    Interval = 60 
+    INTERVAL = 60 
     CPU_THRESHOLD = 90.0 
     MEMORY_THRESHOLD = 80.0 
     DISK_THRESHOLD = 90.0 
@@ -12,6 +12,10 @@ class WzRegistration(Enum):
     MIN_REGISTRATION_ROLES = 1
 
 class Bot(Enum):
+    DEFAULT_PREFIX = "!"
+    
+    DELAY = 0.1
+
     pass
 
 
