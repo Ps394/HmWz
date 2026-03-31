@@ -136,36 +136,7 @@ class Client(DiscordClient):
 
         self.add_command(commands.wz.WzGroup(self))
 
-        """
-        [Deprecated] Registrierung von Befehlen aus dem Commands.REGISTRY - da es zu Problemen beim Synchronisieren der Befehle kam, wenn sie direkt in der REGISTRY registriert wurden, werden die Befehle jetzt direkt im Client hinzugefügt.
 
-        for command in Commands.REGISTRY:
-            try:
-                if isinstance(command, type) and issubclass(command, app_commands.Group):
-                    instance = command(self)
-                
-                    #self.tree.add_command(instance)
-                    for subcommand in instance.commands:
-                        if isinstance(subcommand, app_commands.Command):
-                            logger.debug(f"Registered subcommand: {subcommand.name} in group {instance.name}")
-                            self.registered_commands += 1
-                        if isinstance(subcommand, app_commands.Group):
-                            logger.debug(f"Registered subcommand group: {subcommand.name} in group {instance.name} with {len(subcommand.commands)} subcommands")
-                            self.registered_commands += len(subcommand.commands)       
-                else:
-                    #self.tree.add_command(command)
-                    self.registered_commands += 1
-                    logger.debug(f"Registered command: {getattr(command, 'name', command)}")
-
-            except app_commands.CommandAlreadyRegistered:
-                logger.warning(f"Command already registered: {getattr(command, 'name', command)}")
-            except Exception as e:
-                logger.exception(
-                    f"Failed to register command {getattr(command, 'name', command)} "
-                    f"({type(command).__name__}): {e}"
-                )
-       
-        """
         @self.tree.error
         async def tree_on_error(interaction: Interaction, error: app_commands.AppCommandError):
             """
@@ -214,6 +185,8 @@ class Client(DiscordClient):
             for guild in self.guilds:
                 logger.info(f"{guild.name} (ID: {guild.id}) - Clearing commands...")
                 self.tree.clear_commands(guild=guild)
+                await self.tree.sync(guild=guild)
+            
             await self.tree.sync()
             await asyncio.sleep(1)
             logger.info("All commands cleared successfully.")

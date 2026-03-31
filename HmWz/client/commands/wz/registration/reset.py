@@ -44,7 +44,7 @@ async def reset(interaction: Interaction, ephemeral: bool = True):
         
         if not configuration.is_valid:
             await interaction.followup.send(t(interaction, "wz.registration.error.not_configured"), ephemeral=True)
-            raise ValueError(LOGS["NOT_CONFIGURED"])
+            return
 
         if len(data.members) == 0:
             await interaction.followup.send(t(interaction, "wz.registration.csv.no_registrations"), ephemeral=True)
