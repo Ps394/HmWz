@@ -1,5 +1,4 @@
 from __future__ import annotations
-from asyncio import Event
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
