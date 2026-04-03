@@ -5,7 +5,6 @@ Es bietet eine zentrale Anlaufstelle für wichtige Komponenten wie Emojis und Lo
 
 from __future__ import annotations
 from . import emojis, utils
-from .logger import setup_logging
 from .token import Token
 
 from .client import Client, Intents
@@ -13,7 +12,6 @@ from .client import Client, Intents
 __all__ = [
     "emojis",
     "utils",
-    "setup_logging",
     "Token",
     "Client",
     "Intents"

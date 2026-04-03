@@ -1,14 +1,14 @@
 import sys
-import logging
-from HmWz import setup_logging, Client, Intents, Token
+from HmWz import Client, Intents, Token
+from HmLogger import setup_logging, get_logger, logging
 
-setup_logging(log_file="bot.log", level=logging.INFO)
+setup_logging(log_file="bot.log", level=logging.INFO, file_logging=True, async_logging=True)
 
 logging.getLogger("discord").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)
 logging.getLogger("aiosqlite").setLevel(logging.INFO)
 
-logger = logging.getLogger("Bot")
+logger = get_logger("Bot")
 
 TOKEN = Token().get()
 
