@@ -17,7 +17,7 @@ from ..configuration import Monitoring
 from ..emojis import Emojis
 from ..types import Guild, TextChannel, Message, Member, Role
 from ..exception import HTTPException, Forbidden, NotFound, InteractionResponded
-from ..event import RawMessageDeleteEvent
+from ..event import RawMessageDeleteEvent, RawMemberRemoveEvent
 
 logger = logging.getLogger(__name__)
 
@@ -335,14 +335,17 @@ class Client(DiscordClient):
         except Exception as e:
             logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to remove deleted role '{role.name}' from WZ registration: {e}")
 
-    async def on_raw_member_remove(self, member: Member):
+    async def on_raw_member_remove(self, payload: RawMemberRemoveEvent):
         """
         Wird aufgerufen, wenn ein Mitglied eine Gilde verlässt oder entfernt wird. Entfernt die Registrierung des Mitglieds und synchronisiert die Übersichten, wenn eine Registrierung vorhanden war.
 
-        :param member: Das Mitglied, das die Gilde verlassen hat
+        :param payload: Ereignis Payload des entfernen Benutzers
         :type member: discord.Member
         """
-        guild = member.guild
+        guild = self.Client.get_guild(payload.guild_id)
+        member = payload.user
+        if not guild:
+            return 
         try:
             registration : services.wz.RegistrationsRecord = await self.services.wz.registrations.get(guild=guild, member=member.id)
             if registration:
@@ -353,7 +356,7 @@ class Client(DiscordClient):
                         await overview.sync(sync_data=True)
                         await overview.ensure()
         except Exception as e:
-            logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to remove registration for departed member '{member}': {e}")
+            logger.exception(f"{guild.name} (ID: {guild.id}) - Failed to remove registration for departed member '{member.name}': {e}")
 
     async def on_member_update(self, before: Member, after: Member):
         """
