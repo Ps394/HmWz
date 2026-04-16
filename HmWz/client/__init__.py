@@ -342,7 +342,7 @@ class Client(DiscordClient):
         :param payload: Ereignis Payload des entfernen Benutzers
         :type member: discord.Member
         """
-        guild = self.Client.get_guild(payload.guild_id)
+        guild = self.client.get_guild(payload.guild_id)
         member = payload.user
         if not guild:
             return 
