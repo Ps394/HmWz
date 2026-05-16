@@ -2,7 +2,12 @@ import sys
 from HmWz import Client, Intents, Token
 from HmLogger import setup_logging, get_logger, logging
 
-setup_logging(log_file="bot.log", level=logging.INFO, file_logging=True, async_logging=True)
+setup_logging(
+    log_file="bot.log", 
+    level=logging.INFO, 
+    file_logging=True, 
+    async_logging=True
+    )
 
 logging.getLogger("discord").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.INFO)

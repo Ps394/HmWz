@@ -3,18 +3,109 @@ Das Modul "emojis" enthält die Definition der Emojis, die im Bot verwendet werd
 """
 from enum import Enum
 
+
 class Emojis(Enum):
      """
-     Diese Enum-Klasse definiert die Emojis, die im Bot verwendet werden. Jedes Emoji ist als Unicode-Zeichen definiert und kann in den Nachrichten des Bots verwendet werden, um visuelle Hinweise zu geben.
+     Vollstaendige, uebliche Default-Emoji-Sammlung fuer Bot-Features.
+     Die bestehenden Schluessel bleiben kompatibel und werden um gaengige
+     Standardwerte fuer Status, Aktionen, Navigation und Kategorien ergaenzt.
      """
+
+     # Core status
      SUCCESS = "✅"
      WARNING = "⚠️"
-     ERROR = "⛔"
+     ERROR = "❌"
+     INFO = "ℹ️"
+     QUESTION = "❓"
+     UNKNOWN = "❔"
 
-     REGISTER = "✅"
+     # Common action results
+     CREATED = "🆕"
+     UPDATED = "✏️"
+     DELETED = "🗑️"
+     SAVED = "💾"
+     RESET = "♻️"
+
+     # Registration (existing compatibility)
+     REGISTER = "➕"
      REREGISTER = "🔄"
-     UNREGISTER = "❌"
-
-     TOTAL_REGISTRATIONS = "📊"
+     UNREGISTER = "➖"
      PERMA_REGISTRATION = "🔒"
      NORMAL_REGISTRATION = "🔓"
+
+     # Generic actions
+     ADD = "➕"
+     REMOVE = "➖"
+     EDIT = "✏️"
+     CONFIGURE = "⚙️"
+     SEARCH = "🔎"
+     FILTER = "🧰"
+     EXPORT = "📤"
+     IMPORT = "📥"
+     REFRESH = "🔄"
+     RETRY = "🔁"
+
+     # Approvals / moderation
+     APPROVE = "👍"
+     REJECT = "👎"
+     BAN = "🔨"
+     KICK = "🥾"
+     MUTE = "🔇"
+     UNMUTE = "🔊"
+
+     # Access / permissions
+     LOCKED = "🔒"
+     UNLOCKED = "🔓"
+     ADMIN = "🛡️"
+     MODERATOR = "🧑‍⚖️"
+     USER = "👤"
+     BOT = "🤖"
+
+     # Navigation / UI hints
+     NEXT = "➡️"
+     PREVIOUS = "⬅️"
+     UP = "⬆️"
+     DOWN = "⬇️"
+     HOME = "🏠"
+     BACK = "↩️"
+     FORWARD = "↪️"
+     MENU = "📋"
+
+     # Time / schedule
+     CLOCK = "🕒"
+     CALENDAR = "📅"
+     DEADLINE = "⏰"
+     DURATION = "⏱️"
+
+     # Data / files
+     FILE = "📄"
+     FOLDER = "📁"
+     CSV = "📑"
+     DATABASE = "🗄️"
+     STATS = "📊"
+     CHART = "📈"
+
+     # Communication
+     MESSAGE = "💬"
+     ANNOUNCEMENT = "📣"
+     EMAIL = "📧"
+     LINK = "🔗"
+
+     # Process state
+     PENDING = "🟡"
+     RUNNING = "🔵"
+     COMPLETED = "🟢"
+     FAILED = "🔴"
+     SKIPPED = "⏭️"
+     PAUSED = "⏸️"
+     STOPPED = "⏹️"
+
+     # Misc common labels
+     STAR = "⭐"
+     FIRE = "🔥"
+     CHECKBOX_ON = "☑️"
+     CHECKBOX_OFF = "⬜"
+     TAG = "🏷️"
+     PIN = "📌"
+     TROPHY = "🏆"
+
