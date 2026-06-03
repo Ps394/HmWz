@@ -1,0 +1,11 @@
+# Core dependencies
+discord.py == 2.6.4
+aiosqlite == 0.22.1
+
+# Optional: Resource monitoring (psutil)
+# Windows: pip install psutil
+# MSYS2: pacman -S mingw-w64-ucrt-x86_64-python-psutil
+psutil >= 5.9.5
+
+# Optional: Logging (hmlogger)
+hmlogger >= 0.0.2

@@ -1,0 +1,82 @@
+import logging
+from typing import Optional
+
+from discord import app_commands, Interaction, Role, TextChannel
+from discord.app_commands import checks
+
+from configuration import config
+from i18n import CommandLocalizations, t
+
+from ...module import WzRegistrationModule
+
+logger = logging.getLogger(__name__)
+
+
+@checks.has_permissions(manage_roles=True, manage_messages=True, manage_channels=True)
+@app_commands.command(
+    name="configure",
+    description=app_commands.locale_str(
+        CommandLocalizations.get("en", {}).get("wz.setup.configure.description", "-"),
+        key="wz.setup.configure.description",
+    ),
+)
+@app_commands.describe(
+    channel=app_commands.locale_str(
+        CommandLocalizations.get("en", {}).get("wz.setup.configure.channel.description", "-"),
+        key="wz.setup.configure.channel.description",
+    ),
+    role=app_commands.locale_str(
+        CommandLocalizations.get("en", {}).get("wz.setup.configure.role.description", "-"),
+        key="wz.setup.configure.role.description",
+    ),
+)
+async def configure(interaction: Interaction, channel: TextChannel, role: Optional[Role] = None):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if not interaction.guild:
+            await interaction.followup.send(t(interaction, "wz.setup.configure.error"), ephemeral=True)
+            return
+
+        manager = getattr(interaction.client, "module_manager", None)
+        if manager is None:
+            await interaction.followup.send(t(interaction, "wz.setup.configure.error"), ephemeral=True)
+            return
+
+        module: WzRegistrationModule = await manager.get_module(interaction.guild, WzRegistrationModule)
+
+        if role and interaction.guild.me and role >= interaction.guild.me.top_role:
+            await interaction.followup.send(
+                t(interaction, "wz.setup.configure.error_role_hierarchy"), ephemeral=True
+            )
+            return
+
+        role_count = await module.roles.count(guild=interaction.guild)
+        if role is None and role_count == 0:
+            await interaction.followup.send(
+                t(interaction, "wz.setup.configure.error_no_configured_role"), ephemeral=True
+            )
+            return
+
+        max_roles = int(config.get("wz_registration", {}).get("max_registration_roles", 4))
+        if role is not None and role_count >= max_roles:
+            await interaction.followup.send(
+                t(interaction, "wz.setup.roles.add.max_roles", max_roles=max_roles), ephemeral=True
+            )
+            return
+
+        ok = await module.registration.upsert(guild=interaction.guild, channel_id=channel.id)
+        if role is not None:
+            ok = (await module.roles.add(guild=interaction.guild, role=role.id, permanent=False, score=1)) and ok
+
+        if not ok:
+            await interaction.followup.send(t(interaction, "wz.setup.configure.error"), ephemeral=True)
+            return
+
+        await module.compose_registration_overview(force=True)
+        await interaction.followup.send(
+            t(interaction, "wz.setup.configure.success", channel_name=channel.name),
+            ephemeral=True,
+        )
+    except Exception as e:
+        logger.exception(f"WZ setup configure failed: {e}")
+        await interaction.followup.send(t(interaction, "wz.setup.configure.error"), ephemeral=True)

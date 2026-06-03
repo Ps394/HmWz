@@ -1,0 +1,469 @@
+from __future__ import annotations
+import asyncio
+import logging
+import time
+from types import SimpleNamespace
+
+import discord
+import hmEvents
+import hmEmojis
+import hmUtils
+
+from configuration import config
+from i18n import t
+from hmModels.botembed import BotEmbed
+
+from ..basic_module import BasicModule
+from ..registry import register
+from . import recordsets
+
+_logger = logging.getLogger(__name__)
+
+
+@register
+class WzRegistrationModule(BasicModule):
+    """Guild-spezifisches WZ-Registrierungsmodul."""
+
+    def __init__(self, guild: discord.Guild, client):
+        """Initialisiert Recordsets und Laufzeitzustand fuer die Guild."""
+        super().__init__(guild, client)
+        self.configuration = recordsets.Configuration(self.database)
+        self.roles = recordsets.WzRoles(self.database)
+        self.registration = recordsets.WzRegistration(self.database)
+        self.registrations = recordsets.WzRegistrations(self.database)
+        self.list = recordsets.WzList(self.database)
+        self._schema_ready = False
+        self._compose_lock = asyncio.Lock()
+        self._last_compose_at = 0.0
+        self._compose_min_interval_seconds = 1.5
+
+    @property
+    def _client_color(self) -> discord.Color:
+        """Ermittelt die aktuelle Bot-Farbe in der Guild fuer Embeds."""
+        member = self.guild.get_member(self.client.user.id) if self.client and self.client.user else None
+        if member and member.roles:
+            return max(member.roles, key=lambda r: r.position).color
+        return discord.Color.blurple()
+
+    @property
+    def _client_avatar(self) -> discord.Asset | None:
+        """Liefert ein passendes Avatar fuer Embed-Footer."""
+        if self.guild.icon:
+            return self.guild.icon
+        if self.client and self.client.user and self.client.user.avatar:
+            return self.client.user.avatar
+        return None
+
+    def _runtime_t(self, key: str, **kwargs) -> str:
+        """Uebersetzt Laufzeittexte fuer guild-getriebene Kontexte ohne Interaction."""
+        locale = str(getattr(self.guild, "preferred_locale", "") or "de")
+        pseudo_interaction = SimpleNamespace(locale=locale, guild_locale=locale)
+        return t(pseudo_interaction, key, **kwargs)
+
+    async def _handle_registration(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        """Verarbeitet An- und Abmeldung eines Users fuer eine Rolle.
+
+        Das Verhalten ist toggelnd:
+        - gleiche Rolle erneut: Abmeldung
+        - andere Rolle: Wechsel
+        - keine bestehende Registrierung: Anmeldung
+        """
+        guild = interaction.guild
+        member = interaction.user
+        if guild is None or not isinstance(member, discord.Member):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        records = await self.registrations.get(guild=guild, member=member.id)
+        current = records[0] if records else None
+
+        if current and current.role == role.id:
+            removed = await self.registrations.remove(guild=guild, member=member.id)
+            if not removed:
+                await interaction.followup.send(
+                    t(interaction, "wz.overview.registration.error_registration"),
+                    ephemeral=True,
+                )
+                return
+            await member.remove_roles(role, reason="WZ deregistration")
+            await interaction.followup.send(
+                t(interaction, "wz.overview.registration.remove_registration", role_name=role.name),
+                ephemeral=True,
+            )
+            await self.compose_registration_overview(force=True)
+            return
+
+        is_update = current is not None and current.role != role.id
+        if current and current.role != role.id:
+            old_role = await hmUtils.fetch_role(guild, current.role)
+            if old_role is not None:
+                await member.remove_roles(old_role, reason="WZ registration update")
+
+        added = await self.registrations.add(guild=guild, member=member.id, role=role.id)
+        if not added:
+            await interaction.followup.send(
+                t(interaction, "wz.overview.registration.error_registration"),
+                ephemeral=True,
+            )
+            return
+        await member.add_roles(role, reason="WZ registration")
+        key = "wz.overview.registration.update_registration" if is_update else "wz.overview.registration.new_registration"
+        await interaction.followup.send(
+            t(interaction, key, role_name=role.name),
+            ephemeral=True,
+        )
+        await self.compose_registration_overview(force=True)
+
+    def _build_view(self, roles: tuple[recordsets.WzRoles._Data, ...]) -> discord.ui.View:
+        """Erstellt die Button-View fuer alle konfigurierten Rollen."""
+        view = discord.ui.View(timeout=None)
+        row = 0
+        for role_data in roles:
+            role = self.guild.get_role(role_data.role)
+            if role is None:
+                continue
+
+            async def callback(interaction: discord.Interaction, selected_role: discord.Role = role):
+                await self._handle_registration(interaction, selected_role)
+
+            button = discord.ui.Button(
+                label=role.name,
+                style=discord.ButtonStyle.primary,
+                row=min(row, 4),
+            )
+            button.callback = callback
+            view.add_item(button)
+            row += 1
+        return view
+
+    async def _load_list_messages(self, channel: discord.TextChannel) -> list[discord.Message]:
+        """Laedt bestehende Listen-Nachrichten aus der DB und bereinigt stale Eintraege."""
+        records = await self.list.get(guild=self.guild)
+        if not records:
+            return []
+
+        messages: list[discord.Message] = []
+        stale_ids: list[int] = []
+        for record in records:
+            message = await hmUtils.fetch_message(channel, record.message)
+            if message is None:
+                stale_ids.append(record.message)
+                continue
+            messages.append(message)
+
+        for stale_id in stale_ids:
+            await self.list.remove(guild=self.guild, message=stale_id)
+
+        return messages
+
+    async def _create_list_embeds(
+        self,
+        roles: tuple[recordsets.WzRoles._Data, ...],
+    ) -> list[discord.Embed]:
+        """Erzeugt Embeds fuer die Anmeldeliste aus den Registrierungsdaten."""
+        registrations = await self.registrations.get(guild=self.guild)
+        if not registrations:
+            return []
+
+        role_map = {r.role: r for r in roles}
+        entries: list[tuple[str, bool, str]] = []
+
+        for reg in registrations:
+            if reg.member is None or reg.role is None:
+                continue
+            role_meta = role_map.get(reg.role)
+            role_obj = await hmUtils.fetch_role(self.guild, reg.role)
+            member_obj = await hmUtils.fetch_member(self.guild, reg.member)
+
+            if role_obj is None or member_obj is None:
+                continue
+
+            is_permanent = role_meta.permanent if role_meta else False
+            entries.append((role_obj.name, is_permanent, member_obj.display_name))
+
+        if not entries:
+            return []
+
+        entries.sort(key=lambda e: (not e[1], e[0].lower(), e[2].lower()))
+
+        total = len(entries)
+        permanent = len([entry for entry in entries if entry[1]])
+        non_permanent = total - permanent
+
+        rows: list[str] = []
+        last_group = ""
+        for index, (role_name, is_permanent, display_name) in enumerate(entries, start=1):
+            marker = hmEmojis.PERMA_REGISTRATION if is_permanent else hmEmojis.NORMAL_REGISTRATION
+            group = f"{role_name} {marker}"
+            if group != last_group:
+                rows.append(f"**{group}**")
+                last_group = group
+            rows.append(f"{index}. {display_name}")
+
+        embeds: list[discord.Embed] = []
+        chunk: list[str] = []
+        chunk_chars = 0
+        chunk_limit = 3800
+        page = 1
+
+        def make_embed(page_no: int, content: str) -> discord.Embed:
+            return BotEmbed(
+                title=self._runtime_t(
+                    "wz.overview.list.title",
+                    page=page_no,
+                    total=total,
+                    perma_emoji=hmEmojis.PERMA_REGISTRATION,
+                    permanent_count=permanent,
+                    normal_emoji=hmEmojis.NORMAL_REGISTRATION,
+                    non_permanent_count=non_permanent,
+                ),
+                description=content,
+                color=self._client_color,
+                client_avatar=self._client_avatar,
+            )
+
+        for row in rows:
+            line = row + "\n"
+            if chunk and (chunk_chars + len(line)) > chunk_limit:
+                embeds.append(make_embed(page, "".join(chunk)))
+                page += 1
+                chunk = []
+                chunk_chars = 0
+            chunk.append(line)
+            chunk_chars += len(line)
+
+        if chunk:
+            embeds.append(make_embed(page, "".join(chunk)))
+
+        return embeds
+
+    async def _sync_list_messages(
+        self,
+        channel: discord.TextChannel,
+        embeds: list[discord.Embed],
+    ) -> bool:
+        """Synchronisiert Listen-Embeds mit bestehenden Nachrichten in Discord und DB."""
+        existing_messages = await self._load_list_messages(channel)
+
+        for index in range(max(len(existing_messages), len(embeds))):
+            if index < len(embeds) and index < len(existing_messages):
+                message = existing_messages[index]
+                embed = embeds[index]
+                await message.edit(embed=embed)
+                await self.list.add(
+                    guild=self.guild,
+                    channel=channel.id,
+                    message=message.id,
+                    title=embed.title or "",
+                    text=embed.description or "",
+                )
+                continue
+
+            if index < len(embeds):
+                embed = embeds[index]
+                message = await channel.send(embed=embed)
+                await self.list.add(
+                    guild=self.guild,
+                    channel=channel.id,
+                    message=message.id,
+                    title=embed.title or "",
+                    text=embed.description or "",
+                )
+                continue
+
+            message = existing_messages[index]
+            try:
+                await message.delete()
+            finally:
+                await self.list.remove(guild=self.guild, message=message.id)
+
+        return True
+
+    async def _compose_registration_overview_inner(self) -> bool:
+        """Baut Registrierungsnachricht und Anmeldeliste auf und synchronisiert beides."""
+        record = await self.registration.get(guild=self.guild)
+        roles = await self.roles.get(guild=self.guild)
+
+        if record is None or record.channel is None:
+            _logger.debug(f"{self.guild.name} ({self.guild.id}) - No registration channel configured.")
+            return False
+        if not roles:
+            _logger.debug(f"{self.guild.name} ({self.guild.id}) - No registration roles configured.")
+            return False
+
+        channel = await hmUtils.fetch_channel(self.guild, record.channel)
+        if channel is None:
+            _logger.warning(f"{self.guild.name} ({self.guild.id}) - Registration channel not found: {record.channel}")
+            return False
+
+        title = record.title or config.get(
+            "wz_registration", {}
+        ).get("default_title", self._runtime_t("wz.overview.default_title"))
+        description = record.description or config.get("wz_registration", {}).get(
+            "default_description", self._runtime_t("wz.overview.default_description")
+        )
+        embed = BotEmbed(
+            title=title,
+            description=description,
+            color=self._client_color,
+            client_avatar=self._client_avatar,
+        )
+        view = self._build_view(roles)
+
+        message: discord.Message | None = None
+        if record.message is not None:
+            message = await hmUtils.fetch_message(channel, record.message)
+
+        if message is None:
+            message = await channel.send(embed=embed, view=view)
+            await self.registration.upsert(
+                guild=self.guild,
+                channel_id=channel.id,
+                message_id=message.id,
+                title=title,
+                description=description,
+            )
+            list_embeds = await self._create_list_embeds(roles)
+            await self._sync_list_messages(channel, list_embeds)
+            _logger.info(f"{self.guild.name} ({self.guild.id}) - Created registration overview message {message.id}.")
+            return True
+
+        await message.edit(embed=embed, view=view)
+        await self.registration.upsert(
+            guild=self.guild,
+            channel_id=channel.id,
+            message_id=message.id,
+            title=title,
+            description=description,
+        )
+        list_embeds = await self._create_list_embeds(roles)
+        await self._sync_list_messages(channel, list_embeds)
+        _logger.info(f"{self.guild.name} ({self.guild.id}) - Updated registration overview message {message.id}.")
+        return True
+
+    async def compose_registration_overview(self, force: bool = False) -> bool:
+        """Komponiert die Uebersicht mit Debounce und Lock.
+
+        Parameter:
+        - force: Ueberspringt Debounce, z. B. nach direkter User-Interaktion.
+        """
+        now = time.monotonic()
+        if not force and (now - self._last_compose_at) < self._compose_min_interval_seconds:
+            _logger.debug(
+                f"{self.guild.name} ({self.guild.id}) - Debounced registration overview compose request."
+            )
+            return True
+
+        async with self._compose_lock:
+            now = time.monotonic()
+            if not force and (now - self._last_compose_at) < self._compose_min_interval_seconds:
+                _logger.debug(
+                    f"{self.guild.name} ({self.guild.id}) - Debounced registration overview compose request (locked)."
+                )
+                return True
+
+            result = await self._compose_registration_overview_inner()
+            if result:
+                self._last_compose_at = time.monotonic()
+            return result
+
+    async def _ensure_schema(self) -> bool:
+        """Stellt sicher, dass alle benoetigten Tabellen existieren."""
+        if self._schema_ready:
+            return True
+        try:
+            # Keep schema creation local to this module for scalability.
+            await self.database.execute(self.configuration.table)
+            await self.database.execute(self.roles.table)
+            await self.database.execute(self.registration.table)
+            await self.database.execute(self.registrations.table)
+            await self.database.execute(self.list.table)
+            self._schema_ready = True
+            _logger.info(f"{self.guild.name} ({self.guild.id}) - WZ module schema ready.")
+            return True
+        except Exception as e:
+            _logger.exception(f"{self.guild.name} ({self.guild.id}) - Failed to ensure WZ schema: {e}")
+            return False
+
+    async def sync(self, startup: bool = False) -> bool:
+        """Synchronisiert den technischen Modulzustand (Schema)."""
+        if not await self._ensure_schema():
+            return False
+        if startup:
+            _logger.debug(f"{self.guild.name} ({self.guild.id}) - WZ module startup sync done.")
+        return True
+
+    async def ensure(self) -> bool:
+        """Stellt sicher, dass die Registrierungsuebersicht sichtbar und aktuell ist."""
+        try:
+            return await self.compose_registration_overview()
+        except Exception as e:
+            _logger.exception(f"{self.guild.name} ({self.guild.id}) - Failed to compose registration overview: {e}")
+            return False
+
+    async def on_guild_join(self, guild: discord.Guild) -> bool:
+        """Initialisiert Modulzustand bei Guild-Join."""
+        if guild.id != self.guild.id:
+            return False
+        return await self.sync(startup=True)
+
+    async def on_guild_remove(self, guild: discord.Guild) -> bool:
+        """Entfernt guild-bezogene WZ-Daten beim Verlassen der Guild."""
+        if guild.id != self.guild.id:
+            return False
+        # Best effort cleanup for this guild.
+        await self.configuration.remove(guild=guild)
+        await self.registration.remove(guild=guild)
+        await self.roles.remove(guild=guild)
+        await self.list.remove(guild=guild)
+        await self.registrations.remove(guild=guild)
+        return True
+
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
+        """Bestaetigt Relevanz des Events fuer diese Guild."""
+        return channel.guild.id == self.guild.id
+
+    async def on_guild_channel_update(
+        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
+    ) -> bool:
+        """Bestaetigt Relevanz des Events fuer diese Guild."""
+        return before.guild.id == self.guild.id
+
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
+        """Bestaetigt Relevanz des Events fuer diese Guild."""
+        return channel.guild.id == self.guild.id
+
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> bool:
+        """Bestaetigt Relevanz des Events fuer diese Guild."""
+        return before.guild.id == self.guild.id
+
+    async def on_guild_role_delete(self, role: discord.Role) -> bool:
+        """Bereinigt geloeschte Rollen aus Rollen- und Registrierungsrecordset."""
+        if role.guild.id != self.guild.id:
+            return False
+        await self.roles.remove(guild=self.guild, role=role.id)
+        await self.registrations.remove(guild=self.guild, role=role.id)
+        return True
+
+    async def on_member_update(self, before: discord.Member, after: discord.Member) -> bool:
+        """Bestaetigt Relevanz des Events fuer diese Guild."""
+        return before.guild.id == self.guild.id
+
+    async def on_raw_member_remove(self, payload: hmEvents.RawMemberRemoveEvent) -> bool:
+        """Entfernt Registrierungen fuer verlassende Mitglieder."""
+        if payload.guild_id != self.guild.id:
+            return False
+        await self.registrations.remove(guild=self.guild, member=payload.user.id)
+        return True
+
+    async def on_raw_message_delete(self, payload: hmEvents.RawMessageDeleteEvent) -> bool:
+        """Bereinigt Referenzen auf geloeschte Registrierungsnachrichten."""
+        if payload.guild_id != self.guild.id:
+            return False
+        if payload.message_id is not None:
+            registration = await self.registration.get(guild=self.guild)
+            if registration and registration.message == payload.message_id:
+                await self.registration.upsert(guild=self.guild, message_id=None)
+            await self.list.remove(guild=self.guild, message=payload.message_id)
+        return True
