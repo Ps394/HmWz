@@ -17,48 +17,49 @@ def _default_config() -> dict:
     :rtype: dict
     """
     return {
-        "bot": {
-            "prefix": "!",
-            "delay_seconds": 1,
-            "token_env": "WZ_BOT_TOKEN"
-        },
-        "monitoring": {
-            "interval_seconds": 60,
-            "cpu_threshold": 80,
-            "memory_threshold": 80,
-            "disk_threshold": 90,
-            "temperature_threshold": 75
-        },
-        "wz_registration": {
-            "max_registration_roles": 5,
-            "min_registration_roles": 1,
-            "default_title": "Anmeldung",
-            "default_description": "Bitte registriere dich für die Teilnahme am WZ-Event."
+            "bot": {
+                "prefix": "!",
+                "delay_seconds": 0.1,
+                "token_env": "WZ_BOT_TOKEN"
+            },
+            "database": {
+                "folder": "data",
+                "filename": "data.db"
+            },
+            "monitoring": {
+                "interval_seconds": 60,
+                "cpu_threshold": 90.0,
+                "memory_threshold": 80.0,
+                "disk_threshold": 90.0,
+                "temperature_threshold": 80.0
+            },
+            "wz_registration": {
+                "max_registration_roles": 4,
+                "min_registration_roles": 1,
+                "default_title": "Anmeldung",
+                "default_description": "Klicke zum An-/Abmelden eine der Schaltflächen unten!"
+            }
         }
-    }
 
-def _load_configuration(path : str= "src/configuration.json") -> dict:
+def _load_configuration(path : str= "configuration.json") -> dict:
     try:
         with open(path, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         _logger.error(f"Configuration file not found: {path}")
-        default_conf = _default_config()
+        default_conf : dict = _default_config()
         _logger.info(f"Using default configuration: {default_conf}")
-        generate_default = input("Do you want to generate a default configuration file? (y/n): ").strip().lower()
-        if generate_default == "y":
-            try:
-                with open(path, "w") as f:
-                    json.dump(default_conf, f, indent=4)
-                _logger.info(f"Default configuration file generated at: {path}")
-            except Exception as e:
-                _logger.error(f"Failed to generate default configuration file: {e}")
-        else:
-            _logger.warning("No configuration file generated. Bot may not function properly without a valid configuration.")
-        return {}
+        try:
+            with open(path, "w") as f:
+                json.dump(default_conf, f, indent=4)
+            _logger.info(f"Default configuration file generated at: {path}")
+            return default_conf
+        except Exception as e:
+            _logger.error(f"Failed to generate default configuration file: {e}")
+            return default_conf
     except json.JSONDecodeError as e:
         _logger.error(f"Error decoding JSON from configuration file: {e}")
-        return {}
+        return default_conf
 
 global config 
 

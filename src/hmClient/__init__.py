@@ -15,18 +15,12 @@ import hmEvents
 import sqlLiteDB
 import moduls
 
-from . import commands, recordsets
+from . import commands, recordsets, monitoring
 
 _logger = logging.getLogger(__name__)
 
 __all__ = ["Client", "hmUtils", "hmExceptions", "hmEvents", "sqlLiteDB", "commands", "recordsets"]
 
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-    _logger.warning("psutil not available - resource monitoring disabled")  
 
 class Client(discord.Client):
     registered_commands : int = 0
@@ -46,7 +40,6 @@ class Client(discord.Client):
         self.module_manager = moduls.Manager(self)
 
         self.CommandTree = discord.app_commands.CommandTree(self)
-        #self.overview_manager = overviews.Manager(self)
         self.global_command_sync = global_command_sync
         self._commands_initialized = False            
 
@@ -55,13 +48,12 @@ class Client(discord.Client):
         """
         Führt die Einrichtung des Clients durch, einschließlich der Registrierung von Befehlen und der Synchronisierung globaler Befehle.
         """
-        #await self.services.setup()
         await self._database.execute(self._servers.table)
         await self.CommandTree.set_translator(CommandTranslator())
 
         await self.register_commands()
 
-        asyncio.create_task(self.resource_monitor_loop())
+        asyncio.create_task(monitoring.resource_monitor_loop())
 
         return await super().setup_hook()
 
@@ -201,50 +193,25 @@ class Client(discord.Client):
         :param error: Der aufgetretene Fehler
         :type error: discord.app_commands.AppCommandError
         """
-        pass
-  
-    async def resource_monitor_loop(self, interval: int = config["monitoring"]["interval_seconds"]):
-        """
-        Periodische Überwachung der Ressourcen (CPU, Speicher, Festplatte).
-        
-        :param interval: Zeitintervall in Sekunden zwischen den Überprüfungen (Standard: 60 Sekunden)
-        :type interval: int
-        """
-        if not PSUTIL_AVAILABLE:
-            _logger.info("Resource monitoring disabled (psutil not installed)")
-            return
+        log_context = f"u- {interaction.user} - Command: {interaction.command}"
+        send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
+        try:
+            if isinstance(error, discord.app_commands.MissingPermissions):
+                message = t(interaction, "command.error.permissions")
+                logger.warning(f"{log_context} - User missing permissions: {error}")
+            elif isinstance(error, discord.app_commands.BotMissingPermissions):
+                message = t(interaction, "command.error.bot_permissions")
+                logger.error(f"{log_context} - Bot missing permissions: {error}")
+            elif isinstance(error, discord.app_commands.CommandOnCooldown):
+                message = t(interaction, "command.error.cooldown", retry_after=f"{error.retry_after:.1f}")
+                logger.info(f"{log_context} - Command on cooldown: {error}")
             
-        await self.wait_until_ready()
-        process = psutil.Process(os.getpid())
-        
-        while not self.is_closed():
-            try:
-                mem_info = psutil.virtual_memory()
-                temp_info = psutil.sensors_temperatures() if hasattr(psutil, "sensors_temperatures") else None
-                storage_info = psutil.disk_usage('/')
-                cpu_info =  psutil.cpu_times_percent(interval=None)
-                process.memory_full_info()
-                cpu_percent = process.cpu_percent(interval=1)
-
-                if temp_info:
-                    for name, entries in temp_info.items():
-                        for entry in entries:
-                            if entry.current >= config["monitoring"]["temperature_threshold"]:
-                                _logger.warning(f"High temperature detected: {entry.label or name} at {entry.current:.1f}°C")
-                
-                if cpu_info.user > config["monitoring"]["cpu_threshold"] or cpu_info.system > config["monitoring"]["cpu_threshold"]:
-                    _logger.warning(f"High CPU usage detected: {cpu_percent:.1f}%")
-
-                if mem_info.percent > config["monitoring"]["memory_threshold"]:
-                    _logger.warning(f"High RAM usage detected: {mem_info.percent:.1f}% ({mem_info.used / 1024 / 1024:.1f} MB used of {mem_info.total / 1024 / 1024:.1f} MB)")
-
-                if storage_info.percent > config["monitoring"]["disk_threshold"]:
-                    _logger.warning(f"High disk usage detected: {storage_info.percent:.1f}% ({storage_info.used / 1024 / 1024 / 1024:.1f} GB used of {storage_info.total / 1024 / 1024 / 1024:.1f} GB)")
-
-            except Exception as e:
-                _logger.exception(f"Error monitoring resources: {e}")
-            
-            await asyncio.sleep(interval)
+            else:
+                message = t(interaction, "command.error.unexpected")
+                logger.exception(f"{log_context} - Unexpected error: {error}")
+            await send(message, ephemeral=True)
+        except Exception as e:
+            logger.exception(f"{log_context} - Failed to send error message: {e}")
 
     def add_command(self, command: typing.Callable):
         """

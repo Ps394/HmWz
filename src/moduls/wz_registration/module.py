@@ -447,8 +447,61 @@ class WzRegistrationModule(BasicModule):
         return True
 
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> bool:
-        """Bestaetigt Relevanz des Events fuer diese Guild."""
-        return before.guild.id == self.guild.id
+        """Synchronisiert Registrierungen bei manuellen Rollen-Aenderungen."""
+        if before.guild.id != self.guild.id:
+            return False
+
+        before_role_ids = {role.id for role in before.roles}
+        after_role_ids = {role.id for role in after.roles}
+        added_role_ids = after_role_ids - before_role_ids
+        removed_role_ids = before_role_ids - after_role_ids
+
+        if not added_role_ids and not removed_role_ids:
+            return True
+
+        configured_roles = await self.roles.get(guild=self.guild)
+        if not configured_roles:
+            return True
+
+        registration_role_ids = {role.role for role in configured_roles}
+        added_registration_roles = added_role_ids & registration_role_ids
+        removed_registration_roles = removed_role_ids & registration_role_ids
+
+        if not added_registration_roles and not removed_registration_roles:
+            return True
+
+        registrations = await self.registrations.get(guild=self.guild, member=after.id)
+        current_registration = registrations[0] if registrations else None
+
+        changed = False
+
+        if current_registration and current_registration.role is not None:
+            current_role_id = current_registration.role
+
+            if current_role_id in removed_registration_roles:
+                changed = await self.registrations.remove(guild=self.guild, member=after.id)
+            elif (
+                added_registration_roles
+                and current_role_id not in after_role_ids
+            ):
+                target_role = min(added_registration_roles)
+                changed = await self.registrations.add(
+                    guild=self.guild,
+                    member=after.id,
+                    role=target_role,
+                )
+        elif added_registration_roles:
+            target_role = min(added_registration_roles)
+            changed = await self.registrations.add(
+                guild=self.guild,
+                member=after.id,
+                role=target_role,
+            )
+
+        if changed:
+            await self.compose_registration_overview(force=True)
+
+        return True
 
     async def on_raw_member_remove(self, payload: hmEvents.RawMemberRemoveEvent) -> bool:
         """Entfernt Registrierungen fuer verlassende Mitglieder."""
