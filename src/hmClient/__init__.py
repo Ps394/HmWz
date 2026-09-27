@@ -212,7 +212,7 @@ class Client(discord.Client):
             await send(message, ephemeral=True)
         except Exception as e:
             logger.exception(f"{log_context} - Failed to send error message: {e}")
-
+                                    
     def add_command(self, command: typing.Callable):
         """
         Fügt einen Befehl zur Befehlsstruktur hinzu.

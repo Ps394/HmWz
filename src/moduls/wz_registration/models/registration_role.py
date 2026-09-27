@@ -10,6 +10,6 @@ class RegistrationRole:
     :param permanent: Gibt an, ob die Rolle permanent ist (True) oder nicht (False).
     :type permanent: bool
     """
-    role: discord.Role = None
+    role_id: int
     score: int = 0
     permanent: bool = False

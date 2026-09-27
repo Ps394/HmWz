@@ -10,6 +10,9 @@ translation : Translation = {
         "command.error.invalid_input": f"{hmEmojis.WARNING} Ungültige Eingabe. Bitte überprüfe deine Eingaben und versuche es erneut.",
         "command.error.unexpected": f"{hmEmojis.ERROR} Ein unerwarteter Fehler ist aufgetreten.",
         "wz.registration.error.not_configured": f"{hmEmojis.WARNING} Die WZ-Registrierung ist nicht konfiguriert.",
+        "wz.purge.message": f"{hmEmojis.DELETE} {{deleted_count}} Nachrichten wurden gelöscht.",
+        "wz.purge.ignored_pinned": " Angeheftete Nachrichten wurden ignoriert.",
+        "wz.purge.ignored_bots": " Nachrichten von Bots wurden ignoriert.",
         # About-Me 
         "wz.about.title": "### {bot_name}",
         "wz.about.line1": "- Ich bin ein in Python geschriebener Discord-Bot, der speziell für die Verwaltung von WZ-Registrierungen entwickelt wurde.",

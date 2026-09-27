@@ -2,8 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import discord
 import logging
-from HmWz.utils import log_guild
-from .registration_role import RegistrationRole
+import hmUtils
 from .registration_member import RegistrationMember
 
 _logger = logging.getLogger(__name__)
@@ -13,63 +12,62 @@ class Registration:
     guild : discord.Guild
     registrations: list[RegistrationMember] = field(default_factory=list)
 
-    @classmethod
-    def add_registration(cls, registration: RegistrationMember) -> None:
+    def add_registration(self, registration: RegistrationMember) -> None:
         """Fügt eine neue Registrierung hinzu."""
-        cls.registrations.append(registration)
-        _logger.debug(f"{log_guild(cls.guild)} Added registration for user {registration.user_id} with roles {[role.name for role in registration.roles]}")
+        self.registrations.append(registration)
+        _logger.debug(
+            f"{hmUtils.log_guild(self.guild)} Added registration for member {registration.member_id} role {registration.role.role_id}"
+        )
 
-    @classmethod
-    def remove_registration(cls, registration: RegistrationMember) -> None:
+    def remove_registration(self, registration: RegistrationMember) -> None:
         """Entfernt eine bestehende Registrierung."""
-        cls.registrations.remove(registration)
-        _logger.debug(f"{log_guild(cls.guild)} Removed registration for user {registration.user_id}")
+        self.registrations.remove(registration)
+        _logger.debug(f"{hmUtils.log_guild(self.guild)} Removed registration for member {registration.member_id}")
 
-    @classmethod 
-    def change_registration(cls, old_registration: RegistrationMember, new_registration: RegistrationMember) -> None:
+    def change_registration(self, old_registration: RegistrationMember, new_registration: RegistrationMember) -> None:
         """Ändert eine bestehende Registrierung."""
-        cls.remove_registration(old_registration)
-        cls.add_registration(new_registration)
-        _logger.debug(f"{log_guild(cls.guild)} Changed registration for user {old_registration.user_id} to new roles {[role.name for role in new_registration.roles]}")
+        self.remove_registration(old_registration)
+        self.add_registration(new_registration)
+        _logger.debug(
+            f"{hmUtils.log_guild(self.guild)} Changed registration for member {old_registration.member_id} to role {new_registration.role.role_id}"
+        )
         
     @property
     def count_total_registrations(self) -> int:
         """Gibt die Gesamtzahl der Registrierungen zurück."""
         result = len(self.registrations)
-        _logger.debug(f"{log_guild(self.guild)} count_total_registrations: {result}")
+        _logger.debug(f"{hmUtils.log_guild(self.guild)} count_total_registrations: {result}")
         return result
     
     @property
     def count_permanent_registrations(self) -> int:
         """Gibt die Anzahl der permanenten Registrierungen zurück."""
         result = len(self.permanent_registrations)
-        _logger.debug(f"{log_guild(self.guild)} count_permanent_registrations: {result}")
+        _logger.debug(f"{hmUtils.log_guild(self.guild)} count_permanent_registrations: {result}")
         return result
     
     @property
     def count_temporary_registrations(self) -> int:
         """Gibt die Anzahl der temporären Registrierungen zurück."""
         result = len(self.temporary_registrations)
-        _logger.debug(f"{log_guild(self.guild)} count_temporary_registrations: {result}")
+        _logger.debug(f"{hmUtils.log_guild(self.guild)} count_temporary_registrations: {result}")
         return result
         
     @property
     def permanent_registrations(self) -> tuple[RegistrationMember, ...]:
         """Gibt eine Liste der permanenten Registrierungen zurück."""
         result = [reg for reg in self.registrations if reg.role.permanent]
-        _logger.debug(f"{log_guild(self.guild)} permanent_registrations: {len(result)}")
+        _logger.debug(f"{hmUtils.log_guild(self.guild)} permanent_registrations: {len(result)}")
         return tuple(result)    
 
     @property
     def temporary_registrations(self) -> tuple[RegistrationMember, ...]:
         """Gibt eine Liste der temporären Registrierungen zurück."""
         result = [reg for reg in self.registrations if not reg.role.permanent]
-        _logger.debug(f"{log_guild(self.guild)} temporary_registrations: {len(result)}")
+        _logger.debug(f"{hmUtils.log_guild(self.guild)} temporary_registrations: {len(result)}")
         return tuple(result)
 
     @property
     def total_score(self) -> int:
         """Berechnet die Gesamtpunktzahl aller Registrierungen, basierend auf den zugewiesenen Rollen und deren Punktzahlen."""
-        return sum(
-            role.score for member in self.registrations for role in member.roles
-        )
+        return sum(member.role.score for member in self.registrations)

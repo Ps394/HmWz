@@ -15,6 +15,7 @@ from hmModels.botembed import BotEmbed
 
 from ..basic_module import BasicModule
 from ..registry import register
+from . import models
 from . import recordsets
 
 _logger = logging.getLogger(__name__)
@@ -60,6 +61,57 @@ class WzRegistrationModule(BasicModule):
         pseudo_interaction = SimpleNamespace(locale=locale, guild_locale=locale)
         return t(pseudo_interaction, key, **kwargs)
 
+    async def _load_configuration_model(self) -> models.Configuration:
+        """Liest DB-Daten und mappt sie in das interne Domain-Model."""
+        record = await self.registration.get(guild=self.guild)
+        role_records = await self.roles.get(guild=self.guild)
+        registration_roles = tuple(
+            models.RegistrationRole(role_id=role.role, score=role.score, permanent=role.permanent)
+            for role in (role_records or [])
+            if role.role is not None
+        )
+
+        if record is None:
+            return models.Configuration(
+                guild_id=self.guild.id,
+                channel_id=None,
+                message_id=None,
+                title=None,
+                description=None,
+                registration_roles=registration_roles,
+            )
+
+        return models.Configuration(
+            guild_id=self.guild.id,
+            channel_id=record.channel,
+            message_id=record.message,
+            title=record.title,
+            description=record.description,
+            registration_roles=registration_roles,
+        )
+
+    async def _load_registration_model(self, configuration: models.Configuration) -> models.Registration:
+        """Liest Registrierungen aus der DB und mappt sie in Domain-Objekte."""
+        role_map = {role.role_id: role for role in configuration.registration_roles}
+        registration_records = await self.registrations.get(guild=self.guild)
+        out: list[models.RegistrationMember] = []
+
+        for record in registration_records or []:
+            if record.member is None or record.role is None:
+                continue
+            role_model = role_map.get(record.role)
+            if role_model is None:
+                role_model = models.RegistrationRole(role_id=record.role, score=0, permanent=False)
+            out.append(
+                models.RegistrationMember(
+                    member_id=record.member,
+                    role=role_model,
+                    timestamp=record.timestamp,
+                )
+            )
+
+        return models.Registration(guild=self.guild, registrations=out)
+
     async def _handle_registration(self, interaction: discord.Interaction, role: discord.Role) -> None:
         """Verarbeitet An- und Abmeldung eines Users fuer eine Rolle.
 
@@ -96,9 +148,10 @@ class WzRegistrationModule(BasicModule):
 
         is_update = current is not None and current.role != role.id
         if current and current.role != role.id:
-            old_role = await hmUtils.fetch_role(guild, current.role)
-            if old_role is not None:
-                await member.remove_roles(old_role, reason="WZ registration update")
+            if current.role is not None:
+                old_role = await hmUtils.fetch_role(guild, current.role)
+                if old_role is not None:
+                    await member.remove_roles(old_role, reason="WZ registration update")
 
         added = await self.registrations.add(guild=guild, member=member.id, role=role.id)
         if not added:
@@ -115,12 +168,12 @@ class WzRegistrationModule(BasicModule):
         )
         await self.compose_registration_overview(force=True)
 
-    def _build_view(self, roles: tuple[recordsets.WzRoles._Data, ...]) -> discord.ui.View:
+    def _build_view(self, roles: tuple[models.RegistrationRole, ...]) -> discord.ui.View:
         """Erstellt die Button-View fuer alle konfigurierten Rollen."""
         view = discord.ui.View(timeout=None)
         row = 0
         for role_data in roles:
-            role = self.guild.get_role(role_data.role)
+            role = self.guild.get_role(role_data.role_id)
             if role is None:
                 continue
 
@@ -159,28 +212,21 @@ class WzRegistrationModule(BasicModule):
 
     async def _create_list_embeds(
         self,
-        roles: tuple[recordsets.WzRoles._Data, ...],
+        registrations: models.Registration,
     ) -> list[discord.Embed]:
         """Erzeugt Embeds fuer die Anmeldeliste aus den Registrierungsdaten."""
-        registrations = await self.registrations.get(guild=self.guild)
-        if not registrations:
+        if not registrations.registrations:
             return []
-
-        role_map = {r.role: r for r in roles}
         entries: list[tuple[str, bool, str]] = []
 
-        for reg in registrations:
-            if reg.member is None or reg.role is None:
-                continue
-            role_meta = role_map.get(reg.role)
-            role_obj = await hmUtils.fetch_role(self.guild, reg.role)
-            member_obj = await hmUtils.fetch_member(self.guild, reg.member)
+        for reg in registrations.registrations:
+            role_obj = await hmUtils.fetch_role(self.guild, reg.role.role_id)
+            member_obj = await hmUtils.fetch_member(self.guild, reg.member_id)
 
             if role_obj is None or member_obj is None:
                 continue
 
-            is_permanent = role_meta.permanent if role_meta else False
-            entries.append((role_obj.name, is_permanent, member_obj.display_name))
+            entries.append((role_obj.name, reg.role.permanent, member_obj.display_name))
 
         if not entries:
             return []
@@ -282,38 +328,49 @@ class WzRegistrationModule(BasicModule):
 
     async def _compose_registration_overview_inner(self) -> bool:
         """Baut Registrierungsnachricht und Anmeldeliste auf und synchronisiert beides."""
-        record = await self.registration.get(guild=self.guild)
-        roles = await self.roles.get(guild=self.guild)
+        configuration = await self._load_configuration_model()
 
-        if record is None or record.channel is None:
+        if not configuration.has_channel:
             _logger.debug(f"{self.guild.name} ({self.guild.id}) - No registration channel configured.")
             return False
-        if not roles:
+        if not configuration.has_registration_roles:
             _logger.debug(f"{self.guild.name} ({self.guild.id}) - No registration roles configured.")
             return False
 
-        channel = await hmUtils.fetch_channel(self.guild, record.channel)
-        if channel is None:
-            _logger.warning(f"{self.guild.name} ({self.guild.id}) - Registration channel not found: {record.channel}")
+        channel_id = configuration.channel_id
+        if channel_id is None:
             return False
 
-        title = record.title or config.get(
-            "wz_registration", {}
-        ).get("default_title", self._runtime_t("wz.overview.default_title"))
-        description = record.description or config.get("wz_registration", {}).get(
-            "default_description", self._runtime_t("wz.overview.default_description")
-        )
+        channel = await hmUtils.fetch_channel(self.guild, channel_id)
+        if channel is None:
+            _logger.warning(
+                f"{self.guild.name} ({self.guild.id}) - Registration channel not found: {channel_id}"
+            )
+            return False
+
+        default_title = self._runtime_t("wz.overview.default_title")
+        default_description = self._runtime_t("wz.overview.default_description")
+        if isinstance(config, dict):
+            registration_cfg = config.get("wz_registration")
+            if isinstance(registration_cfg, dict):
+                default_title = str(registration_cfg.get("default_title", default_title))
+                default_description = str(registration_cfg.get("default_description", default_description))
+
+        title = configuration.title or default_title
+        description = configuration.description or default_description
         embed = BotEmbed(
             title=title,
             description=description,
             color=self._client_color,
             client_avatar=self._client_avatar,
         )
-        view = self._build_view(roles)
+        view = self._build_view(configuration.registration_roles)
 
         message: discord.Message | None = None
-        if record.message is not None:
-            message = await hmUtils.fetch_message(channel, record.message)
+        if configuration.has_message and configuration.message_id is not None:
+            message = await hmUtils.fetch_message(channel, configuration.message_id)
+
+        registration_model = await self._load_registration_model(configuration)
 
         if message is None:
             message = await channel.send(embed=embed, view=view)
@@ -324,7 +381,7 @@ class WzRegistrationModule(BasicModule):
                 title=title,
                 description=description,
             )
-            list_embeds = await self._create_list_embeds(roles)
+            list_embeds = await self._create_list_embeds(registration_model)
             await self._sync_list_messages(channel, list_embeds)
             _logger.info(f"{self.guild.name} ({self.guild.id}) - Created registration overview message {message.id}.")
             return True
@@ -337,7 +394,7 @@ class WzRegistrationModule(BasicModule):
             title=title,
             description=description,
         )
-        list_embeds = await self._create_list_embeds(roles)
+        list_embeds = await self._create_list_embeds(registration_model)
         await self._sync_list_messages(channel, list_embeds)
         _logger.info(f"{self.guild.name} ({self.guild.id}) - Updated registration overview message {message.id}.")
         return True

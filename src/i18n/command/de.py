@@ -5,6 +5,7 @@ translation : Translation = {
         # Wz Group
         "wz.group.description": "HmWz - Alle Befehle rund um die WZ-Registrierung",
         "wz.about.description": "Über den Bot",
+        "wz.purge.description": "Löscht Nachrichten im aktuellen Kanal",
         # Wz Registration 
         "wz.registration.group.description": "Befehle für die WZ-Registrierung",
         "wz.registration.csv.description": "Gibt die Registrierungen als CSV-Datei aus",

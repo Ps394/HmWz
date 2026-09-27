@@ -12,7 +12,6 @@ class RegistrationMember:
     :param roles: Eine Liste von Registrierungsrollen, die dem Mitglied zugewiesen sind.
     :type roles: list[RegistrationRole]
     """
-    member: discord.Member = None
-    role: RegistrationRole = None
-    score: int = None
-    timestamp: str = None
+    member_id: int
+    role: RegistrationRole
+    timestamp: str
