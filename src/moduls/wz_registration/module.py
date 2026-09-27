@@ -383,7 +383,7 @@ class WzRegistrationModule(BasicModule):
             )
             list_embeds = await self._create_list_embeds(registration_model)
             await self._sync_list_messages(channel, list_embeds)
-            _logger.info(f"{self.guild.name} ({self.guild.id}) - Created registration overview message {message.id}.")
+            _logger.info(f"{self.guild.name} ({self.guild.id}) - Created registration overview message {message.id} in {channel.name}({channel.id}).")
             return True
 
         await message.edit(embed=embed, view=view)
@@ -396,7 +396,7 @@ class WzRegistrationModule(BasicModule):
         )
         list_embeds = await self._create_list_embeds(registration_model)
         await self._sync_list_messages(channel, list_embeds)
-        _logger.info(f"{self.guild.name} ({self.guild.id}) - Updated registration overview message {message.id}.")
+        _logger.info(f"{self.guild.name} ({self.guild.id}) - Updated registration overview message {message.id} in {channel.name}({channel.id}).")
         return True
 
     async def compose_registration_overview(self, force: bool = False) -> bool:

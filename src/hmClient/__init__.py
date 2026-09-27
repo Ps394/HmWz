@@ -240,6 +240,7 @@ class Client(discord.Client):
         _logger.info("Registering commands...")
 
         self.add_command(commands.AboutBot)
+        self.add_command(commands.Purge)
         self.add_command(moduls.wz_registration.commands.WzGroup(self))
 
         @self.CommandTree.error
