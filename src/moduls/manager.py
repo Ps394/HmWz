@@ -151,3 +151,10 @@ class Manager:
         if guild is None:
             return False
         return await self._dispatch(guild, "on_raw_message_delete", payload)
+
+    async def on_raw_bulk_message_delete(self, payload: hmEvents.RawBulkMessageDeleteEvent) -> bool:
+        """Leitet Raw-Bulk-Message-Deleteevents an die passende Guild weiter."""
+        guild = self.client.get_guild(payload.guild_id)
+        if guild is None:
+            return False
+        return await self._dispatch(guild, "on_raw_bulk_message_delete", payload)

@@ -4,6 +4,7 @@ Modul für Events, die in HsBot verwendet werden.
 
 from discord import (
     RawMessageDeleteEvent,
+    RawBulkMessageDeleteEvent,
     RawMessageUpdateEvent,
     RawMemberRemoveEvent,
     RawThreadDeleteEvent,
@@ -14,6 +15,7 @@ from discord import (
 
 __all__ = [
     "RawMessageDeleteEvent",
+    "RawBulkMessageDeleteEvent",
     "RawMessageUpdateEvent",
     "RawMemberRemoveEvent",
     "RawThreadDeleteEvent",

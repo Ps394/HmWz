@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import discord
 from discord import Forbidden, HTTPException, Interaction, NotFound, app_commands
 
 import hmUtils
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
     )
 )
 @app_commands.checks.cooldown(1, 300, key=lambda i: (i.guild_id))
-async def reset(interaction: Interaction, ephemeral: bool = True):
+async def reset(interaction: Interaction, ephemeral: bool = False):
     await interaction.response.defer(ephemeral=ephemeral)
     try:
         if not interaction.guild:
@@ -74,8 +75,21 @@ async def reset(interaction: Interaction, ephemeral: bool = True):
             await interaction.followup.send(t(interaction, "wz.registration.reset.error"), ephemeral=True)
             return
 
+        if registration_config.channel is not None:
+            channel = await hmUtils.fetch_channel(interaction.guild, registration_config.channel)
+            if channel is not None:
+                await channel.purge(
+                    limit=500,
+                    check=lambda m: not m.pinned and not m.author.bot,
+                    reason="WZ Registration Reset"
+                )
+
         await module.compose_registration_overview(force=True)
-        await interaction.followup.send(t(interaction, "wz.registration.reset.success"), ephemeral=ephemeral)
+        timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")
+        await interaction.followup.send(
+            t(interaction, "wz.registration.reset.success", timestamp=timestamp),
+            ephemeral=ephemeral
+        )
     except Exception as e:
         logger.exception(f"WZ registration reset failed: {e}")
         await interaction.followup.send(t(interaction, "wz.registration.reset.error"), ephemeral=True)

@@ -73,3 +73,7 @@ class BasicModule:
     async def on_raw_message_delete(self, payload: hmEvents.RawMessageDeleteEvent) -> bool:
         """Reagiert auf Raw-Message-Delete Events."""
         return True
+
+    async def on_raw_bulk_message_delete(self, payload: hmEvents.RawBulkMessageDeleteEvent) -> bool:
+        """Reagiert auf Raw-Bulk-Message-Delete Events (z. B. durch channel.purge)."""
+        return True

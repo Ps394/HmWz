@@ -568,12 +568,30 @@ class WzRegistrationModule(BasicModule):
         return True
 
     async def on_raw_message_delete(self, payload: hmEvents.RawMessageDeleteEvent) -> bool:
-        """Bereinigt Referenzen auf geloeschte Registrierungsnachrichten."""
+        """Bereinigt Referenzen auf geloeschte Registrierungsnachrichten und stellt sie bei Bedarf wieder her."""
         if payload.guild_id != self.guild.id:
             return False
         if payload.message_id is not None:
             registration = await self.registration.get(guild=self.guild)
             if registration and registration.message == payload.message_id:
                 await self.registration.upsert(guild=self.guild, message_id=None)
+                await self.compose_registration_overview(force=True)
             await self.list.remove(guild=self.guild, message=payload.message_id)
+        return True
+
+    async def on_raw_bulk_message_delete(self, payload: hmEvents.RawBulkMessageDeleteEvent) -> bool:
+        """Behandelt Massenloeschungen (z. B. via /purge) wie mehrere einzelne Nachrichtenloeschungen."""
+        if payload.guild_id != self.guild.id:
+            return False
+
+        registration = await self.registration.get(guild=self.guild)
+        needs_recompose = bool(registration and registration.message in payload.message_ids)
+        if needs_recompose:
+            await self.registration.upsert(guild=self.guild, message_id=None)
+
+        for message_id in payload.message_ids:
+            await self.list.remove(guild=self.guild, message=message_id)
+
+        if needs_recompose:
+            await self.compose_registration_overview(force=True)
         return True

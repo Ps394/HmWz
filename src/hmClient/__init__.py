@@ -184,6 +184,15 @@ class Client(discord.Client):
         """
         await self.module_manager.on_raw_message_delete(payload)
 
+    async def on_raw_bulk_message_delete(self, payload: hmEvents.RawBulkMessageDeleteEvent):
+        """
+        Wird aufgerufen, wenn mehrere Nachrichten auf einmal gelöscht werden (z. B. durch /purge). Leitet das Ereignis an den Overview-Manager weiter.
+
+        :param payload: Das Ereignis-Payload der gelöschten Nachrichten
+        :type payload: hmEvents.RawBulkMessageDeleteEvent
+        """
+        await self.module_manager.on_raw_bulk_message_delete(payload)
+
     async def on_application_command_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         """
         Globaler Fehlerhandler für Befehlsfehler. Sendet eine Fehlermeldung an den Benutzer und protokolliert den Fehler.

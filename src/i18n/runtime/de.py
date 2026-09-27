@@ -25,7 +25,7 @@ translation : Translation = {
         "wz.registration.csv.error": f"{hmEmojis.ERROR} Es ist ein Fehler beim Exportieren der Registrierungen als CSV-Datei aufgetreten.",
         "wz.registration.csv.no_registrations": f"{hmEmojis.WARNING} Es sind keine Registrierungen zum Exportieren vorhanden.",
         # Wz Registration Reset
-        "wz.registration.reset.success": f"{hmEmojis.SUCCESS} Alle nicht permanenten Registrierungen wurden zurückgesetzt.",
+        "wz.registration.reset.success": f"{hmEmojis.SUCCESS} Alle nicht permanenten Registrierungen wurden zurückgesetzt.\nZeitpunkt: {{timestamp}}",
         "wz.registration.reset.error": f"{hmEmojis.ERROR} Beim Zurücksetzen der Registrierungen ist ein Fehler aufgetreten.",
         # Wz Setup Configure
         "wz.setup.configure.success": f"{hmEmojis.SUCCESS} WZ-Registrierung wurde erfolgreich eingerichtet. \nChannel: {{channel_name}}",

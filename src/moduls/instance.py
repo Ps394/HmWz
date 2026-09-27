@@ -63,6 +63,9 @@ class Module(Protocol):
     async def on_raw_message_delete(self, payload: hmEvents.RawMessageDeleteEvent) -> bool:
         ...
 
+    async def on_raw_bulk_message_delete(self, payload: hmEvents.RawBulkMessageDeleteEvent) -> bool:
+        ...
+
 
 type ModuleType = Type[Module]
 """Typalias fuer eine Modulklasse."""
