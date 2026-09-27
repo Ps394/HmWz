@@ -16,6 +16,9 @@ __all__ = [
 async def Purge(interaction: Interaction, limit: int = 500, ignore_bots: bool = True, ignore_pinned: bool = True, ephemeral: bool = True):
     channel = interaction.channel
 
+    # Purging can take longer than the 3s interaction token timeout, so defer first
+    await interaction.response.defer(ephemeral=ephemeral)
+
     if channel is not None and isinstance(channel, TextChannel):
         deleted = await channel.purge(
             limit=limit,
@@ -28,7 +31,7 @@ async def Purge(interaction: Interaction, limit: int = 500, ignore_bots: bool = 
     if ignore_bots:
         message += t(interaction, 'wz.purge.ignored_bots')
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         message,
         ephemeral=ephemeral
     )
