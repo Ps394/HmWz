@@ -137,12 +137,14 @@ class WzRegistrationModule(BasicModule):
                     t(interaction, "wz.overview.registration.error_registration"),
                     ephemeral=True,
                 )
+                _logger.error("Failed to remove registration for member %s (%s) in guild %s", member.name, member.id, guild.id)
                 return
             await member.remove_roles(role, reason="WZ deregistration")
             await interaction.followup.send(
                 t(interaction, "wz.overview.registration.remove_registration", role_name=role.name),
                 ephemeral=True,
             )
+            _logger.info("Removed registration for member %s (%s) in guild %s", member.name, member.id, guild.id)
             await self.compose_registration_overview(force=True)
             return
 
@@ -166,6 +168,7 @@ class WzRegistrationModule(BasicModule):
             t(interaction, key, role_name=role.name),
             ephemeral=True,
         )
+        _logger.info("Added registration for member %s (%s) in guild %s", member.name, member.id, guild.id)
         await self.compose_registration_overview(force=True)
 
     def _build_view(self, roles: tuple[models.RegistrationRole, ...]) -> discord.ui.View:
