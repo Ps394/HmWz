@@ -32,6 +32,9 @@ intents.message_content = True
 def main():
     bot = Client(intents=intents, global_command_sync=True)
     logger.info("Starting bot...")
+    if not TOKEN:
+        logger.error("No bot token found!")
+        return
     bot.run(TOKEN)
     logger.info("Bot stopped...")
 

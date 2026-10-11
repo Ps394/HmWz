@@ -1,6 +1,5 @@
 import logging
 
-import hmUtils
 from configuration import config
 from discord import Forbidden, HTTPException, Interaction, app_commands
 from discord.app_commands import checks
@@ -31,7 +30,7 @@ async def remove_autocomplete(
 
         out: list[app_commands.Choice[str]] = []
         for configured in configured_roles:
-            role = await hmUtils.fetch_role(interaction.guild, configured.role)
+            role = interaction.guild.get_role(configured.role)
             if role is None:
                 continue
             if current.lower() in role.name.lower():
@@ -79,7 +78,7 @@ async def remove(interaction: Interaction, role: str):
         module: WzRegistrationModule = await manager.get_module(
             interaction.guild, WzRegistrationModule
         )
-        role_to_remove = await hmUtils.fetch_role(interaction.guild, int(role))
+        role_to_remove = interaction.guild.get_role(int(role))
         if role_to_remove is None:
             await interaction.followup.send(
                 t(interaction, "wz.setup.roles.remove.unknown_role"), ephemeral=True

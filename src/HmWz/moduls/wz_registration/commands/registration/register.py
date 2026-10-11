@@ -29,7 +29,7 @@ async def roles_autocomplete(interaction: Interaction, current: str):
 
         out: list[app_commands.Choice[str]] = []
         for configured in configured_roles:
-            role = await hmUtils.fetch_role(interaction.guild, configured.role)
+            role = interaction.guild.get_role(configured.role)
             if role is None:
                 continue
             if current.lower() in role.name.lower():
@@ -108,7 +108,7 @@ async def register(interaction: Interaction, role: discord.Role):
             if reg.member is None or reg.role is None:
                 continue
             member = await hmUtils.fetch_member(interaction.guild, reg.member)
-            registered_role = await hmUtils.fetch_role(interaction.guild, reg.role)
+            registered_role = interaction.guild.get_role(reg.role)
             if member is None or registered_role is None:
                 continue
             try:

@@ -67,7 +67,7 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
             )
             role_obj = role_map.get(reg.role) if reg.role is not None else None
             role = (
-                await hmUtils.fetch_role(interaction.guild, reg.role)
+                interaction.guild.get_role(reg.role)
                 if reg.role
                 else None
             )

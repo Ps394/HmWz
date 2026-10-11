@@ -80,7 +80,7 @@ async def reset(interaction: Interaction, ephemeral: bool = False):
             if reg.member is None or reg.role is None:
                 continue
             member = await hmUtils.fetch_member(interaction.guild, reg.member)
-            role = await hmUtils.fetch_role(interaction.guild, reg.role)
+            role = interaction.guild.get_role(reg.role)
             if member is None or role is None:
                 continue
             try:
