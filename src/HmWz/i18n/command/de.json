@@ -1,0 +1,5 @@
+{
+  "parameter.description.ephemeral": "Festlegen, ob die Antwort privat sein soll",
+  "command.description.wz.about": "Über den Bot",
+  "command.description.wz.purge": "Löscht Nachrichten im aktuellen Kanal"
+}

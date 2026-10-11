@@ -1,0 +1,20 @@
+{
+  "group.description.wz.group": "HmWz - Alle Befehle rund um die WZ-Registrierung",
+  "group.description.wz.registration.group": "Befehle für die WZ-Registrierung",
+  "command.description.wz.registration.csv": "Gibt die Registrierungen als CSV-Datei aus",
+  "command.description.wz.registration.register": "Für ein WZ-Event anmelden",
+  "command.description.wz.registration.reset": "Entfernt nicht permanente Registrierungen.",
+  "group.description.wz.setup.group": "Setup-Befehle für die WZ-Registrierung",
+  "command.description.wz.setup.configure": "Einrichten der WZ-Registrierung für diesen Server",
+  "parameter.description.wz.setup.configure.channel": "Registrierungskanal",
+  "parameter.description.wz.setup.configure.role": "Registrierungsrolle (optional, sofern mindestens eine vorhanden ist)",
+  "command.description.wz.setup.roles.add": "Anmeldungsrolle hinzufügen (maximal 4 Rollen möglich)",
+  "parameter.description.wz.setup.roles.add.role": "Registrierungsrolle",
+  "parameter.description.wz.setup.roles.add.permanent": "True für Permanente Rollen (optional, Standard: false)",
+  "command.description.wz.setup.roles.remove": "Entfernt eine Registrierungsrolle",
+  "parameter.description.wz.setup.roles.remove.role": "Registrierungsrolle, die entfernt werden soll",
+  "command.description.wz.setup.message": "Lege die Nachricht für die WZ-Registrierung fest.",
+  "parameter.description.wz.setup.message.title": "Titel für die Nachricht (max. 256 Zeichen)",
+  "parameter.description.wz.setup.message.message": "Text für die Nachricht (max. 4096 Zeichen)",
+  "parameter.description.wz.setup.message.message_upload": "TXT-Datei (UTF-8 codiert) mit der Nachricht (max. 4096 Zeichen)"
+}

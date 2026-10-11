@@ -1,0 +1,5 @@
+{
+  "parameter.description.ephemeral": "Set whether the response should be ephemeral",
+  "command.description.wz.about": "Information about the bot and its features",
+  "command.description.wz.purge": "Delete messages in the current channel"
+}

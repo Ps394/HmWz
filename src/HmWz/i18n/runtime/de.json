@@ -1,0 +1,15 @@
+{
+  "command.error.generic": "❌ Es ist ein Fehler bei der Ausführung des Befehls aufgetreten.",
+  "command.error.permissions": "⚠️ Du hast nicht die erforderlichen Berechtigungen, um diesen Befehl auszuführen.",
+  "command.error.cooldown": "❌ Warte {retry_after} Sekunden, bevor du diesen Befehl erneut verwenden kannst.",
+  "command.error.bot_permissions": "❌ Mir fehlen die erforderlichen Berechtigungen, um diesen Befehl auszuführen.",
+  "command.error.not_found": "⚠️ Der angeforderte Befehl oder die Ressource wurde nicht gefunden.",
+  "command.error.invalid_input": "⚠️ Ungültige Eingabe. Bitte überprüfe deine Eingaben und versuche es erneut.",
+  "command.error.unexpected": "❌ Ein unerwarteter Fehler ist aufgetreten.",
+  "wz.purge.message": "🗑️ {deleted_count} Nachrichten wurden gelöscht.",
+  "wz.purge.ignored_pinned": " Angeheftete Nachrichten wurden ignoriert.",
+  "wz.purge.ignored_bots": " Nachrichten von Bots wurden ignoriert.",
+  "wz.about.title": "### {bot_name}",
+  "wz.about.text": "- Ich bin ein in Python geschriebener Discord-Bot, der speziell für die Verwaltung von WZ-Registrierungen entwickelt wurde.\n- Meine Aufgabe ist es, Anmeldungen komfortabel zu gestalten, indem ich automatisierte Prozesse, Übersichten und Ausdrücke bereitstelle.\n- Ich stehe unter der MIT-Lizenz, was bedeutet, dass du mich kostenlos nutzen, modifizieren und weiterverbreiten kannst, solange du die ursprünglichen Urheberrechtsvermerke und Lizenzhinweise beibehältst.\n- Meine Github-Seite ist öffentlich zugänglich, und ich lade alle ein, den Code zu prüfen, Fehler zu melden oder zum Projekt beizutragen.",
+  "wz.about.link": "- [HmWZ GitHub Repository](https://github.com/Ps394/HmWz)"
+}

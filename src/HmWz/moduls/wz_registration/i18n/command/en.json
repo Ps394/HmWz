@@ -1,0 +1,20 @@
+{
+  "group.description.wz.group": "HmWz - All commands related to WZ registration",
+  "group.description.wz.registration.group": "Commands for WZ registration",
+  "command.description.wz.registration.csv": "Export registrations as CSV",
+  "command.description.wz.registration.register": "Sign up for a WZ event",
+  "command.description.wz.registration.reset": "Remove non-permanent registrations.",
+  "group.description.wz.setup.group": "Setup commands for WZ registration",
+  "command.description.wz.setup.configure": "Configure the WZ registration for this server",
+  "parameter.description.wz.setup.configure.channel": "Registration channel",
+  "parameter.description.wz.setup.configure.role": "Registration role (optional if at least one already exists)",
+  "command.description.wz.setup.roles.add": "Add registration role (max 4 roles possible)",
+  "parameter.description.wz.setup.roles.add.role": "Registration role",
+  "parameter.description.wz.setup.roles.add.permanent": "True for permanent roles (optional, default: false)",
+  "command.description.wz.setup.roles.remove": "Remove a registration role",
+  "parameter.description.wz.setup.roles.remove.role": "Registration role to remove",
+  "command.description.wz.setup.message": "Set the message for the WZ registration.",
+  "parameter.description.wz.setup.message.title": "Title for the message (max. 256 characters)",
+  "parameter.description.wz.setup.message.message": "Text for the message (max. 4096 characters)",
+  "parameter.description.wz.setup.message.message_upload": "TXT file (UTF-8 encoded) containing the message (max. 4096 characters)"
+}
