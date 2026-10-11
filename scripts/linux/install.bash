@@ -74,7 +74,7 @@ if [ $INSTALL_EXIT_CODE -ne 0 ]; then
     
     # Try installing without psutil
     echo "Attempting to install core dependencies without psutil..."
-    "$VENV_PIP" install discord.py aiosqlite
+    "$VENV_PIP" install discord.py aiosqlite hmlogger
     if [ $? -eq 0 ]; then
         echo "Core dependencies installed successfully (without psutil)."
     else
@@ -126,8 +126,8 @@ echo "=== Installation Complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Activate the virtual environment: source venv/bin/activate"
-echo "     (or use directly: ./venv/bin/python Bot.py)"
-echo "  2. Run your bot: python Bot.py"
+echo "     (or use directly: ./venv/bin/python src/bot.py)"
+echo "  2. Run your bot: ./venv/bin/python src/bot.py"
 echo ""
 echo "To retrieve the stored bot token, use:"
 echo "  cat ~/.config/hsbot/config"

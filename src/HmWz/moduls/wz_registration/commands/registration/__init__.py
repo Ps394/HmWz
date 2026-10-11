@@ -1,7 +1,7 @@
 from discord.app_commands import Group, checks, locale_str
 from i18n import CommandLocalizations
 
-from . import csv, reset
+from . import csv, purge, reset
 
 __all__ = ["RegistrationGroup"]
 
@@ -19,4 +19,5 @@ class RegistrationGroup(Group):
             ),
         )
         self.add_command(reset.reset)
+        self.add_command(purge.purge)
         self.add_command(csv.csv)

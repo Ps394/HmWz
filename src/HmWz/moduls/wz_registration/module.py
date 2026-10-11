@@ -29,6 +29,7 @@ class WzRegistrationModule(BasicModule):
         self.registration = recordsets.WzRegistration(self.database)
         self.registrations = recordsets.WzRegistrations(self.database)
         self.list = recordsets.WzList(self.database)
+        self.purge_channels = recordsets.WzPurgeChannels(self.database)
         self._schema_ready = False
         self._overview = RegistrationOverview(
             guild=self.guild,
@@ -135,6 +136,7 @@ class WzRegistrationModule(BasicModule):
             await self.database.execute(self.registration.table)
             await self.database.execute(self.registrations.table)
             await self.database.execute(self.list.table)
+            await self.database.execute(self.purge_channels.table)
             self._schema_ready = True
             _logger.info("%s (%s) - WZ module schema ready.", self.guild.name, self.guild.id)
             return True
@@ -182,6 +184,7 @@ class WzRegistrationModule(BasicModule):
             return False
         await self.configuration.remove(guild=guild)
         await self.registration.remove(guild=guild)
+        await self.purge_channels.remove(guild=guild)
         await self.roles.remove(guild=guild)
         await self.list.remove(guild=guild)
         await self.registrations.remove(guild=guild)

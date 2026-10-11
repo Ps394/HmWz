@@ -3,7 +3,7 @@ import logging
 
 import discord
 import hmUtils
-from discord import Forbidden, HTTPException, Interaction, NotFound, app_commands
+from discord import HTTPException, Interaction, app_commands
 from i18n import CommandLocalizations, t
 
 from ...module import WzRegistrationModule
@@ -24,11 +24,19 @@ logger = logging.getLogger(__name__)
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
-        key="ephemeral.description",
-    )
+        key="wz.registration.reset.ephemeral.description",
+    ),
+    purge=app_commands.locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "parameter.description.wz.registration.reset.purge", "-"
+        ),
+        key="wz.registration.reset.purge.description",
+    ),
 )
 @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild_id)
-async def reset(interaction: Interaction, ephemeral: bool = False):
+async def reset(
+    interaction: Interaction, ephemeral: bool = False, purge: bool = True
+) -> None:
     await interaction.response.defer(ephemeral=ephemeral)
     try:
         if not interaction.guild:
@@ -86,7 +94,7 @@ async def reset(interaction: Interaction, ephemeral: bool = False):
             try:
                 await member.remove_roles(role, reason="WZ Registration Reset")
                 await asyncio.sleep(0.05)
-            except (HTTPException, Forbidden, NotFound) as e:
+            except HTTPException as e:
                 logger.warning(
                     f"Failed to remove role {reg.role} from member {reg.member}: {e}"
                 )
@@ -100,16 +108,33 @@ async def reset(interaction: Interaction, ephemeral: bool = False):
             )
             return
 
-        if registration_config.channel is not None:
-            channel = await hmUtils.fetch_channel(
-                interaction.guild, registration_config.channel
+        if purge:
+            channels_to_purge = await module.purge_channels.get(
+                guild=interaction.guild
             )
-            if channel is not None:
-                await channel.purge(
-                    limit=500,
-                    check=lambda m: not m.pinned and not m.author.bot,
-                    reason="WZ Registration Reset",
-                )
+            channel_ids = {
+                configured.channel_id for configured in channels_to_purge or ()
+            }
+            if registration_config.channel is not None:
+                channel_ids.add(registration_config.channel)
+
+            for channel_id in sorted(channel_ids):
+                channel = await hmUtils.fetch_channel(interaction.guild, channel_id)
+                if channel is None:
+                    continue
+                try:
+                    await channel.purge(
+                        limit=500,
+                        check=lambda m: not m.pinned and not m.author.bot,
+                        reason="WZ Registration Reset",
+                    )
+                except HTTPException as e:
+                    logger.warning(
+                        "Failed to purge WZ channel %s in guild %s: %s",
+                        channel_id,
+                        interaction.guild.id,
+                        e,
+                    )
 
         await module.compose_registration_overview(force=True)
         timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")

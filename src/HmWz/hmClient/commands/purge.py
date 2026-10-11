@@ -1,5 +1,5 @@
 from discord import Interaction, TextChannel, Thread
-from discord.app_commands import command, locale_str
+from discord.app_commands import command, describe, locale_str
 from i18n import CommandLocalizations, t
 
 __all__ = ["Purge"]
@@ -12,6 +12,30 @@ __all__ = ["Purge"]
             "command.description.wz.purge", "Delete messages in the current channel"
         ),
         key="wz.purge.description",
+    ),
+)
+@describe(
+    limit=locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "parameter.description.wz.purge.limit", "-"
+        ),
+        key="wz.purge.limit.description",
+    ),
+    ignore_bots=locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "parameter.description.wz.purge.ignore_bots", "-"
+        ),
+        key="wz.purge.ignore_bots.description",
+    ),
+    ignore_pinned=locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "parameter.description.wz.purge.ignore_pinned", "-"
+        ),
+        key="wz.purge.ignore_pinned.description",
+    ),
+    ephemeral=locale_str(
+        CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
+        key="ephemeral.description",
     ),
 )
 async def Purge(

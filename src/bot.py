@@ -1,3 +1,12 @@
+"""Starte den Discord-Bot aus dem Projektstamm mit ``python src/bot.py``.
+
+Der Einstiegspunkt richtet Logging und Discord-Intents ein und lädt den Token
+über ``WZ_BOT_TOKEN`` oder den plattformspezifischen Speicher aus ``hmToken``.
+Anschließend startet ``hmClient.Client`` mit global synchronisierten
+Slash-Commands. Konfiguration, SQLite-Datenbank und Logdatei werden relativ
+zum aktuellen Arbeitsverzeichnis im Projektstamm erwartet.
+"""
+
 from pathlib import Path
 import sys
 

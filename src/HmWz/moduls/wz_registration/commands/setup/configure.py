@@ -97,6 +97,19 @@ async def configure(
             )
             return
 
+        if not await module.purge_channels.remove(
+            guild=interaction.guild, channel_id=channel.id
+        ):
+            logger.error(
+                "Failed to remove registration channel %s from the purge list in guild %s.",
+                channel.id,
+                interaction.guild.id,
+            )
+            await interaction.followup.send(
+                t(interaction, "wz.setup.configure.error"), ephemeral=True
+            )
+            return
+
         await module.compose_registration_overview(force=True)
         await interaction.followup.send(
             t(interaction, "wz.setup.configure.success", channel_name=channel.name),

@@ -1,5 +1,5 @@
 from discord import Interaction
-from discord.app_commands import command, locale_str
+from discord.app_commands import command, describe, locale_str
 from i18n import CommandLocalizations, t
 
 __all__ = ["AboutBot"]
@@ -13,6 +13,12 @@ __all__ = ["AboutBot"]
         ),
         key="wz.about.description",
     ),
+)
+@describe(
+    ephemeral=locale_str(
+        CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
+        key="ephemeral.description",
+    )
 )
 async def AboutBot(interaction: Interaction, ephemeral: bool = True):
     bot_name = (

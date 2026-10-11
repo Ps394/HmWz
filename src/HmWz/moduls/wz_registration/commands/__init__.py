@@ -1,5 +1,5 @@
 from discord import Interaction
-from discord.app_commands import Group, checks, command, locale_str
+from discord.app_commands import Group, checks, command, describe, locale_str
 from i18n import CommandLocalizations, t
 
 from . import registration, setup
@@ -39,6 +39,14 @@ class WzGroup(Group):
             ),
             key="wz.about.description",
         ),
+    )
+    @describe(
+        ephemeral=locale_str(
+            CommandLocalizations.get("en", {}).get(
+                "parameter.description.ephemeral", "-"
+            ),
+            key="ephemeral.description",
+        )
     )
     async def about_bot(self, interaction: Interaction, ephemeral: bool = True):
         bot_name = self.bot.user.name if self.bot and self.bot.user else "Bot"

@@ -103,8 +103,8 @@ Write-Host "=== Installation Complete ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Activate the virtual environment: .\venv\Scripts\Activate.ps1" -ForegroundColor White
-Write-Host "     (or use directly: .\venv\Scripts\python.exe Bot.py)" -ForegroundColor Gray
-Write-Host "  2. Run your bot: py Bot.py" -ForegroundColor White
+Write-Host "     (or use directly: .\venv\Scripts\python.exe src\bot.py)" -ForegroundColor Gray
+Write-Host "  2. Run your bot: .\venv\Scripts\python.exe src\bot.py" -ForegroundColor White
 Write-Host ""
 Write-Host "To retrieve the stored bot token from registry, use:" -ForegroundColor Cyan
 Write-Host '  Get-ItemProperty -Path "HKCU:\Software\HsBot" -Name "WZ_BOT_TOKEN"' -ForegroundColor White

@@ -1,7 +1,7 @@
 from discord.app_commands import Group, checks, default_permissions, locale_str
 from i18n import CommandLocalizations
 
-from . import configure, message, roles
+from . import configure, message, purge_channels, roles
 
 __all__ = ["SetupGroup"]
 
@@ -23,3 +23,5 @@ class SetupGroup(Group):
         self.add_command(message.message)
         self.add_command(roles.add.add)
         self.add_command(roles.remove.remove)
+        self.add_command(purge_channels.add.add)
+        self.add_command(purge_channels.remove.remove)

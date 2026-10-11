@@ -50,9 +50,11 @@ async def roles_autocomplete(interaction: Interaction, current: str):
     ),
 )
 @app_commands.describe(
-    ephemeral=app_commands.locale_str(
-        CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
-        key="ephemeral.description",
+    role=app_commands.locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "parameter.description.wz.registration.register.role", "-"
+        ),
+        key="wz.registration.register.role.description",
     )
 )
 @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild_id)
