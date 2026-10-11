@@ -69,11 +69,6 @@ async def reset(
             return
 
         non_permanent_roles = [r.role for r in configured_roles if not r.permanent]
-        if not non_permanent_roles:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.csv.no_registrations"), ephemeral=True
-            )
-            return
 
         registrations = await module.registrations.get(
             guild=interaction.guild, roles=non_permanent_roles
