@@ -22,5 +22,5 @@
   "parameter.description.wz.setup.message.message": "Text für die Nachricht (max. 4096 Zeichen; Standard: nicht gesetzt)",
   "parameter.description.wz.setup.message.message_upload": "TXT-Datei (UTF-8 codiert) mit der Nachricht (max. 4096 Zeichen; Standard: nicht gesetzt)",
   "parameter.description.wz.registration.reset.ephemeral": "Festlegen, ob die Antwort privat sein soll (Standard: false)",
-  "parameter.description.wz.registration.reset.purge": "Festlegen, ob konfigurierte Kanäle beim Reset bereinigt werden (Standard: true)"
+  "parameter.description.wz.registration.reset.purge": "Festlegen, ob konfigurierte Kanäle beim Reset bereinigt werden (Standard: false)"
 }

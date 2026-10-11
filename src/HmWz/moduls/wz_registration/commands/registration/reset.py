@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 )
 @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild_id)
 async def reset(
-    interaction: Interaction, ephemeral: bool = False, purge: bool = True
+    interaction: Interaction, ephemeral: bool = False, purge: bool = False
 ) -> None:
     await interaction.response.defer(ephemeral=ephemeral)
     try:

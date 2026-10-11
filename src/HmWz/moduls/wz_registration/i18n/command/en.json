@@ -22,5 +22,5 @@
   "parameter.description.wz.setup.message.message": "Text for the message (max. 4096 characters; default: not set)",
   "parameter.description.wz.setup.message.message_upload": "UTF-8 encoded TXT file containing the message (max. 4096 characters; default: not set)",
   "parameter.description.wz.registration.reset.ephemeral": "Whether the response should be private (default: false)",
-  "parameter.description.wz.registration.reset.purge": "Whether configured channels are purged during reset (default: true)"
+  "parameter.description.wz.registration.reset.purge": "Whether configured channels are purged during reset (default: false)"
 }
