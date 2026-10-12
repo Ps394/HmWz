@@ -30,31 +30,3 @@ class WzGroup(Group):
         self.bot = bot
         self.add_command(setup.SetupGroup())
         self.add_command(registration.RegistrationGroup())
-
-    @command(
-        name="about-bot",
-        description=locale_str(
-            CommandLocalizations.get("en", {}).get(
-                "command.description.wz.about", "About the bot"
-            ),
-            key="wz.about.description",
-        ),
-    )
-    @describe(
-        ephemeral=locale_str(
-            CommandLocalizations.get("en", {}).get(
-                "parameter.description.ephemeral", "-"
-            ),
-            key="ephemeral.description",
-        )
-    )
-    async def about_bot(self, interaction: Interaction, ephemeral: bool = True):
-        bot_name = self.bot.user.name if self.bot and self.bot.user else "Bot"
-        message = "\n".join(
-            [
-                t(interaction, "wz.about.title", bot_name=bot_name),
-                t(interaction, "wz.about.text"),
-                t(interaction, "wz.about.link"),
-            ]
-        )
-        await interaction.response.send_message(message, ephemeral=ephemeral)
