@@ -71,7 +71,7 @@ async def reset(
         non_permanent_roles = [r.role for r in configured_roles if not r.permanent]
 
         registrations = await module.registrations.get(
-            guild=interaction.guild, roles=non_permanent_roles
+            guild=interaction.guild
         )
         if not registrations:
             await interaction.followup.send(
@@ -79,29 +79,31 @@ async def reset(
             )
             return
 
-        for reg in registrations:
-            if reg.member is None or reg.role is None:
-                continue
-            member = await hmUtils.fetch_member(interaction.guild, reg.member)
-            role = interaction.guild.get_role(reg.role)
-            if member is None or role is None:
-                continue
-            try:
-                await member.remove_roles(role, reason="WZ Registration Reset")
-                await asyncio.sleep(0.05)
-            except HTTPException as e:
-                logger.warning(
-                    f"Failed to remove role {reg.role} from member {reg.member}: {e}"
-                )
+        non_permanent_registrations = [reg for reg in registrations if reg.role in non_permanent_roles]
+        if len(non_permanent_registrations) > 0:
+            for reg in non_permanent_registrations:
+                if reg.member is None or reg.role is None:
+                    continue
+                member = await hmUtils.fetch_member(interaction.guild, reg.member)
+                role = interaction.guild.get_role(reg.role)
+                if member is None or role is None:
+                    continue
+                try:
+                    await member.remove_roles(role, reason="WZ Registration Reset")
+                    await asyncio.sleep(0.05)
+                except HTTPException as e:
+                    logger.warning(
+                        f"Failed to remove role {reg.role} from member {reg.member}: {e}"
+                    )
 
-        success = await module.registrations.remove(
-            guild=interaction.guild, roles=non_permanent_roles
-        )
-        if not success:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.reset.error"), ephemeral=True
+            success = await module.registrations.remove(
+                guild=interaction.guild, roles=non_permanent_roles
             )
-            return
+            if not success:
+                await interaction.followup.send(
+                    t(interaction, "wz.registration.reset.error"), ephemeral=True
+                )
+                return
 
         if purge:
             channels_to_purge = await module.purge_channels.get(

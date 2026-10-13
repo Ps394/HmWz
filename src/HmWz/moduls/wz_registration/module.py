@@ -5,6 +5,7 @@ import logging
 import discord
 import hmEvents
 import hmUtils
+import sqlLiteDB
 from i18n import t
 
 from ..basic_module import BasicModule
@@ -22,16 +23,16 @@ class WzRegistrationModule(BasicModule):
     def __init__(self, guild: discord.Guild, client: discord.Client) -> None:
         """Initialisiert Recordsets und Laufzeitzustand fuer die Guild."""
         super().__init__(guild, client)
-        if self.database is None:
+        if self.database is None and not isinstance(self.database, sqlLiteDB.Database):
             raise RuntimeError("WZ registration module requires a database.")
-        self.configuration = recordsets.Configuration(self.database)
-        self.roles = recordsets.WzRoles(self.database)
-        self.registration = recordsets.WzRegistration(self.database)
-        self.registrations = recordsets.WzRegistrations(self.database)
-        self.list = recordsets.WzList(self.database)
-        self.purge_channels = recordsets.WzPurgeChannels(self.database)
-        self._schema_ready = False
-        self._overview = RegistrationOverview(
+        self.configuration : recordsets.Configuration = recordsets.Configuration(self.database)
+        self.roles : recordsets.WzRoles = recordsets.WzRoles(self.database)
+        self.registration : recordsets.WzRegistration = recordsets.WzRegistration(self.database)
+        self.registrations : recordsets.WzRegistrations = recordsets.WzRegistrations(self.database)
+        self.list : recordsets.WzList = recordsets.WzList(self.database)
+        self.purge_channels : recordsets.WzPurgeChannels = recordsets.WzPurgeChannels(self.database)
+        self._schema_ready : bool = False
+        self._overview : RegistrationOverview = RegistrationOverview(
             guild=self.guild,
             client=client,
             registration=self.registration,
@@ -248,7 +249,7 @@ class WzRegistrationModule(BasicModule):
         if not added_registration_roles and not removed_registration_roles:
             return True
 
-        registrations = await self.registrations.get(
+        registrations : list[Registration] = await self.registrations.get(
             guild=self.guild,
             member=after.id,
         )
