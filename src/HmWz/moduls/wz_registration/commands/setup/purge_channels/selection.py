@@ -41,7 +41,7 @@ async def get_selectable_channels(
     action: PurgeAction,
 ) -> list[discord.TextChannel]:
     """Return valid channels for the requested purge-list operation."""
-    configured = await module.purge_channels.get(guild=guild)
+    configured : tuple[PurgeChannel, ...] | None = await module.purge_channels.get(guild=guild)
     registration = await module.registration.get(guild=guild)
     registration_channel_id = registration.channel if registration else None
 
@@ -59,9 +59,11 @@ async def get_selectable_channels(
         channels = [
             channel
             for channel in guild.text_channels
-            if can_view_channel(channel, guild.me)
-            and channel.id not in configured_ids
-            and channel.id != registration_channel_id
+            if (
+                can_view_channel(channel, guild.me)
+                and channel.id not in configured_ids
+                and channel.id != registration_channel_id
+            )
         ]
     else:
         channels = []
