@@ -253,7 +253,7 @@ class _AddChannelSelect(discord.ui.ChannelSelect):
         max_values: int,
     ) -> None:
         super().__init__(
-            channel_types=[discord.ChannelType.text, discord.ChannelType.news],
+            channel_types=[discord.ChannelType.text],
             placeholder=placeholder,
             min_values=1,
             max_values=max_values,
