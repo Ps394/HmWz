@@ -62,8 +62,7 @@ async def get_selectable_channels(
             for channel in guild.text_channels
             if (
                 can_view_channel(channel, guild.me)
-                and not any(channel.id == record.channel_id for record in configured or ())
-                and channel.id != registration_channel_id
+                and channel.id in configured_ids
             )
         ]
     else:
