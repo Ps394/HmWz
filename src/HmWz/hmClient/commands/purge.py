@@ -1,4 +1,5 @@
 from discord import Interaction, TextChannel, Thread
+from discord import app_commands
 from discord.app_commands import command, describe, locale_str
 from i18n import CommandLocalizations, t
 
@@ -14,6 +15,7 @@ __all__ = ["Purge"]
         key="wz.purge.description",
     ),
 )
+@app_commands.checks.bot_has_permissions(moderate_members=True, manage_messages=True)
 @describe(
     limit=locale_str(
         CommandLocalizations.get("en", {}).get(

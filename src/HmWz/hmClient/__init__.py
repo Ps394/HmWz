@@ -201,6 +201,18 @@ class Client(discord.Client):
         :type error: discord.app_commands.AppCommandError
         """
         log_context = f"u- {interaction.user} - Command: {interaction.command}"
+        original_error = (
+            error.original
+            if isinstance(error, discord.app_commands.CommandInvokeError)
+            else error
+        )
+        if isinstance(original_error, discord.NotFound) and original_error.code == 10062:
+            logger.warning(
+                "%s - Interaction is unknown or expired; cannot send an error response",
+                log_context,
+            )
+            return
+
         send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
         try:
             if isinstance(error, discord.app_commands.MissingPermissions):
@@ -217,6 +229,16 @@ class Client(discord.Client):
                 message = t(interaction, "command.error.unexpected")
                 logger.exception(f"{log_context} - Unexpected error: {error}")
             await send(message, ephemeral=True)
+        except discord.HTTPException as e:
+            if e.code in (10062, 40060):
+                logger.warning(
+                    "%s - Could not send error response because the interaction "
+                    "is expired or already acknowledged: %s",
+                    log_context,
+                    e,
+                )
+            else:
+                logger.exception("%s - Failed to send error message: %s", log_context, e)
         except Exception as e:
             logger.exception(f"{log_context} - Failed to send error message: {e}")
 

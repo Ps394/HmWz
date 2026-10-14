@@ -17,8 +17,22 @@ def can_view_channel(
     channel: discord.TextChannel, bot_member: discord.Member | None
 ) -> bool:
     """Return whether the bot can view a text channel."""
-    return bot_member is not None and channel.permissions_for(bot_member).view_channel
+    can_view = bot_member is not None and channel.permissions_for(bot_member).view_channel
+    logger.info("Bot can view channel %s(%s): %s", channel.name, channel.id, can_view)
+    return can_view
 
+async def _remove_registration_channel_from_purge_list(
+    guild: discord.Guild,
+    module: WzRegistrationModule,
+    registration_channel_id: int,
+) -> None:
+    if not await module.purge_channels.remove(
+        guild=guild, channel_id=registration_channel_id
+    ):
+        raise RuntimeError(
+            f"Failed to remove registration channel {registration_channel_id} "
+            "from the WZ purge list."
+        )
 
 async def get_selectable_channels(
     *,
@@ -34,17 +48,10 @@ async def get_selectable_channels(
     if registration_channel_id is not None and any(
         record.channel_id == registration_channel_id for record in configured or ()
     ):
-        if not await module.purge_channels.remove(
-            guild=guild, channel_id=registration_channel_id
-        ):
-            raise RuntimeError(
-                f"Failed to remove registration channel {registration_channel_id} "
-                "from the WZ purge list."
-            )
-        configured = tuple(
-            record
-            for record in configured or ()
-            if record.channel_id != registration_channel_id
+        await _remove_registration_channel_from_purge_list(
+            guild=guild,
+            module=module,
+            registration_channel_id=registration_channel_id,
         )
 
     if action == "add":

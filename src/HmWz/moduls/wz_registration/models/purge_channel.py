@@ -9,4 +9,4 @@ class PurgeChannel:
     guild_id: int
     channel_id: int
 
-    MAX_PER_GUILD: ClassVar[int] = 25
+    MAX_PER_GUILD: ClassVar[int] = 40

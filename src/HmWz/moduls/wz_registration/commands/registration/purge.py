@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
         key="wz.registration.purge.description",
     ),
 )
-@app_commands.checks.bot_has_permissions(manage_messages=True)
+@app_commands.checks.bot_has_permissions(moderate_members=True, manage_messages=True)
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
