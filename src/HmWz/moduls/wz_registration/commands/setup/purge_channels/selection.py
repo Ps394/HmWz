@@ -61,8 +61,8 @@ async def get_selectable_channels(
             channel
             for channel in guild.text_channels
             if (
-                can_view_channel(channel, guild.me)
-                and channel.id in configured_ids
+                channel.id in configured_ids
+                and can_view_channel(channel, guild.me)
             )
         ]
     else:
