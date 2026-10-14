@@ -18,7 +18,7 @@ def can_view_channel(
 ) -> bool:
     """Return whether the bot can view a text channel."""
     can_view = bot_member is not None and channel.permissions_for(bot_member).view_channel
-    logger.info("Bot can view channel %s(%s): %s", channel.name, channel.id, can_view)
+    logger.debug("Bot can view channel %s(%s): %s", channel.name, channel.id, can_view)
     return can_view
 
 async def _remove_registration_channel_from_purge_list(
@@ -56,12 +56,13 @@ async def get_selectable_channels(
 
     if action == "add":
         configured_ids = {record.channel_id for record in configured or ()}
+        logger.info("Configured channel IDs for guild %s: %s", guild.id, configured_ids)
         channels = [
             channel
             for channel in guild.text_channels
             if (
                 can_view_channel(channel, guild.me)
-                and channel.id not in configured_ids
+                and not any(channel.id == record.channel_id for record in configured or ())
                 and channel.id != registration_channel_id
             )
         ]
