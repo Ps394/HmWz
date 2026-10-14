@@ -56,15 +56,17 @@ async def get_selectable_channels(
 
     if action == "add":
         configured_ids = {record.channel_id for record in configured or ()}
-        logger.info("Configured channel IDs for guild %s: %s", guild.id, configured_ids)
+        logger.debug("Configured channel IDs for guild %s: %s", guild.id, configured_ids)
         channels = [
             channel
             for channel in guild.text_channels
             if (
-                channel.id in configured_ids
-                and can_view_channel(channel, guild.me)
+                can_view_channel(channel, guild.me)
+                and channel.id not in configured_ids
+                and channel.id != registration_channel_id
             )
         ]
+        logger.debug("Selectable channels for guild %s: %s", guild.id, [channel.id for channel in channels])
     else:
         channels = []
         for record in configured or ():
@@ -75,7 +77,7 @@ async def get_selectable_channels(
             ):
                 channels.append(channel)
 
-    return sorted(channels, key=lambda channel: (channel.name.casefold(), channel.id))
+    return sorted(channels, key=lambda channel: (channel.name.casefold()))
 
 
 class PurgeChannelSelection(discord.ui.View):
@@ -99,18 +101,18 @@ class PurgeChannelSelection(discord.ui.View):
 
         if action == "add":
             self.add_item(
-                _AddChannelSelect(
+                _ChannelSelect(
                     view=self,
                     placeholder=t(guild, "wz.setup.purge_channel.select.add"),
-                    max_values=min(max_values, PurgeChannel.MAX_PER_GUILD),
+                    channels=channels
                 )
             )
         else:
             self.add_item(
-                _RemoveChannelSelect(
+                _ChannelSelect(
                     view=self,
                     placeholder=t(guild, "wz.setup.purge_channel.select.remove"),
-                    channels=channels,
+                    channels=channels
                 )
             )
 
@@ -245,30 +247,7 @@ class PurgeChannelSelection(discord.ui.View):
             )
         return messages
 
-
-class _AddChannelSelect(discord.ui.ChannelSelect):
-    def __init__(
-        self,
-        *,
-        view: PurgeChannelSelection,
-        placeholder: str,
-        max_values: int,
-    ) -> None:
-        super().__init__(
-            channel_types=[discord.ChannelType.text],
-            placeholder=placeholder,
-            min_values=1,
-            max_values=max_values,
-        )
-        self.purge_view = view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.purge_view.process(
-            interaction, [channel.id for channel in self.values]
-        )
-
-
-class _RemoveChannelSelect(discord.ui.Select):
+class _ChannelSelect(discord.ui.Select):
     def __init__(
         self,
         *,

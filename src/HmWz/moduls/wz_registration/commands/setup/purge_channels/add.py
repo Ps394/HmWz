@@ -42,17 +42,7 @@ async def add(interaction: Interaction) -> None:
         channels = await get_selectable_channels(
             guild=guild, module=module, action="add"
         )
-        configured_count = await module.purge_channels.count(guild=guild)
-        if configured_count >= PurgeChannel.MAX_PER_GUILD:
-            await interaction.followup.send(
-                t(
-                    interaction,
-                    "wz.setup.purge_channel.max_channels",
-                    max_channels=PurgeChannel.MAX_PER_GUILD,
-                ),
-                ephemeral=True,
-            )
-            return
+        logger.debug("Selectable channels for guild %s: %s", guild.id, [channel.name for channel in channels])
 
         if not channels:
             await interaction.followup.send(
@@ -69,7 +59,7 @@ async def add(interaction: Interaction) -> None:
                 owner_id=interaction.user.id,
                 action="add",
                 channels=channels,
-                max_values=PurgeChannel.MAX_PER_GUILD - configured_count,
+                max_values=PurgeChannel.MAX_PER_GUILD,
             ),
             ephemeral=True,
         )
