@@ -201,17 +201,7 @@ class Client(discord.Client):
         :type error: discord.app_commands.AppCommandError
         """
         log_context = f"u- {interaction.user} - Command: {interaction.command}"
-        original_error = (
-            error.original
-            if isinstance(error, discord.app_commands.CommandInvokeError)
-            else error
-        )
-        if isinstance(original_error, discord.NotFound) and original_error.code == 10062:
-            logger.warning(
-                "%s - Interaction is unknown or expired; cannot send an error response",
-                log_context,
-            )
-            return
+
 
         send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
         try:
