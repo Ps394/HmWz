@@ -44,9 +44,15 @@ class PurgeConfirmationView(discord.ui.View):
     async def on_timeout(self) -> None:
         if self.message is not None:
             try:
-                await self.message.edit(view=None)
+                await self.message.delete()
             except HTTPException:
-                logger.warning("Failed to remove timed-out WZ purge confirmation.")
+                logger.warning("Failed to delete timed-out WZ purge confirmation.")
+
+    async def _delete_dialog(self, interaction: Interaction) -> None:
+        try:
+            await interaction.delete_original_response()
+        except HTTPException:
+            logger.warning("Failed to delete WZ purge confirmation dialog.")
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
     async def confirm_button(
@@ -55,11 +61,7 @@ class PurgeConfirmationView(discord.ui.View):
         button.disabled = True
         await interaction.response.defer(ephemeral=self.ephemeral)
         self.stop()
-        if interaction.message is not None:
-            try:
-                await interaction.message.delete()
-            except HTTPException:
-                logger.warning("Failed to remove confirmed WZ purge dialog.")
+        await self._delete_dialog(interaction)
 
         try:
             deleted_count = 0
@@ -111,11 +113,7 @@ class PurgeConfirmationView(discord.ui.View):
     ) -> None:
         self.stop()
         await interaction.response.defer()
-        if interaction.message is not None:
-            try:
-                await interaction.message.delete()
-            except HTTPException:
-                logger.warning("Failed to remove cancelled WZ purge dialog.")
+        await self._delete_dialog(interaction)
 
 
 @app_commands.command(
