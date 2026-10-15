@@ -1,0 +1,8 @@
+{
+  "parameter.description.ephemeral": "Whether the response should be private (default: true)",
+  "command.description.wz.about": "Information about the bot and its features",
+  "command.description.wz.purge": "Delete up to 500 messages in the current channel",
+  "parameter.description.wz.purge.limit": "Maximum number of messages to check (default: 500)",
+  "parameter.description.wz.purge.ignore_bots": "Skip messages from bots (default: true)",
+  "parameter.description.wz.purge.ignore_pinned": "Skip pinned messages (default: true)"
+}

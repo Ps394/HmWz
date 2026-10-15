@@ -4,7 +4,7 @@ from HmLogger import setup_logging, get_logger, logging
 
 setup_logging(
     log_file="bot.log", 
-    level=logging.INFO, 
+    level=logging.DEBUG, 
     file_logging=True, 
     async_logging=True
     )

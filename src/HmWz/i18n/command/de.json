@@ -1,0 +1,8 @@
+{
+  "parameter.description.ephemeral": "Festlegen, ob die Antwort privat sein soll (Standard: true)",
+  "command.description.wz.about": "Über den Bot",
+  "command.description.wz.purge": "Löscht bis zu 500 Nachrichten im aktuellen Kanal",
+  "parameter.description.wz.purge.limit": "Maximale Anzahl zu prüfender Nachrichten (Standard: 500)",
+  "parameter.description.wz.purge.ignore_bots": "Nachrichten von Bots überspringen (Standard: true)",
+  "parameter.description.wz.purge.ignore_pinned": "Angepinnte Nachrichten überspringen (Standard: true)"
+}
