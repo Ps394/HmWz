@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @app_commands.command(
-    name="purge",
+    name="purge-list",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
             "command.description.wz.registration.purge", "-"
