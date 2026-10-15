@@ -1,10 +1,10 @@
-# HmDcBot
+# HmWz
 
-HmDcBot (in Discord unter **HM-WZ** beziehungsweise **WZ** sichtbar) ist ein modularer Discord-Bot zur Verwaltung von WZ-Anmeldungen für das Spiel **Hadestar**. Er veröffentlicht pro Server eine interaktive Registrierungsübersicht, vergibt die dazugehörigen Discord-Rollen und hält Registrierungen und Einstellungen in einer lokalen SQLite-Datenbank fest.
+**HmWz** ist ein modularer Discord-Bot zur Verwaltung von WZ-Anmeldungen für das Spiel **Hadestar**. Er veröffentlicht pro Server eine interaktive Registrierungsübersicht, vergibt die dazugehörigen Discord-Rollen und hält Registrierungen und Einstellungen in einer lokalen SQLite-Datenbank fest.
 
 Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Discord-Server, alle verfügbaren Befehle sowie Installation und Betrieb.
 
-![Beispiel einer Bot-Übersicht](assets/example.png)
+![Beispiel einer Bot-Übersicht](assets/registration.png)
 
 ## Funktionen
 
@@ -103,7 +103,7 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Die Registrierungsfunktionen liege
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/wz registration register role:<Rolle>` | **Achtung: Der aktuelle Handler setzt nicht permanente Registrierungen zurück, statt die angegebene Rolle zu vergeben; der Parameter `role` wird dabei nicht verwendet.** Wenn Registrierungen vorhanden sind, entfernt er die gespeicherten Einträge dieser Rollen und bereinigt zusätzlich den Registrierungskanal. Mitglieder sollten für die An- und Abmeldung die Schaltflächen der Übersicht verwenden. |
+
 | `/wz registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Rolle, Zeitstempel und Rollenscore. Antwortstandard: privat. Der Befehl ist pro Server auf einen Aufruf alle 120 Sekunden begrenzt. |
 | `/wz registration reset` | Entfernt Registrierungen und Rollen aller **nicht permanenten** Registrierungsrollen. Standardmäßig (`purge: true`) werden außerdem im Registrierungskanal und in den konfigurierten Bereinigungskanälen jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots gelöscht. Mit `purge: false` bleibt die Kanalbereinigung aus. Antwortstandard: nicht privat. |
 | `/wz registration purge-list` | Zeigt vor der Bereinigung die konfigurierten Kanäle zur Bestätigung an und löscht dort jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots; Registrierungen und Rollen werden dabei nicht zurückgesetzt. Antwortstandard: privat. |
