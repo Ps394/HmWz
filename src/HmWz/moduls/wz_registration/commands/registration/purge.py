@@ -66,9 +66,21 @@ class PurgeConfirmationView(discord.ui.View):
         try:
             deleted_count = 0
             failed_channels: list[int] = []
+            channel_results: list[str] = []
             for channel_id, channel in self.channels:
                 if channel is None:
                     failed_channels.append(channel_id)
+                    channel_results.append(
+                        t(
+                            interaction,
+                            "wz.registration.purge.channel_failed",
+                            channel=t(
+                                interaction,
+                                "wz.registration.purge.unavailable_channel",
+                                channel_id=channel_id,
+                            ),
+                        )
+                    )
                     continue
                 try:
                     deleted = await channel.purge(
@@ -78,6 +90,14 @@ class PurgeConfirmationView(discord.ui.View):
                         reason="WZ Registration Purge",
                     )
                     deleted_count += len(deleted)
+                    channel_results.append(
+                        t(
+                            interaction,
+                            "wz.registration.purge.channel_success",
+                            channel=channel.mention,
+                            deleted_count=len(deleted),
+                        )
+                    )
                 except HTTPException:
                     logger.exception(
                         "Failed to purge WZ channel %s in guild %s.",
@@ -85,6 +105,13 @@ class PurgeConfirmationView(discord.ui.View):
                         self.guild.id,
                     )
                     failed_channels.append(channel_id)
+                    channel_results.append(
+                        t(
+                            interaction,
+                            "wz.registration.purge.channel_failed",
+                            channel=channel.mention,
+                        )
+                    )
 
             await interaction.followup.send(
                 t(
@@ -93,6 +120,7 @@ class PurgeConfirmationView(discord.ui.View):
                     deleted_count=deleted_count,
                     failed_count=len(failed_channels),
                 ),
+                embed=discord.Embed(description="\n".join(channel_results)),
                 ephemeral=self.ephemeral,
             )
             if failed_channels:

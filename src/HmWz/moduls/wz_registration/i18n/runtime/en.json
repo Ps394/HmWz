@@ -6,6 +6,8 @@
   "wz.registration.reset.success": "✅ All non-permanent registrations have been reset.\nTimestamp: {timestamp}",
   "wz.registration.reset.error": "❌ An error occurred while resetting the registrations.",
   "wz.registration.purge.success": "✅ Purge complete. Deleted messages: {deleted_count}. Failed channels: {failed_count}.",
+  "wz.registration.purge.channel_success": "✅ {channel}: deleted {deleted_count} messages.",
+  "wz.registration.purge.channel_failed": "❌ {channel}: purge failed; deleted message count is unknown.",
   "wz.registration.purge.no_channels": "⚠️ No purge channels are configured.",
   "wz.registration.purge.error": "❌ An error occurred while purging the configured channels.",
   "wz.registration.purge.confirmation": "Do you want to purge the following channels?\n{channel_names}",
