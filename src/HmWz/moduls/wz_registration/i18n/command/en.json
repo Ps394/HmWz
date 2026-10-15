@@ -5,7 +5,7 @@
   "command.description.wz.registration.register": "Sign up for a WZ event",
   "parameter.description.wz.registration.register.role": "Registration role to assign",
   "command.description.wz.registration.reset": "Remove non-permanent registrations and purge the registration and configured channels by default.",
-  "command.description.wz.registration.purge": "Purge up to 500 messages in all configured channels; pinned messages and bot messages are kept.",
+  "command.description.wz.registration.purge": "Confirm channels before deleting up to 500 messages in each.",
   "group.description.wz.setup.group": "Setup commands for WZ registration",
   "command.description.wz.setup.configure": "Configure the WZ registration for this server",
   "parameter.description.wz.setup.configure.channel": "Registration channel",
