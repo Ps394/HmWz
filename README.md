@@ -45,23 +45,32 @@ Führe Befehle aus dem Projektverzeichnis aus. Das ist wichtig, weil `configurat
 
 ### Automatische Installation
 
-Die Skripte erstellen eine virtuelle Umgebung, installieren `requirements.txt` und können optional den Bot-Token hinterlegen. Prüfe ein Skript, bevor du es ausführst.
+Die Installationsskripte bündeln separat ausführbare Etappen: virtuelle Umgebung erstellen, Abhängigkeiten installieren, optional den Token konfigurieren und den automatischen Start einrichten. Linux installiert und startet einen systemd-Dienst; Windows registriert eine Aufgabenplaner-Aufgabe, die beim Anmelden des aktuellen Benutzers startet und sofort gestartet wird. Prüfe ein Skript, bevor du es ausführst.
 
 **Windows (PowerShell):**
 
 ```powershell
 .\scripts\win\install.ps1
-.\venv\Scripts\python.exe src\bot.py
 ```
 
 **Linux:**
 
 ```bash
 bash scripts/linux/install.bash
-./venv/bin/python src/bot.py
 ```
 
-Das Linux-Skript kann bei Bedarf systemweite Pakete und weitere Installationsschritte erfordern. Die Dienstskripte `scripts/linux/start_bot_service.bash` und `scripts/linux/stop_bot_service.bash` steuern einen bereits eingerichteten systemd-Dienst namens `discordbot.service`; sie erstellen weder dessen Unit-Datei noch konfigurieren sie den Dienst.
+Unter Windows läuft die Aufgabe im aktuellen Benutzerkontext, damit sie auf den Token in dessen Registry zugreifen kann. Sie startet beim Benutzer-Login und nicht vor der Anmeldung. Die Skripte `scripts/win/start_bot_service.ps1` und `scripts/win/stop_bot_service.ps1` starten beziehungsweise stoppen sie; Stoppen entfernt die Aufgabe nicht.
+
+Die Etappen können einzeln ausgeführt werden:
+
+| Etappe | Windows (PowerShell) | Linux (Bash) |
+| --- | --- | --- |
+| Virtuelle Umgebung erstellen | `.\scripts\win\create_venv.ps1` | `bash scripts/linux/create_venv.bash` |
+| Abhängigkeiten installieren | `.\scripts\win\install_dependencies.ps1` | `bash scripts/linux/install_dependencies.bash` |
+| Token optional konfigurieren | `.\scripts\win\configure_token.ps1` | `bash scripts/linux/configure_token.bash` |
+| Automatischen Start einrichten | `.\scripts\win\install_service.ps1` | `bash scripts/linux/install_service.bash` |
+
+Die Dienstinstallation unter Linux benötigt `systemd` und `sudo`; führe das Installationsskript als Bot-Benutzer aus, nicht als root. Sie installiert `discordbot.service`, aktiviert ihn beim Systemstart und startet ihn. Verwende `scripts/linux/start_bot_service.bash` zum Neustart und `scripts/linux/stop_bot_service.bash` zum Stoppen; der Dienst bleibt für den nächsten Systemstart aktiviert.
 
 ### Manuelle Installation
 
@@ -156,21 +165,26 @@ scripts/
   win/                          Windows-Installation
 src/
   bot.py                        Einstiegspunkt
-  HmWz/
-    hmClient/                   Discord-Client, Commands und Monitoring
-    moduls/                     Modulsystem und WZ-Registrierung
+  hmwz/
+    hm_client/                  Discord-Client, Commands und Monitoring
+      repositories/             Serverdatenzugriff
+    modules/                    Modulsystem und WZ-Registrierung
+      wz_registration/
+        repositories/           WZ-Datenzugriff
+    hm_models/                  gemeinsame Daten- und Embed-Modelle
     i18n/                       gemeinsame Übersetzungen
     configuration.py            Laden der Laufzeitkonfiguration
-    sqlLiteDB.py                 asynchroner SQLite-Zugriff
+    sqlite_db.py                asynchroner SQLite-Zugriff
 requirements.txt                Python-Abhängigkeiten
+pyproject.toml                  Paket-, Hatch-Build- und optionale Entwicklungsabhängigkeiten
 configuration.json              Laufzeitkonfiguration
 ```
 
-Der Einstiegspunkt `src/bot.py` fügt `src/HmWz` dem Python-Importpfad hinzu, richtet Logging und Discord-Intents ein, lädt den Token und startet anschließend den Client. Das Registrierungsmodul und seine Datenbanktabellen werden serverbezogen verwaltet.
+`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. Das Registrierungsmodul und seine Datenbanktabellen werden serverbezogen verwaltet.
 
 ## Entwicklung und Tests
 
-Für lokale Entwicklung und Debugging kann die virtuelle Umgebung wie oben angelegt werden. Der Bot lässt sich aus dem Projektstamm mit `python src/bot.py` starten; zum Debuggen ist außerdem eine VS-Code-Konfiguration in `.vscode/launch.json` vorhanden. Die Python-Abhängigkeiten sind in `requirements.txt` festgehalten.
+Für lokale Entwicklung und Debugging kann die virtuelle Umgebung wie oben angelegt werden. Mit `python -m pip install -e ".[monitoring]"` wird das Paket samt optionalem Ressourcenmonitoring installierbar; anschließend startet `hmwz` den Bot. Alternativ funktioniert aus dem Projektstamm weiterhin `python src/bot.py`. Für die Entwicklung installiere Hatch und führe `hatch run test` für die Tests inklusive Coverage-Bericht oder `hatch run check` für Linting, Formatprüfung, Typprüfung und Tests aus. Einzelne Hatch-Befehle sind `hatch run lint`, `hatch run format`, `hatch run format-check` und `hatch run typecheck`. Die Skripte für Windows und Linux installieren weiterhin `requirements.txt` und verwenden den Kompatibilitätseinstiegspunkt.
 
 ## Lizenz
 
