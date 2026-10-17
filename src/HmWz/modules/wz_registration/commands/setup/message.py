@@ -2,6 +2,7 @@ import logging
 
 from discord import Attachment, Interaction, app_commands
 
+from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
 from ...module import WzRegistrationModule
@@ -101,7 +102,9 @@ async def message(
             t(interaction, "wz.setup.message.success"), ephemeral=True
         )
     except Exception as e:
-        logger.exception(f"WZ setup message failed: {e}")
+        logger.exception(
+            "%s WZ setup message failed: %s", utils.log_interaction(interaction), e
+        )
         await interaction.followup.send(
             t(interaction, "wz.setup.message.error"), ephemeral=True
         )

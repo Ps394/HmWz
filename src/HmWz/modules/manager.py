@@ -46,7 +46,8 @@ class Manager:
             if isinstance(module, module_type):
                 return module
         raise LookupError(
-            f"Module of type {module_type} not found for guild {guild.id}."
+            f"Module of type {module_type} not found for guild "
+            f"{guild.name} ({guild.id})."
         )
 
     async def startup(self) -> None:

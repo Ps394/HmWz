@@ -13,7 +13,10 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 - Verwaltung der Anmeldungsnachricht und der für einen Reset zusätzlich zu bereinigenden Textkanäle.
 - CSV-Export und Zurücksetzen nicht permanenter Registrierungen.
 - Separate Bereinigungsbefehle für konfigurierte Kanäle und für den aktuellen Textkanal.
-- Speicherung von Servereinstellungen und Registrierungen in SQLite.
+- Speicherung von Servereinstellungen, Registrierungen und bekannten Discord-Namen
+  für Guilds, Mitglieder (Benutzername und Anzeigename) und Kanäle in SQLite.
+- Discord stellt keine rechtlichen Klarnamen bereit; gespeichert werden die von
+  Discord gelieferten Benutzernamen und Anzeigenamen.
 - Deutsche und englische Command-Lokalisierungen.
 - Optionales Ressourcenmonitoring mit `psutil`; Messwerte und Schwellwertüberschreitungen erscheinen im Log.
 

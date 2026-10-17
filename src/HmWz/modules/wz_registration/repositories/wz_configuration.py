@@ -106,7 +106,13 @@ class WzConfigurationRepository(sqlite_db.Base):
         :return: True, wenn die Konfiguration erfolgreich hinzugefügt oder aktualisiert wurde, andernfalls False.
         :rtype: bool
         """
+        channel_name: str | None = None
         try:
+            channel_name = (
+                await self.channel_log_name(guild, channel_id)
+                if channel_id is not None
+                else None
+            )
             cols = []
             vals = []
 
@@ -136,11 +142,17 @@ class WzConfigurationRepository(sqlite_db.Base):
 
             if not await self.database.execute(query, tuple(params)):
                 return False
-            _logger.info(f"{self.log_prefix(guild)} WZ config upserted.")
+            channel_context = (
+                f" for channel {channel_name}" if channel_name is not None else ""
+            )
+            _logger.info(
+                f"{self.log_prefix(guild)} WZ config upserted{channel_context}."
+            )
             return True
         except Exception as e:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to upsert WZ config: {e}"
+                f"{self.log_prefix(guild)} Failed to upsert WZ config for channel "
+                f"{channel_name or 'not specified'}: {e}"
             )
             return False
 

@@ -140,7 +140,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
             return None
 
     async def add(self, *, guild: discord.Guild, member: int, role: int) -> bool:
+        member_name = f"unknown member ({member})"
         try:
+            member_name = await self.member_log_name(guild, member)
             executed = await self.database.execute(
                 f"""
                 INSERT OR REPLACE INTO {self.table_name}
@@ -152,12 +154,13 @@ class MemberRegistrationRepository(sqlite_db.Base):
             if not executed:
                 return False
             _logger.info(
-                f"{self.log_prefix(guild)} Added WZ registration for member {member}."
+                f"{self.log_prefix(guild)} Added WZ registration for member {member_name}."
             )
             return True
         except Exception as e:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to add WZ registration for member {member}: {e}"
+                f"{self.log_prefix(guild)} Failed to add WZ registration for "
+                f"member {member_name}: {e}"
             )
             return False
 
@@ -182,7 +185,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
             if member is not None:
                 query += f" AND {self.TableCols.Member} = ?"
                 params.append(member)
-                target = f"member {member}"
+                target = f"member {await self.member_log_name(guild, member)}"
             elif role is not None:
                 query += f" AND {self.TableCols.Role} = ?"
                 params.append(role)

@@ -2,6 +2,7 @@ import logging
 
 from discord import Interaction, app_commands
 
+from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
 from ....models import PurgeChannel
@@ -71,7 +72,11 @@ async def remove(interaction: Interaction) -> None:
             ephemeral=True,
         )
     except Exception as e:
-        logger.exception(f"WZ purge-channel-remove failed: {e}")
+        logger.exception(
+            "%s WZ purge-channel-remove failed: %s",
+            utils.log_interaction(interaction),
+            e,
+        )
         await interaction.followup.send(
             t(interaction, "wz.setup.purge_channel.error"), ephemeral=True
         )

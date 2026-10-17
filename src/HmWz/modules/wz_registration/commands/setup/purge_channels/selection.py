@@ -6,6 +6,7 @@ from typing import Literal
 import discord
 
 from hmwz.i18n import t
+from hmwz import utils
 
 from ....models import PurgeChannel
 from ....module import WzRegistrationModule
@@ -21,7 +22,14 @@ def can_view_channel(
     can_view = (
         bot_member is not None and channel.permissions_for(bot_member).view_channel
     )
-    logger.debug("Bot can view channel %s(%s): %s", channel.name, channel.id, can_view)
+    logger.debug(
+        "Bot can view channel %s (%s) in guild %s (%s): %s",
+        channel.name,
+        channel.id,
+        channel.guild.name,
+        channel.guild.id,
+        can_view,
+    )
     return can_view
 
 
@@ -63,8 +71,20 @@ async def get_selectable_channels(
 
     if action == "add":
         configured_ids = {record.channel_id for record in configured or ()}
+        configured_names = []
+        for channel_id in configured_ids:
+            channel = guild.get_channel(channel_id)
+            channel_name = (
+                f"{channel.name} ({channel_id})"
+                if isinstance(channel, discord.TextChannel)
+                else f"unknown channel ({channel_id})"
+            )
+            configured_names.append(channel_name)
         logger.debug(
-            "Configured channel IDs for guild %s: %s", guild.id, configured_ids
+            "Configured channels for guild %s (%s): %s",
+            guild.name,
+            guild.id,
+            configured_names,
         )
         channels = [
             channel
@@ -76,9 +96,10 @@ async def get_selectable_channels(
             )
         ]
         logger.debug(
-            "Selectable channels for guild %s: %s",
+            "Selectable channels for guild %s (%s): %s",
+            guild.name,
             guild.id,
-            [channel.id for channel in channels],
+            [f"{channel.name} ({channel.id})" for channel in channels],
         )
     else:
         channels = []
@@ -175,9 +196,9 @@ class PurgeChannelSelection(discord.ui.View):
             )
         except Exception:
             logger.exception(
-                "Failed to %s WZ purge channels in guild %s.",
+                "%s Failed to %s WZ purge channels.",
+                utils.log_interaction(interaction),
                 self.action,
-                self.guild.id,
             )
             content = t(interaction, "wz.setup.purge_channel.error")
 

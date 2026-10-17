@@ -5,6 +5,7 @@ import logging
 import discord
 
 from hmwz import events, sqlite_db, utils
+from hmwz.hm_client.repositories import DiscordEntityRepository
 from hmwz.i18n import t
 
 from ..basic_module import BasicModule
@@ -44,6 +45,7 @@ class WzRegistrationModule(BasicModule):
         self.purge_channels: repositories.PurgeChannelRepository = (
             repositories.PurgeChannelRepository(self._database)
         )
+        self.entities = DiscordEntityRepository(self._database)
         self._schema_ready: bool = False
         self._overview: RegistrationOverview = RegistrationOverview(
             guild=self.guild,
@@ -65,6 +67,19 @@ class WzRegistrationModule(BasicModule):
             return
 
         await interaction.response.defer(ephemeral=True)
+        if not await self.entities.add_member(guild=guild, member=member):
+            _logger.error(
+                "%s Failed to save member name %s / %s (%s).",
+                sqlite_db.Base.log_prefix(guild),
+                member.name,
+                member.display_name,
+                member.id,
+            )
+            await interaction.followup.send(
+                t(interaction, "wz.overview.registration.error_registration"),
+                ephemeral=True,
+            )
+            return
 
         records = await self.registrations.get(guild=guild, member=member.id)
         current = records[0] if records else None
@@ -77,9 +92,11 @@ class WzRegistrationModule(BasicModule):
                     ephemeral=True,
                 )
                 _logger.error(
-                    "Failed to remove registration for member %s (%s) in guild %s",
+                    "Failed to remove registration for member %s / %s (%s) in guild %s (%s)",
                     member.name,
+                    member.display_name,
                     member.id,
+                    guild.name,
                     guild.id,
                 )
                 return
@@ -93,9 +110,11 @@ class WzRegistrationModule(BasicModule):
                 ephemeral=True,
             )
             _logger.info(
-                "Removed registration for member %s (%s) in guild %s",
+                "Removed registration for member %s / %s (%s) in guild %s (%s)",
                 member.name,
+                member.display_name,
                 member.id,
+                guild.name,
                 guild.id,
             )
             await self.compose_registration_overview(force=True)
@@ -129,9 +148,11 @@ class WzRegistrationModule(BasicModule):
             ephemeral=True,
         )
         _logger.info(
-            "Added registration for member %s (%s) in guild %s",
+            "Added registration for member %s / %s (%s) in guild %s (%s)",
             member.name,
+            member.display_name,
             member.id,
+            guild.name,
             guild.id,
         )
         await self.compose_registration_overview(force=True)

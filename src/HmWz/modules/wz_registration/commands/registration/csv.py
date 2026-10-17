@@ -94,7 +94,9 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
         finally:
             bio.close()
     except Exception as e:
-        logger.exception(f"WZ registration csv failed: {e}")
+        logger.exception(
+            "%s WZ registration csv failed: %s", utils.log_interaction(interaction), e
+        )
         await interaction.followup.send(
             t(interaction, "wz.registration.csv.error"), ephemeral=True
         )

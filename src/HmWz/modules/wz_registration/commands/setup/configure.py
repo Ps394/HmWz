@@ -3,6 +3,7 @@ import logging
 from discord import Interaction, Role, TextChannel, app_commands
 from discord.app_commands import checks
 
+from hmwz import utils
 from hmwz.configuration import config
 from hmwz.i18n import CommandLocalizations, t
 
@@ -102,8 +103,11 @@ async def configure(
             guild=interaction.guild, channel_id=channel.id
         ):
             logger.error(
-                "Failed to remove registration channel %s from the purge list in guild %s.",
+                "Failed to remove registration channel %s (%s) from the purge list "
+                "in guild %s (%s).",
+                channel.name,
                 channel.id,
+                interaction.guild.name,
                 interaction.guild.id,
             )
             await interaction.followup.send(
@@ -117,7 +121,9 @@ async def configure(
             ephemeral=True,
         )
     except Exception as e:
-        logger.exception(f"WZ setup configure failed: {e}")
+        logger.exception(
+            "%s WZ setup configure failed: %s", utils.log_interaction(interaction), e
+        )
         await interaction.followup.send(
             t(interaction, "wz.setup.configure.error"), ephemeral=True
         )

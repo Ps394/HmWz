@@ -3,6 +3,7 @@ import logging
 from discord import Forbidden, HTTPException, Interaction, app_commands
 from discord.app_commands import checks
 
+from hmwz import utils
 from hmwz.configuration import config
 from hmwz.i18n import CommandLocalizations, t
 
@@ -115,7 +116,10 @@ async def remove(interaction: Interaction, role: str):
                     )
                 except (HTTPException, Forbidden) as e:
                     logger.warning(
-                        f"Failed removing role {role_to_remove.id} from member {member.id}: {e}"
+                        f"Failed removing role {role_to_remove.name} "
+                        f"({role_to_remove.id}) from member {member.name} / "
+                        f"{member.display_name} ({member.id}) in guild "
+                        f"{interaction.guild.name} ({interaction.guild.id}): {e}"
                     )
 
         await module.roles.remove(guild=interaction.guild, role=role_to_remove.id)
@@ -133,7 +137,9 @@ async def remove(interaction: Interaction, role: str):
             ephemeral=True,
         )
     except Exception as e:
-        logger.exception(f"WZ setup role-remove failed: {e}")
+        logger.exception(
+            "%s WZ setup role-remove failed: %s", utils.log_interaction(interaction), e
+        )
         await interaction.followup.send(
             t(interaction, "wz.setup.roles.remove.unexpected"), ephemeral=True
         )

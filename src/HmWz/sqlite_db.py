@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import ClassVar, cast
+from typing import ClassVar, Sequence, cast
 
 import aiosqlite
 from discord import Guild
@@ -67,6 +67,42 @@ class Base:
                 f"{self.log_prefix()}Failed to count entries in {self.table_name} table: {e}"
             )
             return 0
+
+    async def member_log_name(self, guild: Guild, member_id: int) -> str:
+        """Return a known Discord username and display name for a member log."""
+        member = guild.get_member(member_id)
+        if member is not None:
+            return f"{member.name} / {member.display_name} ({member.id})"
+
+        row = await self.database.fetch_one(
+            """
+            SELECT Username, DisplayName
+            FROM DiscordMembers
+            WHERE Guild = ? AND Member = ?
+            """,
+            (guild.id, member_id),
+        )
+        if row is not None:
+            return f"{row['Username']} / {row['DisplayName']} ({member_id})"
+        return f"unknown member ({member_id})"
+
+    async def channel_log_name(self, guild: Guild, channel_id: int) -> str:
+        """Return a known Discord channel name for a channel log."""
+        channel = guild.get_channel_or_thread(channel_id)
+        if channel is not None:
+            return f"{channel.name} ({channel.id})"
+
+        row = await self.database.fetch_one(
+            """
+            SELECT Name
+            FROM DiscordChannels
+            WHERE Guild = ? AND Channel = ?
+            """,
+            (guild.id, channel_id),
+        )
+        if row is not None:
+            return f"{row['Name']} ({channel_id})"
+        return f"unknown channel ({channel_id})"
 
 
 class Database:
@@ -142,7 +178,36 @@ class Database:
                         return False
                     delay = self._write_retry_delay * (2**attempt)
                     _logger.warning(
-                        f"Database is locked, retrying in {delay:.2f} seconds (attempt {attempt + 1}/{self._write_retry_attempts})"
+                        "Database is locked, retrying in %.2f seconds (attempt %s/%s)",
+                        delay,
+                        attempt + 1,
+                        self._write_retry_attempts,
+                    )
+                    await asyncio.sleep(delay)
+        return False
+
+    async def execute_many(self, query: str, params: Sequence[tuple]) -> bool:
+        """Execute a batch of writes in one transaction."""
+        async with self._write_lock:
+            for attempt in range(self._write_retry_attempts + 1):
+                try:
+                    async with self.connect() as connection:
+                        await connection.executemany(query, params)
+                        await connection.commit()
+                        return True
+                except aiosqlite.OperationalError as e:
+                    msg = str(e).lower()
+                    is_locked = "database is locked" in msg or "database is busy" in msg
+                    if not is_locked or attempt == self._write_retry_attempts:
+                        _logger.exception(f"Database batch write error: {e}")
+                        return False
+                    delay = self._write_retry_delay * (2**attempt)
+                    _logger.warning(
+                        "Database is locked, retrying batch write in %.2f seconds "
+                        "(attempt %s/%s)",
+                        delay,
+                        attempt + 1,
+                        self._write_retry_attempts,
                     )
                     await asyncio.sleep(delay)
         return False

@@ -121,7 +121,16 @@ async def register(interaction: Interaction, role: discord.Role):
                 await asyncio.sleep(0.05)
             except (HTTPException, Forbidden, NotFound) as e:
                 logger.warning(
-                    f"Failed to remove role {reg.role} from member {reg.member}: {e}"
+                    "Failed to remove role %s (%s) from member %s / %s (%s) "
+                    "in guild %s (%s): %s",
+                    registered_role.name,
+                    registered_role.id,
+                    member.name,
+                    member.display_name,
+                    member.id,
+                    interaction.guild.name,
+                    interaction.guild.id,
+                    e,
                 )
 
         success = await module.registrations.remove(
@@ -151,7 +160,11 @@ async def register(interaction: Interaction, role: discord.Role):
             ephemeral=True,
         )
     except Exception as e:
-        logger.exception(f"WZ registration reset failed: {e}")
+        logger.exception(
+            "%s WZ registration reset failed: %s",
+            utils.log_interaction(interaction),
+            e,
+        )
         await interaction.followup.send(
             t(interaction, "wz.registration.reset.error"), ephemeral=True
         )

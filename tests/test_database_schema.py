@@ -7,7 +7,7 @@ from typing import cast
 import discord
 import pytest
 
-from hmwz.hm_client.repositories import ServerRepository
+from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
 from hmwz.modules.wz_registration.repositories import (
     MemberRegistrationRepository,
     PurgeChannelRepository,
@@ -22,6 +22,7 @@ from hmwz.sqlite_db import Base, Database
 def make_repositories(database: Database) -> tuple[Base, ...]:
     return (
         ServerRepository(database),
+        DiscordEntityRepository(database),
         WzConfigurationRepository(database),
         RegistrationRoleRepository(database),
         RegistrationSettingsRepository(database),
@@ -34,7 +35,13 @@ def make_repositories(database: Database) -> tuple[Base, ...]:
 async def initialize_schema(database: Database) -> tuple[Base, ...]:
     repositories = make_repositories(database)
     for repository in repositories:
-        assert await database.execute(repository.table)
+        statements = (
+            repository.tables
+            if isinstance(repository, DiscordEntityRepository)
+            else (repository.table,)
+        )
+        for statement in statements:
+            assert await database.execute(statement)
     return repositories
 
 
@@ -46,7 +53,13 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
     repositories = await initialize_schema(database)
 
     for repository in repositories:
-        assert await database.execute(repository.table)
+        statements = (
+            repository.tables
+            if isinstance(repository, DiscordEntityRepository)
+            else (repository.table,)
+        )
+        for statement in statements:
+            assert await database.execute(statement)
 
     tables = await database.fetch_all(
         "SELECT name FROM sqlite_master WHERE type = 'table'"
@@ -54,6 +67,8 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
     table_names = {row["name"] for row in tables}
     assert table_names == {
         "Servers",
+        "DiscordMembers",
+        "DiscordChannels",
         "Configuration",
         "WzRoles",
         "WzRegistration",
@@ -80,7 +95,12 @@ async def test_schema_enforces_server_foreign_keys(tmp_path: Path) -> None:
     repository = RegistrationSettingsRepository(database)
     guild = cast(
         discord.Guild,
-        SimpleNamespace(id=987654321, name="missing guild"),
+        SimpleNamespace(
+            id=987654321,
+            name="missing guild",
+            get_channel_or_thread=lambda channel_id: None,
+            get_member=lambda member_id: None,
+        ),
     )
 
     executed = await repository.upsert(
@@ -90,6 +110,69 @@ async def test_schema_enforces_server_foreign_keys(tmp_path: Path) -> None:
 
     assert not executed
     assert await database.fetch_one("SELECT 1 FROM WzRegistration") is None
+
+
+@pytest.mark.asyncio
+async def test_discord_entity_names_are_saved_and_updated(tmp_path: Path) -> None:
+    database = Database(folder=str(tmp_path), filename="entity-names.db")
+    servers = ServerRepository(database)
+    entities = DiscordEntityRepository(database)
+    assert await database.execute(servers.table)
+    for statement in entities.tables:
+        assert await database.execute(statement)
+
+    guild_data = SimpleNamespace(
+        id=123,
+        name="test guild",
+        members=[],
+        channels=[],
+        threads=[],
+        get_channel_or_thread=lambda channel_id: None,
+        get_member=lambda member_id: None,
+    )
+    guild = cast(discord.Guild, guild_data)
+    member = cast(
+        discord.Member,
+        SimpleNamespace(id=234, name="player", display_name="Player Nickname"),
+    )
+    channel = cast(
+        discord.TextChannel,
+        SimpleNamespace(id=456, name="registration"),
+    )
+    assert await servers.add(guild=guild)
+    assert await entities.add_member(guild=guild, member=member)
+    assert await entities.add_channel(guild=guild, channel=channel)
+    updated_member = cast(
+        discord.Member,
+        SimpleNamespace(id=234, name="updated-player", display_name="Updated Nickname"),
+    )
+    updated_channel = cast(
+        discord.TextChannel,
+        SimpleNamespace(id=456, name="wz"),
+    )
+    assert await entities.add_member(guild=guild, member=updated_member)
+    assert await entities.add_channel(guild=guild, channel=updated_channel)
+
+    guild_data.members = [updated_member]
+    guild_data.channels = [updated_channel]
+    assert await entities.sync_guild(guild)
+
+    stored_member = await database.fetch_one(
+        "SELECT Username, DisplayName FROM DiscordMembers WHERE Guild = ? AND Member = ?",
+        (123, 234),
+    )
+    stored_channel = await database.fetch_one(
+        "SELECT Name FROM DiscordChannels WHERE Guild = ? AND Channel = ?",
+        (123, 456),
+    )
+    assert stored_member is not None
+    assert tuple(stored_member) == ("updated-player", "Updated Nickname")
+    assert stored_channel is not None
+    assert stored_channel["Name"] == "wz"
+    assert await entities.member_log_name(guild, 234) == (
+        "updated-player / Updated Nickname (234)"
+    )
+    assert await entities.channel_log_name(guild, 456) == "wz (456)"
 
 
 @pytest.mark.asyncio

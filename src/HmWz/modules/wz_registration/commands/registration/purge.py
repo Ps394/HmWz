@@ -47,13 +47,31 @@ class PurgeConfirmationView(discord.ui.View):
             try:
                 await self.message.delete()
             except HTTPException:
-                logger.warning("Failed to delete timed-out WZ purge confirmation.")
+                channel = self.message.channel
+                owner = self.guild.get_member(self.owner_id)
+                owner_context = (
+                    f"{owner.name} / {owner.display_name} ({owner.id})"
+                    if owner is not None
+                    else f"unknown member ({self.owner_id})"
+                )
+                logger.warning(
+                    "Failed to delete timed-out WZ purge confirmation in guild "
+                    "%s (%s), channel %s (%s), requested by member %s.",
+                    self.guild.name,
+                    self.guild.id,
+                    getattr(channel, "name", "unknown channel"),
+                    channel.id,
+                    owner_context,
+                )
 
     async def _delete_dialog(self, interaction: Interaction) -> None:
         try:
             await interaction.delete_original_response()
         except HTTPException:
-            logger.warning("Failed to delete WZ purge confirmation dialog.")
+            logger.warning(
+                "%s Failed to delete WZ purge confirmation dialog.",
+                utils.log_interaction(interaction),
+            )
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
     async def confirm_button(
@@ -102,8 +120,10 @@ class PurgeConfirmationView(discord.ui.View):
                     )
                 except HTTPException:
                     logger.exception(
-                        "Failed to purge WZ channel %s in guild %s.",
-                        channel_id,
+                        "Failed to purge WZ channel %s (%s) in guild %s (%s).",
+                        channel.name,
+                        channel.id,
+                        self.guild.name,
                         self.guild.id,
                     )
                     failed_channels.append(channel_id)
@@ -127,12 +147,23 @@ class PurgeConfirmationView(discord.ui.View):
             )
             if failed_channels:
                 logger.warning(
-                    "WZ purge completed with inaccessible/failed channels in guild %s: %s",
+                    "WZ purge completed with inaccessible/failed channels in guild "
+                    "%s (%s): %s",
+                    self.guild.name,
                     self.guild.id,
-                    ", ".join(map(str, failed_channels)),
+                    ", ".join(
+                        f"{channel.name} ({channel.id})"
+                        if channel is not None
+                        else f"unknown channel ({channel_id})"
+                        for channel_id, channel in self.channels
+                        if channel_id in failed_channels
+                    ),
                 )
         except Exception:
-            logger.exception("WZ configured-channel purge failed.")
+            logger.exception(
+                "%s WZ configured-channel purge failed.",
+                utils.log_interaction(interaction),
+            )
             await interaction.followup.send(
                 t(interaction, "wz.registration.purge.error"), ephemeral=True
             )
@@ -225,7 +256,10 @@ async def purge(interaction: Interaction, ephemeral: bool = True) -> None:
             wait=True,
         )
     except Exception:
-        logger.exception("WZ configured-channel purge failed.")
+        logger.exception(
+            "%s WZ configured-channel purge failed.",
+            utils.log_interaction(interaction),
+        )
         await interaction.followup.send(
             t(interaction, "wz.registration.purge.error"), ephemeral=True
         )

@@ -42,6 +42,9 @@ class Client(discord.Client):
         self._servers: repositories.ServerRepository = repositories.ServerRepository(
             self._database
         )
+        self._entities: repositories.DiscordEntityRepository = (
+            repositories.DiscordEntityRepository(self._database)
+        )
         self.module_manager = modules.Manager(self)
 
         self.CommandTree = discord.app_commands.CommandTree(self)
@@ -54,6 +57,9 @@ class Client(discord.Client):
         """
         if not await self._database.execute(self._servers.table):
             raise RuntimeError("Failed to create the server database table.")
+        for table in self._entities.tables:
+            if not await self._database.execute(table):
+                raise RuntimeError("Failed to create Discord entity database tables.")
         if not await self._servers.migrate_legacy_servers():
             raise RuntimeError("Failed to migrate legacy server records.")
         await self.CommandTree.set_translator(CommandTranslator())
@@ -71,7 +77,12 @@ class Client(discord.Client):
         if self.user is None:
             raise RuntimeError("Client became ready without an authenticated user.")
 
-        _logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
+        _logger.info(
+            "Logged in as %s / %s (ID: %s)",
+            self.user.name,
+            self.user.display_name,
+            self.user.id,
+        )
         _logger.info("------")
 
         if not self._commands_initialized:
@@ -81,7 +92,12 @@ class Client(discord.Client):
             self._commands_initialized = True
 
         for guild in self.guilds:
-            await self._servers.add(guild=guild)
+            if not await self._servers.add(guild=guild):
+                _logger.error(
+                    "%s Failed to save guild name.", self._servers.log_prefix(guild)
+                )
+                continue
+            await self._entities.sync_guild(guild)
 
         await self.module_manager.startup()
 
@@ -93,7 +109,10 @@ class Client(discord.Client):
         :type guild: discord.Guild
         """
         try:
-            await self._servers.add(guild=guild)
+            if not await self._servers.add(guild=guild):
+                raise RuntimeError("Failed to save guild name.")
+            if not await self._entities.sync_guild(guild):
+                raise RuntimeError("Failed to save member and channel names.")
             await self.module_manager.on_guild_join(guild)
             _logger.info(f"{guild.name} ({guild.id}) - Guild added to database.")
         except Exception as e:
@@ -110,11 +129,33 @@ class Client(discord.Client):
         """
         try:
             await self.module_manager.on_guild_remove(guild)
+            if not await self._entities.remove_guild(guild=guild):
+                raise RuntimeError("Failed to remove cached Discord entity names.")
             await self._servers.remove(guild=guild)
             _logger.info(f"{guild.name} ({guild.id}) - Guild removed from database.")
         except Exception as e:
             _logger.exception(
                 f"{guild.name} ({guild.id}) - Failed to remove guild from database: {e}"
+            )
+
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
+        """Persist guild name changes."""
+        if not await self._servers.add(guild=after):
+            _logger.error(
+                "%s Failed to update guild name from %s.",
+                self._servers.log_prefix(after),
+                before.name,
+            )
+
+    async def on_member_join(self, member: discord.Member):
+        """Persist a member's username and display name when they join."""
+        if not await self._entities.add_member(guild=member.guild, member=member):
+            _logger.error(
+                "%s Failed to save member name for %s / %s (%s).",
+                self._servers.log_prefix(member.guild),
+                member.name,
+                member.display_name,
+                member.id,
             )
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
@@ -124,6 +165,12 @@ class Client(discord.Client):
         :param channel: Der gelöschte Kanal
         :type channel: discord.TextChannel
         """
+        _logger.info(
+            "%s Channel deleted: %s (%s).",
+            self._servers.log_prefix(channel.guild),
+            channel.name,
+            channel.id,
+        )
         await self.module_manager.on_guild_channel_delete(channel)
 
     async def on_guild_channel_update(
@@ -137,6 +184,13 @@ class Client(discord.Client):
         :param after: Der Kanal nach der Aktualisierung
         :type after: discord.TextChannel
         """
+        if not await self._entities.add_channel(guild=after.guild, channel=after):
+            _logger.error(
+                "%s Failed to update channel name %s (%s).",
+                self._servers.log_prefix(after.guild),
+                after.name,
+                after.id,
+            )
         await self.module_manager.on_guild_channel_update(before, after)
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
@@ -146,6 +200,13 @@ class Client(discord.Client):
         :param channel: Der erstellte Kanal
         :type channel: discord.TextChannel
         """
+        if not await self._entities.add_channel(guild=channel.guild, channel=channel):
+            _logger.error(
+                "%s Failed to save channel name %s (%s).",
+                self._servers.log_prefix(channel.guild),
+                channel.name,
+                channel.id,
+            )
         await self.module_manager.on_guild_channel_create(channel)
 
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
@@ -175,6 +236,16 @@ class Client(discord.Client):
         :param payload: Ereignis Payload des entfernen Benutzers
         :type payload: events.RawMemberRemoveEvent
         """
+        guild = self.get_guild(payload.guild_id)
+        if guild is not None and not await self._entities.add_member(
+            guild=guild, member=payload.user
+        ):
+            _logger.error(
+                "%s Failed to update departing member name %s (%s).",
+                self._servers.log_prefix(guild),
+                payload.user.name,
+                payload.user.id,
+            )
         await self.module_manager.on_raw_member_remove(payload)
 
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -186,6 +257,14 @@ class Client(discord.Client):
         :param after: Das Mitglied nach der Aktualisierung
         :type after: discord.Member
         """
+        if not await self._entities.add_member(guild=after.guild, member=after):
+            _logger.error(
+                "%s Failed to update member name %s / %s (%s).",
+                self._servers.log_prefix(after.guild),
+                after.name,
+                after.display_name,
+                after.id,
+            )
         await self.module_manager.on_member_update(before, after)
 
     async def on_raw_message_delete(self, payload: events.RawMessageDeleteEvent):
@@ -221,7 +300,9 @@ class Client(discord.Client):
         :param error: Der aufgetretene Fehler
         :type error: discord.app_commands.AppCommandError
         """
-        log_context = f"u- {interaction.user} - Command: {interaction.command}"
+        log_context = (
+            f"{utils.log_interaction(interaction)} - Command: {interaction.command}"
+        )
 
         send = (
             interaction.followup.send

@@ -22,6 +22,7 @@ __all__ = [
     "fetch_member",
     "fetch_message",
     "fetch_role",
+    "log_interaction",
     "log_decorator",
     "log_guild",
 ]
@@ -62,6 +63,26 @@ def log_guild(guild: discord.Guild) -> str:
     return f"{guild.name} ({guild.id}) =>"
 
 
+def log_interaction(interaction: discord.Interaction) -> str:
+    """Format member, channel, and guild names alongside IDs for logs."""
+    user = interaction.user
+    user_context = f"{user.name} / {user.display_name} ({user.id})"
+    guild_context = (
+        f"{interaction.guild.name} ({interaction.guild.id})"
+        if interaction.guild is not None
+        else "direct message"
+    )
+    channel = interaction.channel
+    channel_context = (
+        f"{channel.name} ({channel.id})"
+        if channel is not None and hasattr(channel, "name")
+        else f"channel ({channel.id})"
+        if channel is not None
+        else "unknown channel"
+    )
+    return f"{guild_context} - {channel_context} - {user_context}"
+
+
 async def fetch_channel(
     guild: discord.Guild, channel_id: int, attempts: int = 3
 ) -> discord.TextChannel | None:
@@ -77,10 +98,11 @@ async def fetch_channel(
     :return: Das TextChannel-Objekt, wenn gefunden, sonst die Kanal-ID.
     :rtype: typing.Optional[discord.TextChannel]
     """
-    channel = guild.get_channel(channel_id)
+    channel = guild.get_channel_or_thread(channel_id)
     if isinstance(channel, discord.TextChannel):
         _logger.debug(
-            f"channel {channel_id} for guild {log_guild(guild)} found in cache: {channel}"
+            f"channel {channel.name} ({channel_id}) for guild {log_guild(guild)} "
+            f"found in cache: {channel}"
         )
         return channel
 
@@ -89,7 +111,8 @@ async def fetch_channel(
             fetched_channel = await guild.fetch_channel(channel_id)
             if isinstance(fetched_channel, discord.TextChannel):
                 _logger.debug(
-                    f"fetched channel {channel_id} for guild {log_guild(guild)}: {fetched_channel}"
+                    f"fetched channel {fetched_channel.name} ({channel_id}) "
+                    f"for guild {log_guild(guild)}: {fetched_channel}"
                 )
                 return fetched_channel
             else:
@@ -100,12 +123,14 @@ async def fetch_channel(
             await asyncio.sleep(e.retry_after)
         except (NotFound, HTTPException):
             _logger.warning(
-                f"channel {channel_id} for guild {log_guild(guild)} unable to find!"
+                f"unknown channel ({channel_id}) for guild {log_guild(guild)} "
+                "unable to find!"
             )
             return None
         except Forbidden:
             _logger.warning(
-                f"channel {channel_id} for guild {log_guild(guild)} permission denied!"
+                f"unknown channel ({channel_id}) for guild {log_guild(guild)} "
+                "permission denied!"
             )
             return None
     await asyncio.sleep(_DELAY)
@@ -130,19 +155,22 @@ async def fetch_message(
             message = await channel.fetch_message(message_id)
             if isinstance(message, discord.Message):
                 _logger.debug(
-                    f"fetched message {message_id} in channel {channel.id} for guild {log_guild(channel.guild)}: {message}"
+                    f"fetched message {message_id} in channel {channel.name} "
+                    f"({channel.id}) for guild {log_guild(channel.guild)}: {message}"
                 )
                 return message
         except RateLimited as e:
             await asyncio.sleep(e.retry_after)
         except (NotFound, HTTPException):
             _logger.warning(
-                f"message {message_id} in channel {channel.id} for guild {log_guild(channel.guild)} unable to find!"
+                f"message {message_id} in channel {channel.name} ({channel.id}) "
+                f"for guild {log_guild(channel.guild)} unable to find!"
             )
             return None
         except Forbidden:
             _logger.warning(
-                f"message {message_id} in channel {channel.id} for guild {log_guild(channel.guild)} permission denied!"
+                f"message {message_id} in channel {channel.name} ({channel.id}) "
+                f"for guild {log_guild(channel.guild)} permission denied!"
             )
             return None
     await asyncio.sleep(_DELAY)
@@ -166,7 +194,8 @@ async def fetch_member(
     member = guild.get_member(member_id)
     if isinstance(member, discord.Member):
         _logger.debug(
-            f"member {member_id} for guild {log_guild(guild)} found in cache: {member}"
+            f"member {member.name} / {member.display_name} ({member_id}) "
+            f"for guild {log_guild(guild)} found in cache: {member}"
         )
         return member
 
@@ -175,19 +204,22 @@ async def fetch_member(
             member = await guild.fetch_member(member_id)
             if isinstance(member, discord.Member):
                 _logger.debug(
-                    f"fetched member {member_id} for guild {log_guild(guild)}: {member}"
+                    f"fetched member {member.name} / {member.display_name} "
+                    f"({member_id}) for guild {log_guild(guild)}: {member}"
                 )
                 return member
         except RateLimited as e:
             await asyncio.sleep(e.retry_after)
         except (NotFound, HTTPException):
             _logger.warning(
-                f"member {member_id} for guild {log_guild(guild)} unable to find!"
+                f"unknown member ({member_id}) for guild {log_guild(guild)} "
+                "unable to find!"
             )
             return None
         except Forbidden:
             _logger.warning(
-                f"member {member_id} for guild {log_guild(guild)} permission denied!"
+                f"unknown member ({member_id}) for guild {log_guild(guild)} "
+                "permission denied!"
             )
             return None
     await asyncio.sleep(_DELAY)

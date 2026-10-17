@@ -105,7 +105,13 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         title: str | None = None,
         description: str | None = None,
     ) -> bool:
+        channel_name: str | None = None
         try:
+            channel_name = (
+                await self.channel_log_name(guild, channel_id)
+                if channel_id is not None
+                else None
+            )
             cols: list[str] = []
             vals: list[typing.Any] = []
 
@@ -138,11 +144,17 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             params = [guild.id] + vals
             if not await self.database.execute(query, tuple(params)):
                 return False
-            _logger.info(f"{self.log_prefix(guild)} WZ registration upserted.")
+            channel_context = (
+                f" for channel {channel_name}" if channel_name is not None else ""
+            )
+            _logger.info(
+                f"{self.log_prefix(guild)} WZ registration upserted{channel_context}."
+            )
             return True
         except Exception as e:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to upsert WZ registration: {e}"
+                f"{self.log_prefix(guild)} Failed to upsert WZ registration "
+                f"for channel {channel_name or 'not specified'}: {e}"
             )
             return False
 

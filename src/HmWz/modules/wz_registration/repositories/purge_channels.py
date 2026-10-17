@@ -76,7 +76,9 @@ class PurgeChannelRepository(sqlite_db.Base):
             return 0
 
     async def add(self, *, guild: discord.Guild, channel_id: int) -> bool:
+        channel_name = f"unknown channel ({channel_id})"
         try:
+            channel_name = await self.channel_log_name(guild, channel_id)
             executed = await self.database.execute(
                 f"""
                 INSERT OR IGNORE INTO {self.table_name}
@@ -103,23 +105,27 @@ class PurgeChannelRepository(sqlite_db.Base):
                 _logger.warning(
                     "%s Cannot add purge channel %s: guild limit reached.",
                     self.log_prefix(guild),
-                    channel_id,
+                    channel_name,
                 )
                 return False
 
             _logger.info(
-                f"{self.log_prefix(guild)} Added WZ purge channel {channel_id}."
+                f"{self.log_prefix(guild)} Added WZ purge channel {channel_name}."
             )
             return True
         except Exception as e:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to add WZ purge channel {channel_id}: {e}"
+                f"{self.log_prefix(guild)} Failed to add WZ purge channel "
+                f"{channel_name}: {e}"
             )
             return False
 
     async def remove(
         self, *, guild: discord.Guild, channel_id: int | None = None
     ) -> bool:
+        target = (
+            f"channel unknown ({channel_id})" if channel_id is not None else "channels"
+        )
         try:
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: tuple[int, ...] = (guild.id,)
@@ -130,11 +136,15 @@ class PurgeChannelRepository(sqlite_db.Base):
             executed = await self.database.execute(query, params)
             if not executed:
                 return False
-            target = f"channel {channel_id}" if channel_id is not None else "channels"
+            target = (
+                f"channel {await self.channel_log_name(guild, channel_id)}"
+                if channel_id is not None
+                else "channels"
+            )
             _logger.info(f"{self.log_prefix(guild)} Removed WZ purge {target}.")
             return True
         except Exception as e:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to remove WZ purge channels: {e}"
+                f"{self.log_prefix(guild)} Failed to remove WZ purge {target}: {e}"
             )
             return False

@@ -2,6 +2,7 @@ import logging
 
 from discord import Interaction, Role, app_commands
 
+from hmwz import utils
 from hmwz.configuration import config
 from hmwz.i18n import CommandLocalizations, t
 
@@ -85,7 +86,9 @@ async def add(interaction: Interaction, role: Role, permanent: bool | None = Fal
             t(interaction, "wz.setup.roles.add.error"), ephemeral=True
         )
     except Exception as e:
-        logger.exception(f"WZ setup role-add failed: {e}")
+        logger.exception(
+            "%s WZ setup role-add failed: %s", utils.log_interaction(interaction), e
+        )
         await interaction.followup.send(
             t(interaction, "wz.setup.roles.add.error"), ephemeral=True
         )

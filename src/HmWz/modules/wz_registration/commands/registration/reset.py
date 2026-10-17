@@ -94,7 +94,16 @@ async def reset(
                     await asyncio.sleep(0.05)
                 except HTTPException as e:
                     logger.warning(
-                        f"Failed to remove role {reg.role} from member {reg.member}: {e}"
+                        "Failed to remove role %s (%s) from member %s / %s (%s) "
+                        "in guild %s (%s): %s",
+                        role.name,
+                        role.id,
+                        member.name,
+                        member.display_name,
+                        member.id,
+                        interaction.guild.name,
+                        interaction.guild.id,
+                        e,
                     )
 
             success = await module.registrations.remove(
@@ -126,8 +135,10 @@ async def reset(
                     )
                 except HTTPException as e:
                     logger.warning(
-                        "Failed to purge WZ channel %s in guild %s: %s",
-                        channel_id,
+                        "Failed to purge WZ channel %s (%s) in guild %s (%s): %s",
+                        channel.name,
+                        channel.id,
+                        interaction.guild.name,
                         interaction.guild.id,
                         e,
                     )
@@ -139,7 +150,11 @@ async def reset(
             ephemeral=ephemeral,
         )
     except Exception as e:
-        logger.exception(f"WZ registration reset failed: {e}")
+        logger.exception(
+            "%s WZ registration reset failed: %s",
+            utils.log_interaction(interaction),
+            e,
+        )
         await interaction.followup.send(
             t(interaction, "wz.registration.reset.error"), ephemeral=True
         )

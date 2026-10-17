@@ -7,7 +7,7 @@ from typing import cast
 import discord
 import pytest
 
-from hmwz.hm_client.repositories import ServerRepository
+from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
 from hmwz.modules.wz_registration.repositories import (
     MemberRegistrationRepository,
     PurgeChannelRepository,
@@ -22,6 +22,7 @@ from hmwz.sqlite_db import Database
 async def initialize_database(database: Database) -> None:
     repositories = (
         ServerRepository(database),
+        DiscordEntityRepository(database),
         WzConfigurationRepository(database),
         RegistrationRoleRepository(database),
         RegistrationSettingsRepository(database),
@@ -30,7 +31,13 @@ async def initialize_database(database: Database) -> None:
         PurgeChannelRepository(database),
     )
     for repository in repositories:
-        assert await database.execute(repository.table)
+        statements = (
+            repository.tables
+            if isinstance(repository, DiscordEntityRepository)
+            else (repository.table,)
+        )
+        for statement in statements:
+            assert await database.execute(statement)
 
 
 @pytest.mark.asyncio
@@ -38,7 +45,15 @@ async def test_repositories_create_read_update_and_remove_records(
     tmp_path: Path,
 ) -> None:
     database = Database(folder=str(tmp_path), filename="repositories.db")
-    guild = cast(discord.Guild, SimpleNamespace(id=123, name="test guild"))
+    guild = cast(
+        discord.Guild,
+        SimpleNamespace(
+            id=123,
+            name="test guild",
+            get_channel_or_thread=lambda channel_id: None,
+            get_member=lambda member_id: None,
+        ),
+    )
     await initialize_database(database)
 
     servers = ServerRepository(database)
@@ -124,7 +139,15 @@ async def test_repositories_create_read_update_and_remove_records(
 async def test_repository_reports_failed_foreign_key_write(tmp_path: Path) -> None:
     database = Database(folder=str(tmp_path), filename="failed-write.db")
     await initialize_database(database)
-    guild = cast(discord.Guild, SimpleNamespace(id=999, name="missing guild"))
+    guild = cast(
+        discord.Guild,
+        SimpleNamespace(
+            id=999,
+            name="missing guild",
+            get_channel_or_thread=lambda channel_id: None,
+            get_member=lambda member_id: None,
+        ),
+    )
 
     repository = RegistrationSettingsRepository(database)
 

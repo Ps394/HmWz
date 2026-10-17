@@ -99,6 +99,7 @@ class RegistrationMessageRepository(sqlite_db.Base):
         text: str,
     ) -> bool:
         try:
+            channel_name = await self.channel_log_name(guild, channel)
             executed = await self.database.execute(
                 f"""
                 INSERT OR REPLACE INTO {self.table_name}
@@ -109,7 +110,10 @@ class RegistrationMessageRepository(sqlite_db.Base):
             )
             if not executed:
                 return False
-            _logger.info(f"{self.log_prefix(guild)} Added WZ list message {message}.")
+            _logger.info(
+                f"{self.log_prefix(guild)} Added WZ list message {message} "
+                f"in channel {channel_name}."
+            )
             return True
         except Exception as e:
             _logger.exception(
