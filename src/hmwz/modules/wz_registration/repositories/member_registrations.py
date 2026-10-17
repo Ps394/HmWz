@@ -26,6 +26,10 @@ class MemberRegistrationRepository(sqlite_db.Base):
         Member: str = "Member"
         Role: str = "Role"
         Timestamp: str = "Timestamp"
+        GuildName: str = "GuildName"
+        MemberUsername: str = "MemberUsername"
+        MemberDisplayName: str = "MemberDisplayName"
+        RoleName: str = "RoleName"
 
     @property
     def table(self) -> str:
@@ -35,9 +39,52 @@ class MemberRegistrationRepository(sqlite_db.Base):
             {self.TableCols.Member} INTEGER,
             {self.TableCols.Role} INTEGER,
             {self.TableCols.Timestamp} TEXT DEFAULT CURRENT_TIMESTAMP,
+            {self.TableCols.GuildName} TEXT,
+            {self.TableCols.MemberUsername} TEXT,
+            {self.TableCols.MemberDisplayName} TEXT,
+            {self.TableCols.RoleName} TEXT,
             PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Member})
         ) WITHOUT ROWID
         """
+
+    async def migrate_names(self) -> bool:
+        """Add and populate readable names for existing registration records."""
+        if not await self.ensure_columns(
+            (
+                (self.TableCols.GuildName, "TEXT"),
+                (self.TableCols.MemberUsername, "TEXT"),
+                (self.TableCols.MemberDisplayName, "TEXT"),
+                (self.TableCols.RoleName, "TEXT"),
+            )
+        ):
+            return False
+        return await self.database.execute(
+            f"""
+            UPDATE {self.table_name}
+            SET {self.TableCols.GuildName} = COALESCE(
+                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
+                    {self.TableCols.GuildName}
+                ),
+                {self.TableCols.MemberUsername} = COALESCE(
+                    (SELECT Username FROM DiscordMembers
+                     WHERE Guild = {self.table_name}.Guild
+                       AND Member = {self.table_name}.Member),
+                    {self.TableCols.MemberUsername}
+                ),
+                {self.TableCols.MemberDisplayName} = COALESCE(
+                    (SELECT DisplayName FROM DiscordMembers
+                     WHERE Guild = {self.table_name}.Guild
+                       AND Member = {self.table_name}.Member),
+                    {self.TableCols.MemberDisplayName}
+                ),
+                {self.TableCols.RoleName} = COALESCE(
+                    (SELECT Name FROM DiscordRoles
+                     WHERE Guild = {self.table_name}.Guild
+                       AND Role = {self.table_name}.Role),
+                    {self.TableCols.RoleName}
+                )
+            """
+        )
 
     @dataclass(frozen=True)
     class _Data:
@@ -142,14 +189,28 @@ class MemberRegistrationRepository(sqlite_db.Base):
     async def add(self, *, guild: discord.Guild, member: int, role: int) -> bool:
         member_name = f"unknown member ({member})"
         try:
-            member_name = await self.member_log_name(guild, member)
+            member_names = await self.member_names(guild, member)
+            role_name = await self.role_name(guild, role)
+            if member_names is not None:
+                member_name = f"{member_names[0]} / {member_names[1]} ({member})"
             executed = await self.database.execute(
                 f"""
                 INSERT OR REPLACE INTO {self.table_name}
-                ({self.TableCols.Guild}, {self.TableCols.Member}, {self.TableCols.Role}, {self.TableCols.Timestamp})
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ({self.TableCols.Guild}, {self.TableCols.Member}, {self.TableCols.Role},
+                 {self.TableCols.Timestamp}, {self.TableCols.GuildName},
+                 {self.TableCols.MemberUsername}, {self.TableCols.MemberDisplayName},
+                 {self.TableCols.RoleName})
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
                 """,
-                (guild.id, member, role),
+                (
+                    guild.id,
+                    member,
+                    role,
+                    guild.name,
+                    member_names[0] if member_names is not None else None,
+                    member_names[1] if member_names is not None else None,
+                    role_name,
+                ),
             )
             if not executed:
                 return False

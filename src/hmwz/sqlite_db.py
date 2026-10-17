@@ -70,9 +70,18 @@ class Base:
 
     async def member_log_name(self, guild: Guild, member_id: int) -> str:
         """Return a known Discord username and display name for a member log."""
+        names = await self.member_names(guild, member_id)
+        if names is not None:
+            return f"{names[0]} / {names[1]} ({member_id})"
+        return f"unknown member ({member_id})"
+
+    async def member_names(
+        self, guild: Guild, member_id: int
+    ) -> tuple[str, str] | None:
+        """Return the known username and display name for a guild member."""
         member = guild.get_member(member_id)
         if member is not None:
-            return f"{member.name} / {member.display_name} ({member.id})"
+            return member.name, member.display_name
 
         row = await self.database.fetch_one(
             """
@@ -82,15 +91,22 @@ class Base:
             """,
             (guild.id, member_id),
         )
-        if row is not None:
-            return f"{row['Username']} / {row['DisplayName']} ({member_id})"
-        return f"unknown member ({member_id})"
+        if row is None:
+            return None
+        return row["Username"], row["DisplayName"]
 
     async def channel_log_name(self, guild: Guild, channel_id: int) -> str:
         """Return a known Discord channel name for a channel log."""
+        name = await self.channel_name(guild, channel_id)
+        if name is not None:
+            return f"{name} ({channel_id})"
+        return f"unknown channel ({channel_id})"
+
+    async def channel_name(self, guild: Guild, channel_id: int) -> str | None:
+        """Return the known name for a guild channel."""
         channel = guild.get_channel_or_thread(channel_id)
         if channel is not None:
-            return f"{channel.name} ({channel.id})"
+            return channel.name
 
         row = await self.database.fetch_one(
             """
@@ -100,15 +116,20 @@ class Base:
             """,
             (guild.id, channel_id),
         )
-        if row is not None:
-            return f"{row['Name']} ({channel_id})"
-        return f"unknown channel ({channel_id})"
+        return row["Name"] if row is not None else None
 
     async def role_log_name(self, guild: Guild, role_id: int) -> str:
         """Return a known Discord role name for a role log."""
+        name = await self.role_name(guild, role_id)
+        if name is not None:
+            return f"{name} ({role_id})"
+        return f"unknown role ({role_id})"
+
+    async def role_name(self, guild: Guild, role_id: int) -> str | None:
+        """Return the known name for a guild role."""
         role = guild.get_role(role_id)
         if role is not None:
-            return f"{role.name} ({role.id})"
+            return role.name
 
         row = await self.database.fetch_one(
             """
@@ -118,9 +139,19 @@ class Base:
             """,
             (guild.id, role_id),
         )
-        if row is not None:
-            return f"{row['Name']} ({role_id})"
-        return f"unknown role ({role_id})"
+        return row["Name"] if row is not None else None
+
+    async def ensure_columns(self, columns: tuple[tuple[str, str], ...]) -> bool:
+        """Add missing columns to this repository's existing table."""
+        rows = await self.database.fetch_all(f'PRAGMA table_info("{self.table_name}")')
+        existing = {row["name"] for row in rows}
+        for column_name, column_type in columns:
+            if column_name not in existing and not await self.database.execute(
+                f'ALTER TABLE "{self.table_name}" '
+                f'ADD COLUMN "{column_name}" {column_type}'
+            ):
+                return False
+        return True
 
 
 class Database:

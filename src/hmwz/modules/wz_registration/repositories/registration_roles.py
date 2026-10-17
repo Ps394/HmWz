@@ -23,6 +23,8 @@ class RegistrationRoleRepository(sqlite_db.Base):
         Role: str = "Role"
         Permanent: str = "Permanent"
         Score: str = "Score"
+        GuildName: str = "GuildName"
+        RoleName: str = "RoleName"
 
     @property
     def table(self) -> str:
@@ -35,9 +37,33 @@ class RegistrationRoleRepository(sqlite_db.Base):
         {self.TableCols.Role} INTEGER,
         {self.TableCols.Permanent} BOOLEAN,
         {self.TableCols.Score} INTEGER DEFAULT 1,
+        {self.TableCols.GuildName} TEXT,
+        {self.TableCols.RoleName} TEXT,
         PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Role})
         )WITHOUT ROWID
         """
+
+    async def migrate_names(self) -> bool:
+        """Add and populate readable names for existing role records."""
+        if not await self.ensure_columns(
+            ((self.TableCols.GuildName, "TEXT"), (self.TableCols.RoleName, "TEXT"))
+        ):
+            return False
+        return await self.database.execute(
+            f"""
+            UPDATE {self.table_name}
+            SET {self.TableCols.GuildName} = COALESCE(
+                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
+                    {self.TableCols.GuildName}
+                ),
+                {self.TableCols.RoleName} = COALESCE(
+                    (SELECT Name FROM DiscordRoles
+                     WHERE Guild = {self.table_name}.Guild
+                       AND Role = {self.table_name}.Role),
+                    {self.TableCols.RoleName}
+                )
+            """
+        )
 
     @dataclass(frozen=True)
     class _Data:
@@ -179,10 +205,26 @@ class RegistrationRoleRepository(sqlite_db.Base):
         """
         role_name = f"unknown role ({role})"
         try:
-            role_name = await self.role_log_name(guild, role)
+            resolved_role_name = await self.role_name(guild, role)
+            role_name = (
+                f"{resolved_role_name} ({role})"
+                if resolved_role_name is not None
+                else role_name
+            )
             executed = await self.database.execute(
-                f"INSERT OR REPLACE INTO {self.table_name} (Guild, Role, Permanent, Score) VALUES (?, ?, ?, ?)",
-                (guild.id, role, int(permanent is True), score),
+                f"""
+                INSERT OR REPLACE INTO {self.table_name}
+                    (Guild, Role, Permanent, Score, GuildName, RoleName)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    guild.id,
+                    role,
+                    int(permanent is True),
+                    score,
+                    guild.name,
+                    resolved_role_name,
+                ),
             )
             if not executed:
                 return False

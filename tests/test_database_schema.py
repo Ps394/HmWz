@@ -114,6 +114,98 @@ async def test_schema_enforces_server_foreign_keys(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_wz_table_name_columns_migrate_and_backfill(tmp_path: Path) -> None:
+    database = Database(folder=str(tmp_path), filename="wz-name-migration.db")
+    servers = ServerRepository(database)
+    entities = DiscordEntityRepository(database)
+    assert await database.execute(servers.table)
+    for statement in entities.tables:
+        assert await database.execute(statement)
+
+    assert await database.execute(
+        "INSERT INTO Servers (Guild, Name) VALUES (?, ?)", (123, "Guild Name")
+    )
+    assert await database.execute(
+        "INSERT INTO DiscordMembers (Guild, Member, Username, DisplayName) "
+        "VALUES (?, ?, ?, ?)",
+        (123, 234, "player-name", "Player Nickname"),
+    )
+    assert await database.execute(
+        "INSERT INTO DiscordChannels (Guild, Channel, Name) VALUES (?, ?, ?)",
+        (123, 456, "registration-channel"),
+    )
+    assert await database.execute(
+        "INSERT INTO DiscordRoles (Guild, Role, Name) VALUES (?, ?, ?)",
+        (123, 789, "registration-role"),
+    )
+
+    assert await database.execute(
+        "CREATE TABLE WzRoles (Guild INTEGER, Role INTEGER, Permanent BOOLEAN, "
+        "Score INTEGER DEFAULT 1, PRIMARY KEY (Guild, Role)) WITHOUT ROWID"
+    )
+    assert await database.execute(
+        "INSERT INTO WzRoles (Guild, Role, Permanent, Score) VALUES (?, ?, ?, ?)",
+        (123, 789, 1, 3),
+    )
+    assert await database.execute(
+        "CREATE TABLE WzRegistrations (Guild INTEGER, Member INTEGER, Role INTEGER, "
+        "Timestamp TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (Guild, Member)) "
+        "WITHOUT ROWID"
+    )
+    assert await database.execute(
+        "INSERT INTO WzRegistrations (Guild, Member, Role) VALUES (?, ?, ?)",
+        (123, 234, 789),
+    )
+    assert await database.execute(
+        "CREATE TABLE WzRegistration (Guild INTEGER PRIMARY KEY, Channel INTEGER, "
+        "Message INTEGER, Title TEXT, Description TEXT) WITHOUT ROWID"
+    )
+    assert await database.execute(
+        "INSERT INTO WzRegistration (Guild, Channel) VALUES (?, ?)", (123, 456)
+    )
+    assert await database.execute(
+        "CREATE TABLE WzPurgeChannels (Guild INTEGER NOT NULL, Channel INTEGER NOT NULL, "
+        "PRIMARY KEY (Guild, Channel)) WITHOUT ROWID"
+    )
+    assert await database.execute(
+        "INSERT INTO WzPurgeChannels (Guild, Channel) VALUES (?, ?)", (123, 456)
+    )
+
+    repositories = (
+        RegistrationRoleRepository(database),
+        MemberRegistrationRepository(database),
+        RegistrationSettingsRepository(database),
+        PurgeChannelRepository(database),
+    )
+    for repository in repositories:
+        assert await repository.migrate_names()
+
+    expected = {
+        "WzRoles": (
+            "SELECT GuildName, RoleName FROM WzRoles",
+            ("Guild Name", "registration-role"),
+        ),
+        "WzRegistrations": (
+            "SELECT GuildName, MemberUsername, MemberDisplayName, RoleName "
+            "FROM WzRegistrations",
+            ("Guild Name", "player-name", "Player Nickname", "registration-role"),
+        ),
+        "WzRegistration": (
+            "SELECT GuildName, ChannelName FROM WzRegistration",
+            ("Guild Name", "registration-channel"),
+        ),
+        "WzPurgeChannels": (
+            "SELECT GuildName, ChannelName FROM WzPurgeChannels",
+            ("Guild Name", "registration-channel"),
+        ),
+    }
+    for query, expected_values in expected.values():
+        row = await database.fetch_one(query)
+        assert row is not None
+        assert tuple(row) == expected_values
+
+
+@pytest.mark.asyncio
 async def test_discord_entity_names_are_saved_and_updated(tmp_path: Path) -> None:
     database = Database(folder=str(tmp_path), filename="entity-names.db")
     servers = ServerRepository(database)

@@ -15,6 +15,10 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 - Separate Bereinigungsbefehle für konfigurierte Kanäle und für den aktuellen Textkanal.
 - Speicherung von Servereinstellungen, Registrierungen und bekannten Discord-Namen
   für Guilds, Mitglieder (Benutzername und Anzeigename), Kanäle und Rollen in SQLite.
+- Die WZ-Tabellen `WzRoles`, `WzRegistrations`, `WzRegistration` und
+  `WzPurgeChannels` enthalten neben den IDs auch die zugehörigen Guild-, Rollen-,
+  Mitglieder- und Kanalnamen. Bestehende Tabellen werden beim Start ergänzt und
+  verfügbare Namen aus den Discord-Namentabellen nachgetragen.
 - Discord stellt keine rechtlichen Klarnamen bereit; gespeichert werden die von
   Discord gelieferten Benutzernamen und Anzeigenamen.
 - Deutsche und englische Command-Lokalisierungen.

@@ -155,6 +155,8 @@ class Client(discord.Client):
                 self._servers.log_prefix(after),
                 before.name,
             )
+            return
+        await self.module_manager.on_guild_update(before, after)
 
     async def on_member_join(self, member: discord.Member):
         """Persist a member's username and display name when they join."""

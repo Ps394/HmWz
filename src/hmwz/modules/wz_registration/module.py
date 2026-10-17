@@ -197,7 +197,7 @@ class WzRegistrationModule(BasicModule):
 
     async def sync(self, startup: bool = False) -> bool:
         """Synchronisiert den technischen Modulzustand (Schema)."""
-        if not await self._ensure_schema():
+        if not await self.sync_names():
             return False
         if startup:
             _logger.debug(
@@ -206,6 +206,27 @@ class WzRegistrationModule(BasicModule):
                 self.guild.id,
             )
         return True
+
+    async def sync_names(self) -> bool:
+        """Synchronize current Discord names into the WZ tables."""
+        if not await self._ensure_schema():
+            return False
+        synced = True
+        for repository in (
+            self.roles,
+            self.registration,
+            self.registrations,
+            self.purge_channels,
+        ):
+            if not await repository.migrate_names():
+                _logger.error(
+                    "%s (%s) - Failed to sync names in table %s.",
+                    self.guild.name,
+                    self.guild.id,
+                    repository.table_name,
+                )
+                synced = False
+        return synced
 
     async def ensure(self) -> bool:
         """Stellt sicher, dass die Registrierungsuebersicht sichtbar und aktuell ist."""
@@ -225,6 +246,14 @@ class WzRegistrationModule(BasicModule):
             return False
         return await self.sync(startup=True)
 
+    async def on_guild_update(
+        self, before: discord.Guild, after: discord.Guild
+    ) -> bool:
+        """Aktualisiert gespeicherte Guild-Namen nach einer Umbenennung."""
+        if after.id != self.guild.id:
+            return False
+        return await self.sync_names()
+
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
         """Entfernt guild-bezogene WZ-Daten beim Verlassen der Guild."""
         if guild.id != self.guild.id:
@@ -239,7 +268,9 @@ class WzRegistrationModule(BasicModule):
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
         """Bestaetigt Relevanz des Events fuer diese Guild."""
-        return channel.guild.id == self.guild.id
+        if channel.guild.id != self.guild.id:
+            return False
+        return await self.sync_names()
 
     async def on_guild_channel_update(
         self,
@@ -247,7 +278,9 @@ class WzRegistrationModule(BasicModule):
         after: discord.abc.GuildChannel,
     ) -> bool:
         """Bestaetigt Relevanz des Events fuer diese Guild."""
-        return before.guild.id == self.guild.id
+        if before.guild.id != self.guild.id:
+            return False
+        return await self.sync_names()
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         """Bestaetigt Relevanz des Events fuer diese Guild."""
@@ -257,7 +290,9 @@ class WzRegistrationModule(BasicModule):
         self, before: discord.Role, after: discord.Role
     ) -> bool:
         """Bestaetigt Relevanz des Events fuer diese Guild."""
-        return before.guild.id == self.guild.id
+        if before.guild.id != self.guild.id:
+            return False
+        return await self.sync_names()
 
     async def on_guild_role_delete(self, role: discord.Role) -> bool:
         """Bereinigt geloeschte Rollen aus Rollen- und Registrierungsdaten."""
@@ -272,6 +307,8 @@ class WzRegistrationModule(BasicModule):
     ) -> bool:
         """Synchronisiert Registrierungen bei manuellen Rollen-Aenderungen."""
         if before.guild.id != self.guild.id:
+            return False
+        if not await self.sync_names():
             return False
 
         before_role_ids = {role.id for role in before.roles}
@@ -327,6 +364,8 @@ class WzRegistrationModule(BasicModule):
     async def on_raw_member_remove(self, payload: events.RawMemberRemoveEvent) -> bool:
         """Entfernt Registrierungen fuer verlassende Mitglieder."""
         if payload.guild_id != self.guild.id:
+            return False
+        if not await self.sync_names():
             return False
         await self.registrations.remove(
             guild=self.guild,

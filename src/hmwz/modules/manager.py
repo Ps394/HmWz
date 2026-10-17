@@ -104,6 +104,12 @@ class Manager:
         self._modules_by_guild.pop(guild.id, None)
         return await self._dispatch(guild, "on_guild_join", guild)
 
+    async def on_guild_update(
+        self, before: discord.Guild, after: discord.Guild
+    ) -> bool:
+        """Leitet Guild-Updateevents an Guild-Module weiter."""
+        return await self._dispatch(after, "on_guild_update", before, after)
+
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
         """Verarbeitet Guild-Remove Ereignisse fuer alle Module."""
         status = await self._dispatch(guild, "on_guild_remove", guild)

@@ -24,6 +24,8 @@ class PurgeChannelRepository(sqlite_db.Base):
     class TableCols:
         Guild: str = "Guild"
         Channel: str = "Channel"
+        GuildName: str = "GuildName"
+        ChannelName: str = "ChannelName"
 
     @property
     def table(self) -> str:
@@ -31,10 +33,34 @@ class PurgeChannelRepository(sqlite_db.Base):
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER NOT NULL,
             {self.TableCols.Channel} INTEGER NOT NULL,
+            {self.TableCols.GuildName} TEXT,
+            {self.TableCols.ChannelName} TEXT,
             PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Channel}),
             FOREIGN KEY ({self.TableCols.Guild}) REFERENCES Servers(Guild)
         ) WITHOUT ROWID
         """
+
+    async def migrate_names(self) -> bool:
+        """Add and populate readable names for existing purge-channel records."""
+        if not await self.ensure_columns(
+            ((self.TableCols.GuildName, "TEXT"), (self.TableCols.ChannelName, "TEXT"))
+        ):
+            return False
+        return await self.database.execute(
+            f"""
+            UPDATE {self.table_name}
+            SET {self.TableCols.GuildName} = COALESCE(
+                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
+                    {self.TableCols.GuildName}
+                ),
+                {self.TableCols.ChannelName} = COALESCE(
+                    (SELECT Name FROM DiscordChannels
+                     WHERE Guild = {self.table_name}.Guild
+                       AND Channel = {self.table_name}.Channel),
+                    {self.TableCols.ChannelName}
+                )
+            """
+        )
 
     type Records = tuple[PurgeChannel, ...] | None
 
@@ -78,18 +104,28 @@ class PurgeChannelRepository(sqlite_db.Base):
     async def add(self, *, guild: discord.Guild, channel_id: int) -> bool:
         channel_name = f"unknown channel ({channel_id})"
         try:
-            channel_name = await self.channel_log_name(guild, channel_id)
+            resolved_channel_name = await self.channel_name(guild, channel_id)
+            if resolved_channel_name is not None:
+                channel_name = f"{resolved_channel_name} ({channel_id})"
             executed = await self.database.execute(
                 f"""
                 INSERT OR IGNORE INTO {self.table_name}
-                    ({self.TableCols.Guild}, {self.TableCols.Channel})
-                SELECT ?, ?
+                    ({self.TableCols.Guild}, {self.TableCols.Channel},
+                     {self.TableCols.GuildName}, {self.TableCols.ChannelName})
+                SELECT ?, ?, ?, ?
                 WHERE (
                     SELECT COUNT(*) FROM {self.table_name}
                     WHERE {self.TableCols.Guild} = ?
                 ) < ?
                 """,
-                (guild.id, channel_id, guild.id, PurgeChannel.MAX_PER_GUILD),
+                (
+                    guild.id,
+                    channel_id,
+                    guild.name,
+                    resolved_channel_name,
+                    guild.id,
+                    PurgeChannel.MAX_PER_GUILD,
+                ),
             )
             if not executed:
                 return False

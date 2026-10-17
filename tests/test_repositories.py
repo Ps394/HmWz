@@ -50,9 +50,15 @@ async def test_repositories_create_read_update_and_remove_records(
         SimpleNamespace(
             id=123,
             name="test guild",
-            get_channel_or_thread=lambda channel_id: None,
-            get_member=lambda member_id: None,
-            get_role=lambda role_id: None,
+            get_channel_or_thread=lambda channel_id: SimpleNamespace(
+                id=channel_id, name="registration-channel"
+            ),
+            get_member=lambda member_id: SimpleNamespace(
+                id=member_id, name="player", display_name="Player One"
+            ),
+            get_role=lambda role_id: SimpleNamespace(
+                id=role_id, name="Registration Role"
+            ),
         ),
     )
     await initialize_database(database)
@@ -82,6 +88,12 @@ async def test_repositories_create_read_update_and_remove_records(
     assert role_records is not None
     assert role_records[0].role == 789
     assert role_records[0].score == 3
+    saved_role = await database.fetch_one(
+        "SELECT GuildName, RoleName FROM WzRoles WHERE Guild = ? AND Role = ?",
+        (123, 789),
+    )
+    assert saved_role is not None
+    assert tuple(saved_role) == ("test guild", "Registration Role")
     assert await roles.remove(guild=guild, role=789)
     assert await roles.get(guild=guild) is None
 
@@ -97,6 +109,12 @@ async def test_repositories_create_read_update_and_remove_records(
     assert settings_record is not None
     assert settings_record.channel == 456
     assert settings_record.message == 101112
+    saved_settings = await database.fetch_one(
+        "SELECT GuildName, ChannelName FROM WzRegistration WHERE Guild = ?",
+        (123,),
+    )
+    assert saved_settings is not None
+    assert tuple(saved_settings) == ("test guild", "registration-channel")
     assert await settings.remove(guild=guild)
     assert await settings.get(guild=guild) is None
 
@@ -106,6 +124,20 @@ async def test_repositories_create_read_update_and_remove_records(
     member_records = await registrations.get(guild=guild, member=234)
     assert member_records is not None
     assert member_records[0].member == 234
+    saved_registration = await database.fetch_one(
+        """
+        SELECT GuildName, MemberUsername, MemberDisplayName, RoleName
+        FROM WzRegistrations WHERE Guild = ? AND Member = ?
+        """,
+        (123, 234),
+    )
+    assert saved_registration is not None
+    assert tuple(saved_registration) == (
+        "test guild",
+        "player",
+        "Player One",
+        "Registration Role",
+    )
     assert await registrations.remove(guild=guild, member=234)
     assert await registrations.get(guild=guild, member=234) is None
 
@@ -129,6 +161,13 @@ async def test_repositories_create_read_update_and_remove_records(
     purge_records = await purge_channels.get(guild=guild)
     assert purge_records is not None
     assert purge_records[0].channel_id == 456
+    saved_purge_channel = await database.fetch_one(
+        "SELECT GuildName, ChannelName FROM WzPurgeChannels "
+        "WHERE Guild = ? AND Channel = ?",
+        (123, 456),
+    )
+    assert saved_purge_channel is not None
+    assert tuple(saved_purge_channel) == ("test guild", "registration-channel")
     assert await purge_channels.remove(guild=guild, channel_id=456)
     assert await purge_channels.get(guild=guild) is None
 

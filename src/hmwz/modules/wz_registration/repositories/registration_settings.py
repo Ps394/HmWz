@@ -26,6 +26,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         Message: str = "Message"
         Title: str = "Title"
         Description: str = "Description"
+        GuildName: str = "GuildName"
+        ChannelName: str = "ChannelName"
 
     @property
     def table(self) -> str:
@@ -36,9 +38,33 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             {self.TableCols.Message} INTEGER,
             {self.TableCols.Title} TEXT,
             {self.TableCols.Description} TEXT,
+            {self.TableCols.GuildName} TEXT,
+            {self.TableCols.ChannelName} TEXT,
             FOREIGN KEY ({self.TableCols.Guild}) REFERENCES Servers(Guild)
         ) WITHOUT ROWID
         """
+
+    async def migrate_names(self) -> bool:
+        """Add and populate readable names for existing registration settings."""
+        if not await self.ensure_columns(
+            ((self.TableCols.GuildName, "TEXT"), (self.TableCols.ChannelName, "TEXT"))
+        ):
+            return False
+        return await self.database.execute(
+            f"""
+            UPDATE {self.table_name}
+            SET {self.TableCols.GuildName} = COALESCE(
+                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
+                    {self.TableCols.GuildName}
+                ),
+                {self.TableCols.ChannelName} = COALESCE(
+                    (SELECT Name FROM DiscordChannels
+                     WHERE Guild = {self.table_name}.Guild
+                       AND Channel = {self.table_name}.Channel),
+                    {self.TableCols.ChannelName}
+                )
+            """
+        )
 
     @dataclass(frozen=True)
     class _Data:
@@ -107,9 +133,14 @@ class RegistrationSettingsRepository(sqlite_db.Base):
     ) -> bool:
         channel_name: str | None = None
         try:
-            channel_name = (
-                await self.channel_log_name(guild, channel_id)
+            resolved_channel_name = (
+                await self.channel_name(guild, channel_id)
                 if channel_id is not None
+                else None
+            )
+            channel_name = (
+                f"{resolved_channel_name} ({channel_id})"
+                if channel_id is not None and resolved_channel_name is not None
                 else None
             )
             cols: list[str] = []
@@ -118,6 +149,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             if channel_id is not None:
                 cols.append(self.TableCols.Channel)
                 vals.append(channel_id)
+                cols.append(self.TableCols.ChannelName)
+                vals.append(resolved_channel_name)
             if message_id is not None:
                 cols.append(self.TableCols.Message)
                 vals.append(message_id)
@@ -131,6 +164,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             if not cols:
                 return False
 
+            cols.insert(0, self.TableCols.GuildName)
+            vals.insert(0, guild.name)
             columns = f"{self.TableCols.Guild}, " + ", ".join(cols)
             placeholders = ", ".join(["?"] * (1 + len(cols)))
             update_clause = ", ".join([f"{c}=excluded.{c}" for c in cols])
