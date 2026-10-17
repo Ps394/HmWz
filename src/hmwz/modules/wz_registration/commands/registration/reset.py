@@ -12,6 +12,57 @@ from ...module import WzRegistrationModule
 logger = logging.getLogger(__name__)
 
 
+async def _remove_registration_roles(
+    guild: discord.Guild, roles_to_remove: set[tuple[int, int]]
+) -> None:
+    for member_id, role_id in roles_to_remove:
+        member = await utils.fetch_member(guild, member_id)
+        role = guild.get_role(role_id)
+        if member is None or role is None:
+            continue
+        try:
+            await member.remove_roles(role, reason="WZ Registration Reset")
+            await asyncio.sleep(0.05)
+        except HTTPException as error:
+            logger.warning(
+                "Failed to remove role %s (%s) from member %s / %s (%s) "
+                "in guild %s (%s): %s",
+                role.name,
+                role.id,
+                member.name,
+                member.display_name,
+                member.id,
+                guild.name,
+                guild.id,
+                error,
+            )
+
+
+async def _purge_configured_channels(
+    guild: discord.Guild,
+    channel_ids: set[int],
+) -> None:
+    for channel_id in sorted(channel_ids):
+        channel = await utils.fetch_channel(guild, channel_id)
+        if channel is None:
+            continue
+        try:
+            await channel.purge(
+                limit=500,
+                check=lambda message: not message.pinned and not message.author.bot,
+                reason="WZ Registration Reset",
+            )
+        except HTTPException as error:
+            logger.warning(
+                "Failed to purge WZ channel %s (%s) in guild %s (%s): %s",
+                channel.name,
+                channel.id,
+                guild.name,
+                guild.id,
+                error,
+            )
+
+
 @app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
 @app_commands.checks.has_permissions(
     manage_roles=True, manage_messages=True, manage_channels=True
@@ -43,7 +94,8 @@ async def reset(
 ) -> None:
     await interaction.response.defer(ephemeral=ephemeral)
     try:
-        if not interaction.guild:
+        guild = interaction.guild
+        if guild is None:
             await interaction.followup.send(
                 t(interaction, "wz.registration.reset.error"), ephemeral=True
             )
@@ -57,10 +109,10 @@ async def reset(
             return
 
         module: WzRegistrationModule = await manager.get_module(
-            interaction.guild, WzRegistrationModule
+            guild, WzRegistrationModule
         )
-        registration_config = await module.registration.get(guild=interaction.guild)
-        configured_roles = await module.roles.get(guild=interaction.guild)
+        registration_config = await module.registration.get(guild=guild)
+        configured_roles = await module.roles.get(guild=guild)
 
         if (
             not registration_config
@@ -74,7 +126,7 @@ async def reset(
 
         non_permanent_roles = [r.role for r in configured_roles if not r.permanent]
 
-        registrations = await module.registrations.get(guild=interaction.guild)
+        registrations = await module.registrations.get(guild=guild)
         if not registrations:
             await interaction.followup.send(
                 t(interaction, "wz.registration.csv.no_registrations"), ephemeral=True
@@ -90,30 +142,10 @@ async def reset(
                 for reg in non_permanent_registrations
                 if reg.member is not None and reg.role is not None
             }
-            for member_id, role_id in roles_to_remove:
-                member = await utils.fetch_member(interaction.guild, member_id)
-                role = interaction.guild.get_role(role_id)
-                if member is None or role is None:
-                    continue
-                try:
-                    await member.remove_roles(role, reason="WZ Registration Reset")
-                    await asyncio.sleep(0.05)
-                except HTTPException as e:
-                    logger.warning(
-                        "Failed to remove role %s (%s) from member %s / %s (%s) "
-                        "in guild %s (%s): %s",
-                        role.name,
-                        role.id,
-                        member.name,
-                        member.display_name,
-                        member.id,
-                        interaction.guild.name,
-                        interaction.guild.id,
-                        e,
-                    )
+            await _remove_registration_roles(guild, roles_to_remove)
 
             success = await module.registrations.remove(
-                guild=interaction.guild, roles=non_permanent_roles
+                guild=guild, roles=non_permanent_roles
             )
             if not success:
                 await interaction.followup.send(
@@ -122,32 +154,13 @@ async def reset(
                 return
 
         if purge:
-            channels_to_purge = await module.purge_channels.get(guild=interaction.guild)
+            channels_to_purge = await module.purge_channels.get(guild=guild)
             channel_ids = {
                 configured.channel_id for configured in channels_to_purge or ()
             }
             if registration_config.channel is not None:
                 channel_ids.add(registration_config.channel)
-
-            for channel_id in sorted(channel_ids):
-                channel = await utils.fetch_channel(interaction.guild, channel_id)
-                if channel is None:
-                    continue
-                try:
-                    await channel.purge(
-                        limit=500,
-                        check=lambda m: not m.pinned and not m.author.bot,
-                        reason="WZ Registration Reset",
-                    )
-                except HTTPException as e:
-                    logger.warning(
-                        "Failed to purge WZ channel %s (%s) in guild %s (%s): %s",
-                        channel.name,
-                        channel.id,
-                        interaction.guild.name,
-                        interaction.guild.id,
-                        e,
-                    )
+            await _purge_configured_channels(guild, channel_ids)
 
         await module.compose_registration_overview(force=True)
         timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")
