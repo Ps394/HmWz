@@ -123,7 +123,7 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Die Registrierungsfunktionen liege
 | --- | --- |
 | `/wz registration account-add account:<Account>` | Verknüpft einen Ingame-Account mit deinem Discord-Mitglied. Ein Account kann pro Server nur einem Discord-Mitglied zugeordnet sein. |
 | `/wz registration account-remove account:<Account>` | Entfernt einen verknüpften Ingame-Account sowie dessen Anmeldung und die zugehörige Discord-Rolle, sofern kein anderer deiner Accounts diese Rolle benötigt. |
-| `/wz registration account-list` | Zeigt deine verknüpften Ingame-Accounts an. |
+| `/wz registration account-list` | Zeigt deinen Discord-Anzeigenamen als Account sowie alle verknüpften Ingame-Accounts an. |
 | `/wz registration register account:<Account> role:<Anmeldungsrolle>` | Meldet einen deiner verknüpften Ingame-Accounts für die angegebene konfigurierte Rolle an. |
 | `/wz registration deregister account:<Account>` | Meldet den Account von seiner aktuellen Anmeldungsrolle ab. Die Rolle wird automatisch aus der Registrierung ermittelt und nur entfernt, wenn kein weiterer Account dieses Mitglieds dafür registriert ist. |
 | `/wz registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Ingame-Account, Rolle, Zeitstempel und Rollenscore. Antwortstandard: privat. Der Befehl ist pro Server auf einen Aufruf alle 120 Sekunden begrenzt. |

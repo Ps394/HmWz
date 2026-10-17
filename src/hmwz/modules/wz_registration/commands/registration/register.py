@@ -8,7 +8,11 @@ from discord import Interaction, app_commands
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
-from .autocomplete import linked_accounts, registration_roles
+from .autocomplete import (
+    DISPLAY_NAME_ACCOUNT_VALUE,
+    linked_accounts,
+    registration_roles,
+)
 from ...module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
@@ -58,14 +62,22 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
         module: WzRegistrationModule = await manager.get_module(
             guild, WzRegistrationModule
         )
-        linked_accounts = await module.game_accounts.get(
-            guild=guild, member=member.id, account=account
-        )
-        if not linked_accounts:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.not_linked"), ephemeral=True
+        is_display_name = account == DISPLAY_NAME_ACCOUNT_VALUE
+        if is_display_name:
+            canonical_account = ""
+            account_label = member.display_name
+        else:
+            linked_accounts = await module.game_accounts.get(
+                guild=guild, member=member.id, account=account
             )
-            return
+            if not linked_accounts:
+                await interaction.followup.send(
+                    t(interaction, "wz.registration.account.not_linked"),
+                    ephemeral=True,
+                )
+                return
+            canonical_account = linked_accounts[0].account
+            account_label = canonical_account
         configured_roles = await module.roles.get(guild=guild)
         try:
             role_id = int(role)
@@ -87,7 +99,12 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             )
             return
 
-        canonical_account = linked_accounts[0].account
+        if is_display_name:
+            await module._handle_registration(
+                interaction, selected_role, response_deferred=True
+            )
+            return
+
         registrations = await module.registrations.get(guild=guild, member=member.id)
         current = next(
             (
@@ -112,7 +129,7 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
                         if repaired_role
                         else "wz.registration.account.already_registered"
                     ),
-                    account=canonical_account,
+                    account=account_label,
                     role_name=selected_role.name,
                 ),
                 ephemeral=True,
@@ -149,7 +166,7 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             t(
                 interaction,
                 "wz.registration.account.registered",
-                account=canonical_account,
+                account=account_label,
                 role_name=selected_role.name,
             ),
             ephemeral=True,

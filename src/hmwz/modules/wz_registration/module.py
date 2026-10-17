@@ -61,7 +61,11 @@ class WzRegistrationModule(BasicModule):
         )
 
     async def _handle_registration(
-        self, interaction: discord.Interaction, role: discord.Role
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role,
+        *,
+        response_deferred: bool = False,
     ) -> None:
         """Verarbeitet An- und Abmeldung eines Users fuer eine Rolle."""
         guild = interaction.guild
@@ -69,7 +73,8 @@ class WzRegistrationModule(BasicModule):
         if guild is None or not isinstance(member, discord.Member):
             return
 
-        await interaction.response.defer(ephemeral=True)
+        if not response_deferred:
+            await interaction.response.defer(ephemeral=True)
         if not await self.entities.add_member(guild=guild, member=member):
             _logger.error(
                 "%s Failed to save member name %s / %s (%s).",

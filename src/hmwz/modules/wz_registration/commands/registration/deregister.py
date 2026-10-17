@@ -8,7 +8,7 @@ from discord import Interaction, app_commands
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
-from .autocomplete import registered_accounts
+from .autocomplete import DISPLAY_NAME_ACCOUNT_VALUE, registered_accounts
 from ...module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
@@ -50,15 +50,22 @@ async def deregister(interaction: Interaction, account: str) -> None:
         module: WzRegistrationModule = await manager.get_module(
             guild, WzRegistrationModule
         )
-        linked_accounts = await module.game_accounts.get(
-            guild=guild, member=member.id, account=account
-        )
-        if not linked_accounts:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.not_linked"), ephemeral=True
+        is_display_name = account == DISPLAY_NAME_ACCOUNT_VALUE
+        if is_display_name:
+            canonical_account = ""
+            account_label = member.display_name
+        else:
+            linked_accounts = await module.game_accounts.get(
+                guild=guild, member=member.id, account=account
             )
-            return
-        canonical_account = linked_accounts[0].account
+            if not linked_accounts:
+                await interaction.followup.send(
+                    t(interaction, "wz.registration.account.not_linked"),
+                    ephemeral=True,
+                )
+                return
+            canonical_account = linked_accounts[0].account
+            account_label = canonical_account
         registrations = await module.registrations.get(
             guild=guild, member=member.id, account=canonical_account
         )
@@ -68,7 +75,7 @@ async def deregister(interaction: Interaction, account: str) -> None:
                 t(
                     interaction,
                     "wz.registration.account.not_registered",
-                    account=canonical_account,
+                    account=account_label,
                 ),
                 ephemeral=True,
             )
@@ -95,7 +102,7 @@ async def deregister(interaction: Interaction, account: str) -> None:
             t(
                 interaction,
                 "wz.registration.account.deregistered",
-                account=canonical_account,
+                account=account_label,
                 role_name=role.name if role is not None else str(current.role),
             ),
             ephemeral=True,
