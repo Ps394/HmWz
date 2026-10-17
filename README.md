@@ -4,7 +4,7 @@
 
 Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Discord-Server, alle verfügbaren Befehle sowie Installation und Betrieb.
 
-![Beispiel einer Bot-Übersicht](assets/registration.png)
+![Beispiel einer Bot-Übersicht](Assets/registration.png)
 
 ## Funktionen
 
