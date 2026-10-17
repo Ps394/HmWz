@@ -156,21 +156,26 @@ scripts/
   win/                          Windows-Installation
 src/
   bot.py                        Einstiegspunkt
-  HmWz/
-    hmClient/                   Discord-Client, Commands und Monitoring
-    moduls/                     Modulsystem und WZ-Registrierung
+  hmwz/
+    hm_client/                  Discord-Client, Commands und Monitoring
+      repositories/             Serverdatenzugriff
+    modules/                    Modulsystem und WZ-Registrierung
+      wz_registration/
+        repositories/           WZ-Datenzugriff
+    hm_models/                  gemeinsame Daten- und Embed-Modelle
     i18n/                       gemeinsame Übersetzungen
     configuration.py            Laden der Laufzeitkonfiguration
-    sqlLiteDB.py                 asynchroner SQLite-Zugriff
+    sqlite_db.py                asynchroner SQLite-Zugriff
 requirements.txt                Python-Abhängigkeiten
+pyproject.toml                  Paket-, Hatch-Build- und optionale Entwicklungsabhängigkeiten
 configuration.json              Laufzeitkonfiguration
 ```
 
-Der Einstiegspunkt `src/bot.py` fügt `src/HmWz` dem Python-Importpfad hinzu, richtet Logging und Discord-Intents ein, lädt den Token und startet anschließend den Client. Das Registrierungsmodul und seine Datenbanktabellen werden serverbezogen verwaltet.
+`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. Das Registrierungsmodul und seine Datenbanktabellen werden serverbezogen verwaltet.
 
 ## Entwicklung und Tests
 
-Für lokale Entwicklung und Debugging kann die virtuelle Umgebung wie oben angelegt werden. Der Bot lässt sich aus dem Projektstamm mit `python src/bot.py` starten; zum Debuggen ist außerdem eine VS-Code-Konfiguration in `.vscode/launch.json` vorhanden. Die Python-Abhängigkeiten sind in `requirements.txt` festgehalten.
+Für lokale Entwicklung und Debugging kann die virtuelle Umgebung wie oben angelegt werden. Mit `python -m pip install -e ".[monitoring]"` wird das Paket samt optionalem Ressourcenmonitoring installierbar; anschließend startet `hmwz` den Bot. Alternativ funktioniert aus dem Projektstamm weiterhin `python src/bot.py`. Für die Entwicklung installiere Hatch und führe `hatch run test` für die Tests inklusive Coverage-Bericht oder `hatch run check` für Linting, Formatprüfung, Typprüfung und Tests aus. Einzelne Hatch-Befehle sind `hatch run lint`, `hatch run format`, `hatch run format-check` und `hatch run typecheck`. Die Skripte für Windows und Linux installieren weiterhin `requirements.txt` und verwenden den Kompatibilitätseinstiegspunkt.
 
 ## Lizenz
 
