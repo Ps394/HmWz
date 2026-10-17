@@ -9,16 +9,18 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 ## Funktionen
 
 - Interaktive Anmeldung und Abmeldung über Schaltflächen in einer Serverübersicht.
+- Verknüpfung mehrerer Ingame-Accounts mit einem Discord-Mitglied sowie
+  accountbezogene An- und Abmeldung.
 - Serverbezogene Registrierungsrollen; Rollen können als permanent markiert werden.
 - Verwaltung der Anmeldungsnachricht und der für einen Reset zusätzlich zu bereinigenden Textkanäle.
 - CSV-Export und Zurücksetzen nicht permanenter Registrierungen.
 - Separate Bereinigungsbefehle für konfigurierte Kanäle und für den aktuellen Textkanal.
-- Speicherung von Servereinstellungen, Registrierungen und bekannten Discord-Namen
+- Speicherung von Servereinstellungen, Ingame-Accounts, Registrierungen und bekannten Discord-Namen
   für Guilds, Mitglieder (Benutzername und Anzeigename), Kanäle und Rollen in SQLite.
-- Die WZ-Tabellen `WzRoles`, `WzRegistrations`, `WzRegistration` und
-  `WzPurgeChannels` enthalten neben den IDs auch die zugehörigen Guild-, Rollen-,
-  Mitglieder- und Kanalnamen. Bestehende Tabellen werden beim Start ergänzt und
-  verfügbare Namen aus den Discord-Namentabellen nachgetragen.
+- `WzRoles`, `WzRegistrations`, `WzRegistration` und `WzPurgeChannels` speichern
+  neben den IDs verfügbare Guild-, Rollen-, Mitglieder- und Kanalnamen.
+  `WzGameAccounts` verknüpft Ingame-Accountnamen mit Discord-Mitgliedern.
+  Bestehende Namen werden beim Start aus den Discord-Namentabellen nachgetragen.
 - Discord stellt keine rechtlichen Klarnamen bereit; gespeichert werden die von
   Discord gelieferten Benutzernamen und Anzeigenamen.
 - Deutsche und englische Command-Lokalisierungen.
@@ -44,7 +46,7 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 5. Setze den Bot in der Rollenliste über die Rollen, die er vergeben oder entfernen soll. Discord erlaubt dem Bot keine Verwaltung gleichrangiger oder höherer Rollen.
 6. Starte den Bot. Beim Start werden die Slash-Commands global synchronisiert; bis sie in Discord erscheinen, kann es kurz dauern.
 
-Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Die Einrichtungskommandos sind auf Mitglieder mit **Manage Roles**, **Manage Messages** und **Manage Channels** beschränkt. `/wz registration register`, `/wz registration reset` und `/wz registration csv` verlangen zusätzlich **Moderate Members**. `/purge` besitzt im Bot selbst keine zusätzliche Berechtigungsprüfung für den ausführenden Benutzer; beschränke den Zugriff auf diesen Befehl deshalb über die Discord-Integrationseinstellungen. Sorge außerdem dafür, dass der Bot Nachrichten in den Registrierungs- und gegebenenfalls Bereinigungskanälen sehen und verwalten kann.
+Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Die Einrichtungskommandos und die Verwaltungsbefehle `reset`, `purge-list` und `csv` sind auf Mitglieder mit **Manage Roles**, **Manage Messages** und **Manage Channels** beschränkt. `reset` und `csv` verlangen zusätzlich **Moderate Members**. Mitglieder verwalten ihre eigenen Ingame-Accounts und Registrierungen über die unten aufgeführten Commands. `/purge` besitzt im Bot selbst keine zusätzliche Berechtigungsprüfung für den ausführenden Benutzer; beschränke den Zugriff auf diesen Befehl deshalb über die Discord-Integrationseinstellungen. Sorge außerdem dafür, dass der Bot Nachrichten in den Registrierungs- und gegebenenfalls Bereinigungskanälen sehen und verwalten kann.
 
 ## Installation und Start
 
@@ -119,12 +121,18 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Die Registrierungsfunktionen liege
 
 | Befehl | Beschreibung |
 | --- | --- |
-
-| `/wz registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Rolle, Zeitstempel und Rollenscore. Antwortstandard: privat. Der Befehl ist pro Server auf einen Aufruf alle 120 Sekunden begrenzt. |
+| `/wz registration account-add account:<Account>` | Verknüpft einen Ingame-Account mit deinem Discord-Mitglied. Ein Account kann pro Server nur einem Discord-Mitglied zugeordnet sein. |
+| `/wz registration account-remove account:<Account>` | Entfernt einen verknüpften Ingame-Account sowie dessen Anmeldung und die zugehörige Discord-Rolle, sofern kein anderer deiner Accounts diese Rolle benötigt. |
+| `/wz registration account-list` | Zeigt deine verknüpften Ingame-Accounts an. |
+| `/wz registration register account:<Account> role:<Anmeldungsrolle>` | Meldet einen deiner verknüpften Ingame-Accounts für die angegebene konfigurierte Rolle an. |
+| `/wz registration deregister account:<Account>` | Meldet den Account von seiner aktuellen Anmeldungsrolle ab. Die Rolle wird automatisch aus der Registrierung ermittelt und nur entfernt, wenn kein weiterer Account dieses Mitglieds dafür registriert ist. |
+| `/wz registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Ingame-Account, Rolle, Zeitstempel und Rollenscore. Antwortstandard: privat. Der Befehl ist pro Server auf einen Aufruf alle 120 Sekunden begrenzt. |
 | `/wz registration reset` | Entfernt Registrierungen und Rollen aller **nicht permanenten** Registrierungsrollen. Standardmäßig (`purge: true`) werden außerdem im Registrierungskanal und in den konfigurierten Bereinigungskanälen jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots gelöscht. Mit `purge: false` bleibt die Kanalbereinigung aus. Antwortstandard: nicht privat. |
 | `/wz registration purge-list` | Zeigt vor der Bereinigung die konfigurierten Kanäle zur Bestätigung an und löscht dort jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots; Registrierungen und Rollen werden dabei nicht zurückgesetzt. Antwortstandard: privat. |
 
 `reset` und `purge-list` wirken destruktiv. Prüfe die angezeigten Kanäle und sichere benötigte Informationen, bevor du sie ausführst. Angepinnte Nachrichten und Nachrichten von Bots werden bei diesen beiden Bereinigungsbefehlen übersprungen.
+
+Verknüpfe Accounts mit `account-add`, bevor du sie anmeldest. Registrierungen über die Übersichtsschaltflächen bleiben Discord-Mitglied-bezogen; die Commands `register` und `deregister` verwalten gezielt den angegebenen Ingame-Account. Vorhandene Registrierungen bleiben beim Datenbank-Upgrade erhalten.
 
 ### Einrichtung
 

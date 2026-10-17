@@ -16,3 +16,4 @@ class RegistrationMember:
     member_id: int
     role: RegistrationRole
     timestamp: str
+    account: str = ""

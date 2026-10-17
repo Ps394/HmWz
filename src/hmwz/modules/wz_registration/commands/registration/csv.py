@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 @app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
+@app_commands.checks.has_permissions(
+    manage_roles=True, manage_messages=True, manage_channels=True
+)
 @app_commands.checks.bot_has_permissions(attach_files=True)
 @app_commands.command(
     name="csv",
@@ -58,7 +61,9 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
         roles = await module.roles.get(guild=interaction.guild)
         role_map = {r.role: r for r in roles} if roles else {}
 
-        rows = ["NR; Discord_Name; Guild_Name; Role; Timestamp; Score; Comment"]
+        rows = [
+            "NR; Discord_Name; Guild_Name; Account; Role; Timestamp; Score; Comment"
+        ]
         index = 1
         for reg in registrations:
             member = (
@@ -75,7 +80,8 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
             score = role_obj.score if role_obj else 0
             timestamp = reg.timestamp if reg.timestamp else "Unknown Timestamp"
             rows.append(
-                f"{index}; {user_name}; {member_name}; {role_name}; {timestamp}; {score};"
+                f"{index}; {user_name}; {member_name}; {reg.account}; "
+                f"{role_name}; {timestamp}; {score};"
             )
             index += 1
 

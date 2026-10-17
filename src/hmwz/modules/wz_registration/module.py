@@ -39,6 +39,9 @@ class WzRegistrationModule(BasicModule):
         self.registrations: repositories.MemberRegistrationRepository = (
             repositories.MemberRegistrationRepository(self._database)
         )
+        self.game_accounts: repositories.MemberGameAccountRepository = (
+            repositories.MemberGameAccountRepository(self._database)
+        )
         self.list: repositories.RegistrationMessageRepository = (
             repositories.RegistrationMessageRepository(self._database)
         )
@@ -81,11 +84,15 @@ class WzRegistrationModule(BasicModule):
             )
             return
 
-        records = await self.registrations.get(guild=guild, member=member.id)
+        records = await self.registrations.get(
+            guild=guild, member=member.id, account=""
+        )
         current = records[0] if records else None
 
         if current and current.role == role.id:
-            removed = await self.registrations.remove(guild=guild, member=member.id)
+            removed = await self.registrations.remove(
+                guild=guild, member=member.id, account=""
+            )
             if not removed:
                 await interaction.followup.send(
                     t(interaction, "wz.overview.registration.error_registration"),
@@ -100,7 +107,11 @@ class WzRegistrationModule(BasicModule):
                     guild.id,
                 )
                 return
-            await member.remove_roles(role, reason="WZ deregistration")
+            remaining = await self.registrations.get(guild=guild, member=member.id)
+            if role.id not in {
+                record.role for record in remaining or () if record.role is not None
+            }:
+                await member.remove_roles(role, reason="WZ deregistration")
             await interaction.followup.send(
                 t(
                     interaction,
@@ -121,15 +132,11 @@ class WzRegistrationModule(BasicModule):
             return
 
         is_update = current is not None and current.role != role.id
-        if current and current.role != role.id and current.role is not None:
-            old_role = await utils.fetch_role(guild, current.role)
-            if old_role is not None:
-                await member.remove_roles(old_role, reason="WZ registration update")
-
         added = await self.registrations.add(
             guild=guild,
             member=member.id,
             role=role.id,
+            account="",
         )
         if not added:
             await interaction.followup.send(
@@ -137,6 +144,14 @@ class WzRegistrationModule(BasicModule):
                 ephemeral=True,
             )
             return
+        if current and current.role is not None and current.role != role.id:
+            remaining = await self.registrations.get(guild=guild, member=member.id)
+            old_role_is_used = any(
+                record.role == current.role for record in remaining or ()
+            )
+            old_role = await utils.fetch_role(guild, current.role)
+            if not old_role_is_used and old_role is not None:
+                await member.remove_roles(old_role, reason="WZ registration update")
         await member.add_roles(role, reason="WZ registration")
         key = (
             "wz.overview.registration.update_registration"
@@ -171,6 +186,7 @@ class WzRegistrationModule(BasicModule):
                 self.roles,
                 self.registration,
                 self.registrations,
+                self.game_accounts,
                 self.list,
                 self.purge_channels,
             ):
@@ -264,6 +280,7 @@ class WzRegistrationModule(BasicModule):
         await self.roles.remove(guild=guild)
         await self.list.remove(guild=guild)
         await self.registrations.remove(guild=guild)
+        await self.game_accounts.remove_guild(guild=guild)
         return True
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
@@ -332,29 +349,53 @@ class WzRegistrationModule(BasicModule):
             await self.registrations.get(
                 guild=self.guild,
                 member=after.id,
+                account="",
             )
+        )
+        all_member_registrations = await self.registrations.get(
+            guild=self.guild,
+            member=after.id,
         )
         current_registration = registrations[0] if registrations else None
         changed = False
+        tracked_roles = {
+            record.role
+            for record in all_member_registrations or ()
+            if record.role is not None
+        }
+        for removed_role_id in removed_registration_roles & tracked_roles:
+            role_removed = await self.registrations.remove_member_role(
+                guild=self.guild,
+                member=after.id,
+                role=removed_role_id,
+            )
+            changed = role_removed or changed
 
         if current_registration and current_registration.role is not None:
             current_role_id = current_registration.role
-            if current_role_id in removed_registration_roles:
-                changed = await self.registrations.remove(
-                    guild=self.guild,
-                    member=after.id,
+            if (
+                current_role_id not in removed_registration_roles
+                and added_registration_roles
+                and current_role_id not in after_role_ids
+            ):
+                changed = (
+                    await self.registrations.add(
+                        guild=self.guild,
+                        member=after.id,
+                        role=min(added_registration_roles),
+                        account="",
+                    )
+                    or changed
                 )
-            elif added_registration_roles and current_role_id not in after_role_ids:
-                changed = await self.registrations.add(
-                    guild=self.guild,
-                    member=after.id,
-                    role=min(added_registration_roles),
-                )
-        elif added_registration_roles:
+        elif added_registration_roles and not any(
+            record.role in added_registration_roles
+            for record in all_member_registrations or ()
+        ):
             changed = await self.registrations.add(
                 guild=self.guild,
                 member=after.id,
                 role=min(added_registration_roles),
+                account="",
             )
 
         if changed:
@@ -368,6 +409,10 @@ class WzRegistrationModule(BasicModule):
         if not await self.sync_names():
             return False
         await self.registrations.remove(
+            guild=self.guild,
+            member=payload.user.id,
+        )
+        await self.game_accounts.remove_member(
             guild=self.guild,
             member=payload.user.id,
         )

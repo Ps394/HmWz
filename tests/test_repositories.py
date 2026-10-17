@@ -9,6 +9,7 @@ import pytest
 
 from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
 from hmwz.modules.wz_registration.repositories import (
+    MemberGameAccountRepository,
     MemberRegistrationRepository,
     PurgeChannelRepository,
     RegistrationMessageRepository,
@@ -27,6 +28,7 @@ async def initialize_database(database: Database) -> None:
         RegistrationRoleRepository(database),
         RegistrationSettingsRepository(database),
         MemberRegistrationRepository(database),
+        MemberGameAccountRepository(database),
         RegistrationMessageRepository(database),
         PurgeChannelRepository(database),
     )
@@ -139,6 +141,24 @@ async def test_repositories_create_read_update_and_remove_records(
         "Registration Role",
     )
     assert await registrations.remove(guild=guild, member=234)
+    assert await registrations.get(guild=guild, member=234) is None
+
+    assert await registrations.add(guild=guild, member=234, role=789, account="Main")
+    assert await registrations.add(guild=guild, member=234, role=789, account="Alt")
+    multi_account_records = await registrations.get(guild=guild, member=234)
+    assert multi_account_records is not None
+    assert {record.account for record in multi_account_records} == {"Main", "Alt"}
+
+    game_accounts = MemberGameAccountRepository(database)
+    assert await game_accounts.add(guild=guild, member=234, account="Main")
+    assert await game_accounts.add(guild=guild, member=234, account="Alt")
+    assert not await game_accounts.add(guild=guild, member=345, account="main")
+    linked_accounts = await game_accounts.get(guild=guild, member=234)
+    assert linked_accounts is not None
+    assert [record.account for record in linked_accounts] == ["Alt", "Main"]
+    assert await game_accounts.remove(guild=guild, member=234, account="main")
+    assert await game_accounts.get(guild=guild, member=234, account="Main") is None
+    assert await registrations.remove_member_role(guild=guild, member=234, role=789)
     assert await registrations.get(guild=guild, member=234) is None
 
     messages = RegistrationMessageRepository(database)

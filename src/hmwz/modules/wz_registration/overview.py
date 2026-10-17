@@ -149,6 +149,7 @@ class RegistrationOverview:
                     member_id=record.member,
                     role=role,
                     timestamp=record.timestamp,
+                    account=record.account,
                 )
             )
 
@@ -211,7 +212,15 @@ class RegistrationOverview:
             member = await utils.fetch_member(self.guild, registration.member_id)
             if role is not None and member is not None:
                 entries.append(
-                    (role.name, registration.role.permanent, member.display_name)
+                    (
+                        role.name,
+                        registration.role.permanent,
+                        (
+                            f"{registration.account} ({member.display_name})"
+                            if registration.account
+                            else member.display_name
+                        ),
+                    )
                 )
 
         if not entries:

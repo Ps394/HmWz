@@ -9,6 +9,7 @@ import pytest
 
 from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
 from hmwz.modules.wz_registration.repositories import (
+    MemberGameAccountRepository,
     MemberRegistrationRepository,
     PurgeChannelRepository,
     RegistrationMessageRepository,
@@ -27,6 +28,7 @@ def make_repositories(database: Database) -> tuple[Base, ...]:
         RegistrationRoleRepository(database),
         RegistrationSettingsRepository(database),
         MemberRegistrationRepository(database),
+        MemberGameAccountRepository(database),
         RegistrationMessageRepository(database),
         PurgeChannelRepository(database),
     )
@@ -74,6 +76,7 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
         "WzRoles",
         "WzRegistration",
         "WzRegistrations",
+        "WzGameAccounts",
         "WzList",
         "WzPurgeChannels",
     }
@@ -203,6 +206,26 @@ async def test_wz_table_name_columns_migrate_and_backfill(tmp_path: Path) -> Non
         row = await database.fetch_one(query)
         assert row is not None
         assert tuple(row) == expected_values
+
+    migrated_columns = await database.fetch_all('PRAGMA table_info("WzRegistrations")')
+    account_column = next(
+        column for column in migrated_columns if column["name"] == "Account"
+    )
+    assert account_column["pk"] > 0
+    assert await database.execute(
+        """
+        INSERT INTO WzRegistrations
+        (Guild, Member, Account, Role, Timestamp)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (123, 234, "alt-account", 789),
+    )
+    account_rows = await database.fetch_all(
+        "SELECT Account FROM WzRegistrations WHERE Guild = ? AND Member = ? "
+        "ORDER BY Account",
+        (123, 234),
+    )
+    assert tuple(row["Account"] for row in account_rows) == ("", "alt-account")
 
 
 @pytest.mark.asyncio

@@ -177,6 +177,9 @@ class PurgeConfirmationView(discord.ui.View):
         await self._delete_dialog(interaction)
 
 
+@app_commands.checks.has_permissions(
+    manage_roles=True, manage_messages=True, manage_channels=True
+)
 @app_commands.command(
     name="purge-list",
     description=app_commands.locale_str(

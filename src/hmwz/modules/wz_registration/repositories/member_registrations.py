@@ -24,6 +24,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
     class TableCols:
         Guild: str = "Guild"
         Member: str = "Member"
+        Account: str = "Account"
         Role: str = "Role"
         Timestamp: str = "Timestamp"
         GuildName: str = "GuildName"
@@ -37,13 +38,16 @@ class MemberRegistrationRepository(sqlite_db.Base):
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER,
             {self.TableCols.Member} INTEGER,
+            {self.TableCols.Account} TEXT NOT NULL DEFAULT '',
             {self.TableCols.Role} INTEGER,
             {self.TableCols.Timestamp} TEXT DEFAULT CURRENT_TIMESTAMP,
             {self.TableCols.GuildName} TEXT,
             {self.TableCols.MemberUsername} TEXT,
             {self.TableCols.MemberDisplayName} TEXT,
             {self.TableCols.RoleName} TEXT,
-            PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Member})
+            PRIMARY KEY (
+                {self.TableCols.Guild}, {self.TableCols.Member}, {self.TableCols.Account}
+            )
         ) WITHOUT ROWID
         """
 
@@ -57,6 +61,8 @@ class MemberRegistrationRepository(sqlite_db.Base):
                 (self.TableCols.RoleName, "TEXT"),
             )
         ):
+            return False
+        if not await self._migrate_account_key():
             return False
         return await self.database.execute(
             f"""
@@ -86,10 +92,72 @@ class MemberRegistrationRepository(sqlite_db.Base):
             """
         )
 
+    async def _migrate_account_key(self) -> bool:
+        """Move legacy registrations to a key that supports multiple accounts."""
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                cursor = await connection.execute(
+                    f'PRAGMA table_info("{self.table_name}")'
+                )
+                columns = await cursor.fetchall()
+                account_column = next(
+                    (column for column in columns if column["name"] == "Account"),
+                    None,
+                )
+                if account_column is not None and account_column["pk"] > 0:
+                    await connection.commit()
+                    return True
+
+                account_value = (
+                    f"COALESCE({self.TableCols.Account}, '')"
+                    if account_column is not None
+                    else "''"
+                )
+                await connection.execute(
+                    f"""
+                    CREATE TABLE "{self.table_name}_new" (
+                        Guild INTEGER,
+                        Member INTEGER,
+                        Account TEXT NOT NULL DEFAULT '',
+                        Role INTEGER,
+                        Timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                        GuildName TEXT,
+                        MemberUsername TEXT,
+                        MemberDisplayName TEXT,
+                        RoleName TEXT,
+                        PRIMARY KEY (Guild, Member, Account)
+                    ) WITHOUT ROWID
+                    """
+                )
+                await connection.execute(
+                    f"""
+                    INSERT OR IGNORE INTO "{self.table_name}_new"
+                    (Guild, Member, Account, Role, Timestamp, GuildName,
+                     MemberUsername, MemberDisplayName, RoleName)
+                    SELECT Guild, Member, {account_value}, Role, Timestamp,
+                           GuildName, MemberUsername, MemberDisplayName, RoleName
+                    FROM "{self.table_name}"
+                    """
+                )
+                await connection.execute(f'DROP TABLE "{self.table_name}"')
+                await connection.execute(
+                    f'ALTER TABLE "{self.table_name}_new" RENAME TO "{self.table_name}"'
+                )
+                await connection.commit()
+            return True
+        except Exception:
+            _logger.exception(
+                "%s Failed to migrate WZ registrations for multiple accounts.",
+                self.log_prefix(),
+            )
+            return False
+
     @dataclass(frozen=True)
     class _Data:
         guild_id: int
         member: int | None
+        account: str
         role: int | None
         timestamp: str
 
@@ -139,12 +207,15 @@ class MemberRegistrationRepository(sqlite_db.Base):
         *,
         guild: discord.Guild,
         member: int | None = None,
+        account: str | None = None,
         role: int | None = None,
         roles: list[int] | None = None,
     ) -> Records:
         try:
             if member is not None and (role is not None or roles):
                 raise ValueError("Cannot combine member with role or roles filters.")
+            if account is not None and (member is None or role is not None or roles):
+                raise ValueError("Account filters require a member filter only.")
             if role is not None and roles:
                 raise ValueError("Cannot provide both role and roles filters.")
 
@@ -154,6 +225,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
             if member is not None:
                 query += f" AND {self.TableCols.Member} = ?"
                 params.append(member)
+                if account is not None:
+                    query += f" AND {self.TableCols.Account} = ?"
+                    params.append(account)
             elif roles:
                 placeholders = ",".join("?" for _ in roles)
                 query += f" AND {self.TableCols.Role} IN ({placeholders})"
@@ -172,6 +246,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
                 return self._Data(
                     guild_id=guild.id,
                     member=rec[self.TableCols.Member],
+                    account=rec[self.TableCols.Account],
                     role=rec[self.TableCols.Role],
                     timestamp=rec[self.TableCols.Timestamp],
                 )
@@ -186,7 +261,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
             )
             return None
 
-    async def add(self, *, guild: discord.Guild, member: int, role: int) -> bool:
+    async def add(
+        self, *, guild: discord.Guild, member: int, role: int, account: str = ""
+    ) -> bool:
         member_name = f"unknown member ({member})"
         try:
             member_names = await self.member_names(guild, member)
@@ -196,15 +273,17 @@ class MemberRegistrationRepository(sqlite_db.Base):
             executed = await self.database.execute(
                 f"""
                 INSERT OR REPLACE INTO {self.table_name}
-                ({self.TableCols.Guild}, {self.TableCols.Member}, {self.TableCols.Role},
+                ({self.TableCols.Guild}, {self.TableCols.Member},
+                 {self.TableCols.Account}, {self.TableCols.Role},
                  {self.TableCols.Timestamp}, {self.TableCols.GuildName},
                  {self.TableCols.MemberUsername}, {self.TableCols.MemberDisplayName},
                  {self.TableCols.RoleName})
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
                 """,
                 (
                     guild.id,
                     member,
+                    account,
                     role,
                     guild.name,
                     member_names[0] if member_names is not None else None,
@@ -230,6 +309,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
         *,
         guild: discord.Guild,
         member: int | None = None,
+        account: str | None = None,
         role: int | None = None,
         roles: list[int] | None = None,
     ) -> bool:
@@ -237,6 +317,8 @@ class MemberRegistrationRepository(sqlite_db.Base):
         try:
             if member is not None and (role is not None or roles):
                 raise ValueError("Cannot combine member with role or roles filters.")
+            if account is not None and (member is None or role is not None or roles):
+                raise ValueError("Account filters require a member filter only.")
             if role is not None and roles:
                 raise ValueError("Cannot provide both role and roles filters.")
 
@@ -246,6 +328,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
             if member is not None:
                 query += f" AND {self.TableCols.Member} = ?"
                 params.append(member)
+                if account is not None:
+                    query += f" AND {self.TableCols.Account} = ?"
+                    params.append(account)
                 target = f"member {await self.member_log_name(guild, member)}"
             elif role is not None:
                 query += f" AND {self.TableCols.Role} = ?"
@@ -268,5 +353,28 @@ class MemberRegistrationRepository(sqlite_db.Base):
         except Exception as e:
             _logger.exception(
                 f"{self.log_prefix(guild)} Failed to remove WZ {target}: {e}"
+            )
+            return False
+
+    async def remove_member_role(
+        self, *, guild: discord.Guild, member: int, role: int
+    ) -> bool:
+        """Remove registrations for one member and one role across their accounts."""
+        try:
+            return await self.database.execute(
+                f"""
+                DELETE FROM {self.table_name}
+                WHERE {self.TableCols.Guild} = ?
+                  AND {self.TableCols.Member} = ?
+                  AND {self.TableCols.Role} = ?
+                """,
+                (guild.id, member, role),
+            )
+        except Exception:
+            _logger.exception(
+                "%s Failed to remove role %s registrations for member %s.",
+                self.log_prefix(guild),
+                role,
+                member,
             )
             return False

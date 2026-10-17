@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 @app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
+@app_commands.checks.has_permissions(
+    manage_roles=True, manage_messages=True, manage_channels=True
+)
 @app_commands.command(
     name="reset",
     description=app_commands.locale_str(
@@ -82,11 +85,14 @@ async def reset(
             reg for reg in registrations if reg.role in non_permanent_roles
         ]
         if len(non_permanent_registrations) > 0:
-            for reg in non_permanent_registrations:
-                if reg.member is None or reg.role is None:
-                    continue
-                member = await utils.fetch_member(interaction.guild, reg.member)
-                role = interaction.guild.get_role(reg.role)
+            roles_to_remove = {
+                (reg.member, reg.role)
+                for reg in non_permanent_registrations
+                if reg.member is not None and reg.role is not None
+            }
+            for member_id, role_id in roles_to_remove:
+                member = await utils.fetch_member(interaction.guild, member_id)
+                role = interaction.guild.get_role(role_id)
                 if member is None or role is None:
                     continue
                 try:
