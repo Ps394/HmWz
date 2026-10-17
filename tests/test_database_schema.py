@@ -69,7 +69,8 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
         "Servers",
         "DiscordMembers",
         "DiscordChannels",
-        "Configuration",
+        "DiscordRoles",
+        "WzConfiguration",
         "WzRoles",
         "WzRegistration",
         "WzRegistrations",
@@ -127,8 +128,10 @@ async def test_discord_entity_names_are_saved_and_updated(tmp_path: Path) -> Non
         members=[],
         channels=[],
         threads=[],
+        roles=[],
         get_channel_or_thread=lambda channel_id: None,
         get_member=lambda member_id: None,
+        get_role=lambda role_id: None,
     )
     guild = cast(discord.Guild, guild_data)
     member = cast(
@@ -150,11 +153,21 @@ async def test_discord_entity_names_are_saved_and_updated(tmp_path: Path) -> Non
         discord.TextChannel,
         SimpleNamespace(id=456, name="wz"),
     )
+    updated_role = cast(
+        discord.Role,
+        SimpleNamespace(
+            id=789,
+            name="Registration",
+            guild=guild,
+        ),
+    )
     assert await entities.add_member(guild=guild, member=updated_member)
     assert await entities.add_channel(guild=guild, channel=updated_channel)
+    assert await entities.add_role(role=updated_role)
 
     guild_data.members = [updated_member]
     guild_data.channels = [updated_channel]
+    guild_data.roles = [updated_role]
     assert await entities.sync_guild(guild)
 
     stored_member = await database.fetch_one(
@@ -165,18 +178,25 @@ async def test_discord_entity_names_are_saved_and_updated(tmp_path: Path) -> Non
         "SELECT Name FROM DiscordChannels WHERE Guild = ? AND Channel = ?",
         (123, 456),
     )
+    stored_role = await database.fetch_one(
+        "SELECT Name FROM DiscordRoles WHERE Guild = ? AND Role = ?",
+        (123, 789),
+    )
     assert stored_member is not None
     assert tuple(stored_member) == ("updated-player", "Updated Nickname")
     assert stored_channel is not None
     assert stored_channel["Name"] == "wz"
+    assert stored_role is not None
+    assert stored_role["Name"] == "Registration"
     assert await entities.member_log_name(guild, 234) == (
         "updated-player / Updated Nickname (234)"
     )
     assert await entities.channel_log_name(guild, 456) == "wz (456)"
+    assert await entities.role_log_name(guild, 789) == "Registration (789)"
 
 
 @pytest.mark.asyncio
-async def test_legacy_server_rows_are_copied_without_removing_the_old_table(
+async def test_legacy_server_rows_are_copied_and_old_table_is_removed(
     tmp_path: Path,
 ) -> None:
     database = Database(folder=str(tmp_path), filename="legacy.db")
@@ -198,9 +218,64 @@ async def test_legacy_server_rows_are_copied_without_removing_the_old_table(
         (123,),
     )
     legacy = await database.fetch_one(
-        "SELECT Guild, Name FROM Server WHERE Guild = ?",
-        (123,),
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        ("Server",),
     )
     assert migrated is not None
     assert tuple(migrated) == (123, "legacy guild")
-    assert legacy is not None
+    assert legacy is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_configuration_tables_are_migrated_and_removed(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="legacy-configuration.db")
+    servers = ServerRepository(database)
+    assert await database.execute(servers.table)
+    guild = cast(discord.Guild, SimpleNamespace(id=321, name="legacy guild"))
+    assert await servers.add(guild=guild)
+    other_guild = cast(
+        discord.Guild, SimpleNamespace(id=322, name="another legacy guild")
+    )
+    assert await servers.add(guild=other_guild)
+    for table_name in ("Configuration", "WzConfig"):
+        assert await database.execute(
+            f"""
+            CREATE TABLE "{table_name}" (
+                Guild INTEGER PRIMARY KEY,
+                ChannelID INTEGER,
+                ScoreModLvl BOOLEAN DEFAULT 0,
+                Matchmaker BOOLEAN DEFAULT 0
+            )
+            """
+        )
+    assert await database.execute(
+        "INSERT INTO Configuration (Guild, ChannelID, ScoreModLvl, Matchmaker) "
+        "VALUES (?, ?, ?, ?)",
+        (321, 654, 1, 0),
+    )
+    assert await database.execute(
+        "INSERT INTO WzConfig (Guild, ChannelID, ScoreModLvl, Matchmaker) "
+        "VALUES (?, ?, ?, ?)",
+        (322, 655, 0, 1),
+    )
+
+    configuration = WzConfigurationRepository(database)
+    assert await configuration.migrate_legacy_configuration()
+    assert await configuration.migrate_legacy_configuration()
+
+    migrated = await database.fetch_all(
+        "SELECT Guild, ChannelID, ScoreModLvl, Matchmaker "
+        "FROM WzConfiguration ORDER BY Guild"
+    )
+    assert [tuple(row) for row in migrated] == [
+        (321, 654, 1, 0),
+        (322, 655, 0, 1),
+    ]
+    for table_name in ("Configuration", "WzConfig"):
+        legacy = await database.fetch_one(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        )
+        assert legacy is None

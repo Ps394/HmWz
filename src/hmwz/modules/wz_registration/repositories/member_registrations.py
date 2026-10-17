@@ -189,12 +189,14 @@ class MemberRegistrationRepository(sqlite_db.Base):
             elif role is not None:
                 query += f" AND {self.TableCols.Role} = ?"
                 params.append(role)
-                target = f"role {role}"
+                target = f"role {await self.role_log_name(guild, role)}"
             elif roles:
                 placeholders = ",".join("?" for _ in roles)
                 query += f" AND {self.TableCols.Role} IN ({placeholders})"
                 params.extend(roles)
-                target = f"roles {roles}"
+                target = "roles " + str(
+                    [await self.role_log_name(guild, role_id) for role_id in roles]
+                )
             else:
                 target = "all registrations"
 

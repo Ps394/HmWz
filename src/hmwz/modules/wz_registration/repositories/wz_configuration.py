@@ -15,7 +15,7 @@ class WzConfigurationRepository(sqlite_db.Base):
     Repository für die Verwaltung der WZ-Konfiguration in der Datenbank.
     """
 
-    table_name = "Configuration"
+    table_name = "WzConfiguration"
 
     def __init__(self, database: sqlite_db.Database):
         super().__init__(database)
@@ -72,7 +72,6 @@ class WzConfigurationRepository(sqlite_db.Base):
 
             if not row:
                 return None
-
             _logger.info(f"{self.log_prefix(guild)} WZ config retrieved.")
             return self._Data(
                 guild=guild.id,
@@ -83,6 +82,38 @@ class WzConfigurationRepository(sqlite_db.Base):
         except Exception as e:
             _logger.exception(f"{self.log_prefix(guild)} Failed to get WZ config: {e}")
             return None
+
+    async def migrate_legacy_configuration(self) -> bool:
+        """Move rows from legacy configuration tables and remove their old names."""
+        try:
+            if not await self.database.execute(self.table):
+                return False
+            legacy_tables = await self.database.fetch_all(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type = 'table' AND name IN (?, ?)
+                """,
+                ("Configuration", "WzConfig"),
+            )
+            for legacy_table in legacy_tables:
+                table_name = legacy_table["name"]
+                copied = await self.database.execute(
+                    f"""
+                    INSERT OR IGNORE INTO {self.table_name}
+                        ({self.TableCols.Guild}, {self.TableCols.Channel},
+                         {self.TableCols.ScoreModLvl}, {self.TableCols.Matchmaker})
+                    SELECT Guild, ChannelID, ScoreModLvl, Matchmaker
+                    FROM "{table_name}"
+                    """
+                )
+                if not copied:
+                    return False
+                if not await self.database.execute(f'DROP TABLE "{table_name}"'):
+                    return False
+            return True
+        except Exception as e:
+            _logger.exception(f"Failed to migrate legacy WZ configuration: {e}")
+            return False
 
     async def upsert(
         self,

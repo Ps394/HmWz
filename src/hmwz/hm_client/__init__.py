@@ -62,6 +62,15 @@ class Client(discord.Client):
                 raise RuntimeError("Failed to create Discord entity database tables.")
         if not await self._servers.migrate_legacy_servers():
             raise RuntimeError("Failed to migrate legacy server records.")
+        from hmwz.modules.wz_registration.repositories import (
+            WzConfigurationRepository,
+        )
+
+        configuration = WzConfigurationRepository(self._database)
+        if not await self._database.execute(configuration.table):
+            raise RuntimeError("Failed to create the WZ configuration table.")
+        if not await configuration.migrate_legacy_configuration():
+            raise RuntimeError("Failed to migrate legacy WZ configuration.")
         await self.CommandTree.set_translator(CommandTranslator())
 
         await self.register_commands()
@@ -218,7 +227,24 @@ class Client(discord.Client):
         :param after: Die Rolle nach der Aktualisierung
         :type after: discord.Role
         """
+        if not await self._entities.add_role(role=after):
+            _logger.error(
+                "%s Failed to update role name %s (%s).",
+                self._servers.log_prefix(after.guild),
+                after.name,
+                after.id,
+            )
         await self.module_manager.on_guild_role_update(before, after)
+
+    async def on_guild_role_create(self, role: discord.Role):
+        """Persist the name of a newly created role."""
+        if not await self._entities.add_role(role=role):
+            _logger.error(
+                "%s Failed to save role name %s (%s).",
+                self._servers.log_prefix(role.guild),
+                role.name,
+                role.id,
+            )
 
     async def on_guild_role_delete(self, role: discord.Role):
         """
@@ -227,6 +253,13 @@ class Client(discord.Client):
         :param role: Die gelöschte Rolle
         :type role: discord.Role
         """
+        if not await self._entities.add_role(role=role):
+            _logger.error(
+                "%s Failed to preserve deleted role name %s (%s).",
+                self._servers.log_prefix(role.guild),
+                role.name,
+                role.id,
+            )
         await self.module_manager.on_guild_role_delete(role)
 
     async def on_raw_member_remove(self, payload: events.RawMemberRemoveEvent):

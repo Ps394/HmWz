@@ -177,18 +177,23 @@ class RegistrationRoleRepository(sqlite_db.Base):
         :return: True, wenn die Rolle erfolgreich hinzugefügt oder aktualisiert wurde, False bei einem Fehler.
         :rtype: bool
         """
+        role_name = f"unknown role ({role})"
         try:
+            role_name = await self.role_log_name(guild, role)
             executed = await self.database.execute(
                 f"INSERT OR REPLACE INTO {self.table_name} (Guild, Role, Permanent, Score) VALUES (?, ?, ?, ?)",
                 (guild.id, role, int(permanent is True), score),
             )
             if not executed:
                 return False
-            _logger.info(f"{self.log_prefix(guild)} Added WZ registration role {role}.")
+            _logger.info(
+                f"{self.log_prefix(guild)} Added WZ registration role {role_name}."
+            )
             return True
         except Exception as e:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to add WZ registration role {role}: {e}"
+                f"{self.log_prefix(guild)} Failed to add WZ registration role "
+                f"{role_name}: {e}"
             )
             return False
 
@@ -213,6 +218,13 @@ class RegistrationRoleRepository(sqlite_db.Base):
         """
         target = "roles"
         try:
+            role_names = (
+                [await self.role_log_name(guild, role)]
+                if role is not None
+                else [
+                    await self.role_log_name(guild, role_id) for role_id in roles or ()
+                ]
+            )
             if role and roles:
                 raise ValueError("Cannot provide both role and roles filters.")
             query = f"DELETE FROM {self.table_name} WHERE Guild = ?"
@@ -220,12 +232,12 @@ class RegistrationRoleRepository(sqlite_db.Base):
             if role:
                 query += " AND Role = ?"
                 params.append(role)
-                target = f"role {role}"
+                target = f"role {role_names[0]}"
             elif roles:
                 placeholders = ",".join("?" for _ in roles)
                 query += f" AND Role IN ({placeholders})"
                 params.extend(roles)
-                target = f"roles {roles}"
+                target = f"roles {role_names}"
             else:
                 target = "all roles"
             executed = await self.database.execute(query, tuple(params))

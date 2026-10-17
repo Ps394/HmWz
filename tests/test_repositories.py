@@ -52,6 +52,7 @@ async def test_repositories_create_read_update_and_remove_records(
             name="test guild",
             get_channel_or_thread=lambda channel_id: None,
             get_member=lambda member_id: None,
+            get_role=lambda role_id: None,
         ),
     )
     await initialize_database(database)
@@ -146,6 +147,7 @@ async def test_repository_reports_failed_foreign_key_write(tmp_path: Path) -> No
             name="missing guild",
             get_channel_or_thread=lambda channel_id: None,
             get_member=lambda member_id: None,
+            get_role=lambda role_id: None,
         ),
     )
 

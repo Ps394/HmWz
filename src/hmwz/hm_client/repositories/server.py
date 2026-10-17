@@ -75,13 +75,16 @@ class ServerRepository(sqlite_db.Base):
             if legacy_table is None:
                 return True
 
-            return await self.database.execute(
+            copied = await self.database.execute(
                 f"""
                 INSERT OR IGNORE INTO {self.table_name} ({self.TableCols.Guild}, {self.TableCols.Name})
                 SELECT {self.TableCols.Guild}, {self.TableCols.Name}
                 FROM Server
                 """
             )
+            if not copied:
+                return False
+            return await self.database.execute("DROP TABLE Server")
         except Exception as e:
             self.logger.exception(f"Failed to migrate legacy server rows: {e}")
             return False

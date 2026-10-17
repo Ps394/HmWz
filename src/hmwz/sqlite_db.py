@@ -104,6 +104,24 @@ class Base:
             return f"{row['Name']} ({channel_id})"
         return f"unknown channel ({channel_id})"
 
+    async def role_log_name(self, guild: Guild, role_id: int) -> str:
+        """Return a known Discord role name for a role log."""
+        role = guild.get_role(role_id)
+        if role is not None:
+            return f"{role.name} ({role.id})"
+
+        row = await self.database.fetch_one(
+            """
+            SELECT Name
+            FROM DiscordRoles
+            WHERE Guild = ? AND Role = ?
+            """,
+            (guild.id, role_id),
+        )
+        if row is not None:
+            return f"{row['Name']} ({role_id})"
+        return f"unknown role ({role_id})"
+
 
 class Database:
     _busy_timeout_ms = 5000
