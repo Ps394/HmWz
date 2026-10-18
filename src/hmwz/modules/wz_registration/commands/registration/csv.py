@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
         key="ephemeral.description",
     )
 )
-@app_commands.checks.cooldown(1, 120, key=lambda i: i.guild_id)
+@app_commands.checks.cooldown(1, 60, key=lambda i: i.guild_id)
 async def csv(interaction: Interaction, ephemeral: bool = True):
     await interaction.response.defer(ephemeral=ephemeral)
     try:
