@@ -5,7 +5,7 @@ from hmwz.i18n import CommandLocalizations, t
 
 __all__ = ["Purge"]
 
-@app_commands.checks.has_permissions(manage_roles=True, manage_messages=True, moderate_members=True)
+@app_commands.checks.has_any_role("Offiziere", "Moderator")
 @command(
     name="purge",
     description=locale_str(

@@ -12,7 +12,7 @@ from .selection import PurgeChannelSelection, get_selectable_channels
 logger = logging.getLogger(__name__)
 
 
-@app_commands.checks.has_permissions(manage_roles=True, manage_messages=True)
+@app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
     name="purge-channel-remove",
     description=app_commands.locale_str(
