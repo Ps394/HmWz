@@ -5,7 +5,7 @@ from hmwz.i18n import CommandLocalizations, t
 
 __all__ = ["Purge"]
 
-
+@app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
 @command(
     name="purge",
     description=locale_str(
@@ -15,7 +15,7 @@ __all__ = ["Purge"]
         key="wz.purge.description",
     ),
 )
-@app_commands.checks.bot_has_permissions(moderate_members=True, manage_messages=True)
+@app_commands.checks.bot_has_permissions(manage_messages=True)
 @describe(
     limit=locale_str(
         CommandLocalizations.get("en", {}).get(

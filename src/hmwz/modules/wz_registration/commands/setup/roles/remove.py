@@ -42,7 +42,7 @@ async def remove_autocomplete(
         return []
 
 
-@checks.has_permissions(manage_roles=True, manage_messages=True, manage_channels=True)
+@app_commands.checks.has_permissions(moderate_members=True, manage_messages=True)
 @app_commands.command(
     name="role-remove",
     description=app_commands.locale_str(
