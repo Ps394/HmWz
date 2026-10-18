@@ -348,7 +348,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
 
             executed = await self.database.execute(query, tuple(params))
             if executed:
-                _logger.info(f"{self.log_prefix(guild)} Removed WZ {target}.")
+                _logger.debug(f"{self.log_prefix(guild)} Removed WZ {target}.")
             return executed
         except Exception as e:
             _logger.exception(

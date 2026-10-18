@@ -51,7 +51,7 @@ class MemberGameAccountRepository(sqlite_db.Base):
                 (guild.id, member, account),
             )
             if executed:
-                _logger.info(
+                _logger.debug(
                     "%s Added game account %r for member %s.",
                     self.log_prefix(guild),
                     account,
@@ -115,7 +115,7 @@ class MemberGameAccountRepository(sqlite_db.Base):
                 (guild.id, member, account),
             )
             if removed:
-                _logger.info(
+                _logger.debug(
                     "%s Removed game account %r for member %s.",
                     self.log_prefix(guild),
                     account,

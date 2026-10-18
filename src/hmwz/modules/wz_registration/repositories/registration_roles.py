@@ -228,7 +228,7 @@ class RegistrationRoleRepository(sqlite_db.Base):
             )
             if not executed:
                 return False
-            _logger.info(
+            _logger.debug(
                 f"{self.log_prefix(guild)} Added WZ registration role {role_name}."
             )
             return True
@@ -284,7 +284,7 @@ class RegistrationRoleRepository(sqlite_db.Base):
                 target = "all roles"
             executed = await self.database.execute(query, tuple(params))
             if executed:
-                _logger.info(
+                _logger.debug(
                     f"{self.log_prefix(guild)} Removed WZ registration role {target}."
                 )
             return executed

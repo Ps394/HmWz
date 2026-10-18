@@ -72,7 +72,7 @@ class WzConfigurationRepository(sqlite_db.Base):
 
             if not row:
                 return None
-            _logger.info(f"{self.log_prefix(guild)} WZ config retrieved.")
+            _logger.debug(f"{self.log_prefix(guild)} WZ config retrieved.")
             return self._Data(
                 guild=guild.id,
                 channel_id=row[self.TableCols.Channel],
@@ -176,7 +176,7 @@ class WzConfigurationRepository(sqlite_db.Base):
             channel_context = (
                 f" for channel {channel_name}" if channel_name is not None else ""
             )
-            _logger.info(
+            _logger.debug(
                 f"{self.log_prefix(guild)} WZ config upserted{channel_context}."
             )
             return True
@@ -200,7 +200,7 @@ class WzConfigurationRepository(sqlite_db.Base):
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             executed = await self.database.execute(query, (guild.id,))
             if executed:
-                _logger.info(f"{self.log_prefix(guild)} WZ config removed.")
+                _logger.debug(f"{self.log_prefix(guild)} WZ config removed.")
             return executed
         except Exception as e:
             _logger.exception(

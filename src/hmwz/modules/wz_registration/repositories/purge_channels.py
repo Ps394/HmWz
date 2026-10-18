@@ -145,7 +145,7 @@ class PurgeChannelRepository(sqlite_db.Base):
                 )
                 return False
 
-            _logger.info(
+            _logger.debug(
                 f"{self.log_prefix(guild)} Added WZ purge channel {channel_name}."
             )
             return True
@@ -177,7 +177,7 @@ class PurgeChannelRepository(sqlite_db.Base):
                 if channel_id is not None
                 else "channels"
             )
-            _logger.info(f"{self.log_prefix(guild)} Removed WZ purge {target}.")
+            _logger.debug(f"{self.log_prefix(guild)} Removed WZ purge {target}.")
             return True
         except Exception as e:
             _logger.exception(

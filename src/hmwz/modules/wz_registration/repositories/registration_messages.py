@@ -110,7 +110,7 @@ class RegistrationMessageRepository(sqlite_db.Base):
             )
             if not executed:
                 return False
-            _logger.info(
+            _logger.debug(
                 f"{self.log_prefix(guild)} Added WZ list message {message} "
                 f"in channel {channel_name}."
             )
@@ -150,7 +150,7 @@ class RegistrationMessageRepository(sqlite_db.Base):
 
             if not await self.database.execute(query, tuple(params)):
                 return False
-            _logger.info(f"{self.log_prefix(guild)} Removed WZ {target}.")
+            _logger.debug(f"{self.log_prefix(guild)} Removed WZ {target}.")
             return True
         except Exception as e:
             _logger.exception(

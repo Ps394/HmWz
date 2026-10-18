@@ -57,7 +57,7 @@ class ServerRepository(sqlite_db.Base):
             """
             if not await self.database.execute(query, (guild.id, guild.name)):
                 return False
-            self.logger.info(f"{self.log_prefix(guild)} Added/Updated server.")
+            self.logger.debug(f"{self.log_prefix(guild)} Added/Updated server.")
             return True
         except Exception as e:
             self.logger.exception(
