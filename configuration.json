@@ -19,6 +19,6 @@
         "max_registration_roles": 4,
         "min_registration_roles": 1,
         "default_title": "Anmeldung",
-        "default_description": "Klicke zum An-/Abmelden eine der Schaltfl\u00e4chen unten!"
+        "default_description": "Klicke zum An-/Abmelden eine der Schaltflächen unten!"
     }
 }

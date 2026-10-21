@@ -137,7 +137,7 @@ class DiscordEntityRepository(sqlite_db.Base):
             )
             return False
 
-        _logger.info(
+        _logger.debug(
             "%s Saved %s member, %s channel, and %s role names.",
             self.log_prefix(guild),
             len(member_rows),

@@ -8,18 +8,36 @@ from typing import cast
 import discord
 import pytest
 
-from hmwz.modules.wz_registration.commands.registration.autocomplete import (
+from hmwz.modules.hs.account.commands import list as account_list_commands
+from hmwz.modules.hs.account.commands import remove as account_remove_commands
+from hmwz.modules.hs.account.commands import AccountGroup
+from hmwz.i18n import CommandLocalizations
+from hmwz.modules.hs.wz.commands.registration.autocomplete import (
     DISPLAY_NAME_ACCOUNT_VALUE,
     linked_accounts,
     registered_accounts,
     registration_roles,
 )
-from hmwz.modules.wz_registration.commands.registration.accounts import (
-    account_list,
-    account_remove,
-)
-from hmwz.modules.wz_registration.commands.registration.deregister import deregister
-from hmwz.modules.wz_registration.commands.registration.register import register
+from hmwz.modules.hs.wz.commands.registration.deregister import deregister
+from hmwz.modules.hs.wz.commands.registration.register import register
+
+account_list = account_list_commands.account_list
+account_remove = account_remove_commands.account_remove
+
+
+def test_account_commands_have_an_independent_root_group() -> None:
+    group = AccountGroup()
+
+    assert group.name == "account"
+    assert (
+        CommandLocalizations["de"]["group.description.account.group"]
+        == "Account-Befehle"
+    )
+    assert {command.name for command in group.commands} == {
+        "account-add",
+        "account-list",
+        "account-remove",
+    }
 
 
 @pytest.fixture
@@ -60,17 +78,22 @@ def autocomplete_interaction() -> discord.Interaction:
             *,
             guild: discord.Guild,
             member: int,
+            channel_id: int | None = None,
         ) -> tuple[SimpleNamespace, ...]:
             assert guild is server_guild
             assert member == 123
+            assert channel_id == 456
             return (
                 SimpleNamespace(account="", role=20),
                 SimpleNamespace(account="Alt Account", role=10),
             )
 
     class Roles:
-        async def get(self, *, guild: discord.Guild) -> tuple[SimpleNamespace, ...]:
+        async def get(
+            self, *, guild: discord.Guild, channel_id: int | None = None
+        ) -> tuple[SimpleNamespace, ...]:
             assert guild is server_guild
+            assert channel_id == 456
             return (
                 SimpleNamespace(role=10),
                 SimpleNamespace(role=20),
@@ -84,6 +107,7 @@ def autocomplete_interaction() -> discord.Interaction:
     )
     interaction = Mock(spec=discord.Interaction)
     interaction.guild = server_guild
+    interaction.channel_id = 456
     interaction.user = member
     interaction.client = SimpleNamespace(module_manager=ModuleManager())
     return cast(discord.Interaction, interaction)

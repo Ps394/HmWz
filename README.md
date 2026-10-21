@@ -8,10 +8,16 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 
 ## Funktionen
 
-- Interaktive Anmeldung und Abmeldung über Schaltflächen in einer Serverübersicht.
+- Mehrere voneinander unabhängige WZ-Anmeldungen pro Server, jeweils mit eigenem
+  Anmeldungskanal, Rollen, Übersicht und Bereinigungskanälen.
+- QS-Anmeldungen auf derselben Registrierungsbasis wie WZ, mit eigenen Daten
+  und bis zu vier nicht permanenten Rollen.
+- Kanalbezogene QS-Übersichten; ein Reset benötigt eine ausdrückliche Bestätigung.
+- Interaktive Anmeldung und Abmeldung über Schaltflächen in der jeweiligen Übersicht.
 - Verknüpfung mehrerer Ingame-Accounts mit einem Discord-Mitglied sowie
   accountbezogene An- und Abmeldung.
-- Serverbezogene Registrierungsrollen; Rollen können als permanent markiert werden.
+- Registrierungsrollen je WZ-Anmeldung; eine Discord-Rolle kann nicht mehreren
+  WZ-Anmeldungen zugeordnet werden.
 - Verwaltung der Anmeldungsnachricht und der für einen Reset zusätzlich zu bereinigenden Textkanäle.
 - CSV-Export und Zurücksetzen nicht permanenter Registrierungen.
 - Separate Bereinigungsbefehle für konfigurierte Kanäle und für den aktuellen Textkanal.
@@ -46,7 +52,9 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 5. Setze den Bot in der Rollenliste über die Rollen, die er vergeben oder entfernen soll. Discord erlaubt dem Bot keine Verwaltung gleichrangiger oder höherer Rollen.
 6. Starte den Bot. Beim Start werden die Slash-Commands global synchronisiert; bis sie in Discord erscheinen, kann es kurz dauern.
 
-Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Die Einrichtungskommandos und die Verwaltungsbefehle `reset`, `purge-list` und `csv` sind auf Mitglieder mit **Manage Roles**, **Manage Messages** und **Manage Channels** beschränkt. `reset` und `csv` verlangen zusätzlich **Moderate Members**. Mitglieder verwalten ihre eigenen Ingame-Accounts und Registrierungen über die unten aufgeführten Commands. `/purge` besitzt im Bot selbst keine zusätzliche Berechtigungsprüfung für den ausführenden Benutzer; beschränke den Zugriff auf diesen Befehl deshalb über die Discord-Integrationseinstellungen. Sorge außerdem dafür, dass der Bot Nachrichten in den Registrierungs- und gegebenenfalls Bereinigungskanälen sehen und verwalten kann.
+Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Setup- und Registrierungsverwaltungsbefehle beziehen sich auf den WZ-Anmeldungskanal, in dem sie aufgerufen werden; `/wz setup configure` richtet diesen Kanal mit der angegebenen Registrierungsrolle ein. Dabei kann angegeben werden, ob die Rolle permanent ist (Standard: `false`). Zusätzliche Bereinigungskanäle werden ebenfalls je WZ-Anmeldung verwaltet und dürfen weder zwischen Anmeldungen noch als anderer Anmeldungskanal wiederverwendet werden. Die Account-Befehle liegen unabhängig davon unter `/account`.
+
+QS-Anmeldungen werden kanalbezogen unter `/qs setup` eingerichtet. Pro Anmeldung sind höchstens vier Rollen erlaubt; diese Rollen sind nie permanent. Die Übersicht zählt pro Discord-Mitglied höchstens eine Anmeldung. `/qs reset` setzt nur nach Bestätigung die Anmeldungen im aktuellen QS-Kanal zurück. Sorge dafür, dass der Bot Nachrichten in den Registrierungs- und Bereinigungskanälen sehen und verwalten kann.
 
 ## Installation und Start
 
@@ -107,7 +115,7 @@ Der Token darf nicht in Git eingecheckt oder öffentlich geteilt werden. Bei ver
 
 ## Commands
 
-Alle Bot-Befehle sind Discord-Slash-Commands. Die Registrierungsfunktionen liegen unter `/wz registration`; Einrichtung und Konfiguration unter `/wz setup`.
+Alle Bot-Befehle sind Discord-Slash-Commands. WZ-Registrierungsfunktionen liegen unter `/wz registration`; Einrichtung und Konfiguration unter `/wz setup`. QS-Anmeldungen werden unter `/qs` verwaltet. Verknüpfte Ingame-Accounts werden guildweit unter `/account` verwaltet.
 
 ### Übersicht und allgemeine Moderation
 
@@ -121,14 +129,15 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Die Registrierungsfunktionen liege
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/wz registration account-add account:<Account>` | Verknüpft einen Ingame-Account mit deinem Discord-Mitglied. Ein Account kann pro Server nur einem Discord-Mitglied zugeordnet sein. |
-| `/wz registration account-remove account:<Account>` | Entfernt einen verknüpften Ingame-Account sowie dessen Anmeldung und die zugehörige Discord-Rolle, sofern kein anderer deiner Accounts diese Rolle benötigt. |
-| `/wz registration account-list` | Zeigt deinen Discord-Anzeigenamen als Account sowie alle verknüpften Ingame-Accounts an. |
+| `/account account-add account:<Account>` | Verknüpft einen Ingame-Account mit deinem Discord-Mitglied. Ein Account kann pro Server nur einem Discord-Mitglied zugeordnet sein. |
+| `/account account-remove account:<Account>` | Entfernt einen verknüpften Ingame-Account sowie dessen WZ-Anmeldungen und die zugehörigen Discord-Rollen, sofern kein anderer deiner Accounts diese Rollen benötigt. |
+| `/account account-list` | Zeigt deinen Discord-Anzeigenamen als Account sowie alle verknüpften Ingame-Accounts an. |
 | `/wz registration register account:<Account> role:<Anmeldungsrolle>` | Meldet einen deiner verknüpften Ingame-Accounts für die angegebene konfigurierte Rolle an. |
 | `/wz registration deregister account:<Account>` | Meldet den Account von seiner aktuellen Anmeldungsrolle ab. Die Rolle wird automatisch aus der Registrierung ermittelt und nur entfernt, wenn kein weiterer Account dieses Mitglieds dafür registriert ist. |
 | `/wz registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Ingame-Account, Rolle, Zeitstempel und Rollenscore. Antwortstandard: privat. Der Befehl ist pro Server auf einen Aufruf alle 120 Sekunden begrenzt. |
 | `/wz registration reset` | Entfernt Registrierungen und Rollen aller **nicht permanenten** Registrierungsrollen. Standardmäßig (`purge: true`) werden außerdem im Registrierungskanal und in den konfigurierten Bereinigungskanälen jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots gelöscht. Mit `purge: false` bleibt die Kanalbereinigung aus. Antwortstandard: nicht privat. |
 | `/wz registration purge-list` | Zeigt vor der Bereinigung die konfigurierten Kanäle zur Bestätigung an und löscht dort jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots; Registrierungen und Rollen werden dabei nicht zurückgesetzt. Antwortstandard: privat. |
+| `/qs reset` | Zeigt eine Bestätigung an und setzt nach Bestätigung alle Anmeldungen im aktuellen QS-Kanal zurück. Zugehörige QS-Rollen werden ebenfalls entfernt. |
 
 `reset` und `purge-list` wirken destruktiv. Prüfe die angezeigten Kanäle und sichere benötigte Informationen, bevor du sie ausführst. Angepinnte Nachrichten und Nachrichten von Bots werden bei diesen beiden Bereinigungsbefehlen übersprungen.
 
@@ -140,12 +149,16 @@ Die Befehle in `/wz setup` setzen für den ausführenden Benutzer **Manage Roles
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/wz setup configure channel:<Textkanal> [role:<Rolle>]` | Legt den Kanal für die Registrierungsübersicht fest. Optional kann die erste Registrierungsrolle hinzugefügt werden; ohne `role` muss mindestens eine Registrierungsrolle bereits konfiguriert sein. |
+| `/wz setup configure role:<Rolle> [permanent:<true\|false>]` | Richtet den Kanal, in dem der Befehl aufgerufen wird, für die Registrierungsübersicht ein und fügt die Registrierungsrolle hinzu. `permanent` ist standardmäßig `false`. |
 | `/wz setup role-add role:<Rolle> [permanent:<true/false>]` | Fügt eine Registrierungsrolle hinzu. Standard für `permanent` ist `false`; maximal vier Rollen sind vorgesehen. |
 | `/wz setup role-remove role:<Rolle>` | Entfernt eine konfigurierte Registrierungsrolle, die zugehörigen gespeicherten Registrierungen und die Rolle von betroffenen Servermitgliedern. Die letzte konfigurierte Rolle kann nicht entfernt werden. |
 | `/wz setup message [title:<Text>] [message:<Text>] [message_upload:<TXT-Datei>]` | Ändert Titel und/oder Beschreibung der Übersicht. Für die Beschreibung kann Text oder eine UTF-8-codierte `.txt`-Datei verwendet werden, nicht beides gleichzeitig. Die Datei `assets/DiscordMessageExample.txt` dient als Beispiel. |
-| `/wz setup purge-channel-add` | Öffnet eine Auswahl zum Hinzufügen zusätzlicher Textkanäle für die Bereinigung beim Registrierungs-Reset. Höchstens 25 Kanäle pro Server; der Registrierungskanal wird separat durch `configure` festgelegt. |
-| `/wz setup purge-channel-remove` | Öffnet eine Auswahl zum Entfernen zusätzlicher Bereinigungskanäle. |
+| `/wz setup purge-channel-add` | Öffnet im Anmeldungskanal eine Auswahl zum Hinzufügen zusätzlicher Textkanäle für dessen Bereinigung beim Registrierungs-Reset. Höchstens 25 Kanäle je WZ-Anmeldung; WZ-Anmeldekanäle dürfen nicht als zusätzliche Bereinigungskanäle zugeordnet werden. |
+| `/wz setup purge-channel-remove` | Öffnet im Anmeldungskanal eine Auswahl zum Entfernen der zugehörigen Bereinigungskanäle. |
+| `/qs setup role-add role:<Rolle>` | Fügt dem aktuellen Kanal eine nicht permanente QS-Anmeldungsrolle hinzu. Höchstens vier Rollen je Anmeldung. |
+| `/qs setup configure role:<Rolle>` | Richtet den aktuellen Kanal als QS-Anmeldung ein und fügt die erste nicht permanente Rolle hinzu. |
+| `/qs setup role-remove role:<Rolle>` | Entfernt eine QS-Anmeldungsrolle, deren gespeicherte Registrierungen und die Rolle von betroffenen Servermitgliedern. |
+| `/qs setup message [title:<Text>] [description:<Text>]` | Ändert Titel und/oder Beschreibung der QS-Übersicht im aktuellen Kanal. |
 
 Antworten auf die Setup-Befehle und die Kanalauswahl sind privat. Änderungen an Rollen, Nachrichten und Kanälen sind dauerhaft beziehungsweise können Servermitgliedern und Nachrichten betreffen.
 
@@ -159,8 +172,9 @@ Die Datei [`configuration.json`](./configuration.json) liegt im Projektstamm. Fe
 | `database` | `folder`, `filename` | Speicherort der SQLite-Datenbank. Standard: `data/data.db`. |
 | `monitoring` | `interval_seconds`, `cpu_threshold`, `memory_threshold`, `disk_threshold`, `temperature_threshold` | Intervall und Warnschwellen der optionalen Ressourcenüberwachung. |
 | `wz_registration` | `max_registration_roles`, `min_registration_roles`, `default_title`, `default_description` | Grenzwerte und Standardtexte der WZ-Registrierung. Standardmäßig sind höchstens vier und mindestens eine Registrierungsrolle vorgesehen. |
+| `hs.qs` | `max_registration_roles`, `default_title`, `default_description` | Standardwerte der QS-Registrierung. Maximal vier Rollen sind zulässig. |
 
-Die Serverkonfiguration für Registrierungskanal, Rollen, Anmeldungen und Bereinigungskanäle wird in SQLite gespeichert, nicht in `configuration.json`. Verändere die Datei bei gestopptem Bot und sichere vor Änderungen oder Upgrades sowohl sie als auch `data/data.db`.
+Die einzelnen WZ-Anmeldungen mit ihren Kanälen, Rollen, Anmeldungen und Bereinigungskanälen werden in SQLite gespeichert, nicht in `configuration.json`. Neue Standardwerte liegen in `hs.wz`; der bisherige Schlüssel `wz_registration` wird für vorhandene Konfigurationsdateien weiterhin gelesen. Verändere die Datei bei gestopptem Bot und sichere vor Änderungen oder Upgrades sowohl sie als auch `data/data.db`.
 
 ## Daten, Logs und Betrieb
 
@@ -183,9 +197,14 @@ src/
   hmwz/
     hm_client/                  Discord-Client, Commands und Monitoring
       repositories/             Serverdatenzugriff
-    modules/                    Modulsystem und WZ-Registrierung
-      wz_registration/
-        repositories/           WZ-Datenzugriff
+    modules/                    Modulsystem
+      hs/
+        account/                Guildweite Account-Verwaltung
+        qs/                     QS-Anmeldung und Commands
+        registration/           gemeinsame WZ-/QS-Registrierungsbasis
+        i18n/                   gemeinsame HS-Übersetzungen
+        wz/                     WZ-Anmeldungen und Commands
+          repositories/         WZ-Datenzugriff
     hm_models/                  gemeinsame Daten- und Embed-Modelle
     i18n/                       gemeinsame Übersetzungen
     configuration.py            Laden der Laufzeitkonfiguration
@@ -195,7 +214,7 @@ pyproject.toml                  Paket-, Hatch-Build- und optionale Entwicklungsa
 configuration.json              Laufzeitkonfiguration
 ```
 
-`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. Das Registrierungsmodul und seine Datenbanktabellen werden serverbezogen verwaltet.
+`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. WZ und QS verwenden gemeinsame Registrierungsmodelle und -logik, speichern ihre Daten aber in getrennten Tabellen.
 
 ## Entwicklung und Tests
 

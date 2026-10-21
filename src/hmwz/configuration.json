@@ -15,10 +15,12 @@
 		"disk_threshold": 90.0,
 		"temperature_threshold": 80.0
 	},
-	"wz_registration": {
-		"max_registration_roles": 4,
-		"min_registration_roles": 1,
-		"default_title": "Anmeldung",
-		"default_description": "Klicke zum An-/Abmelden eine der Schaltflächen unten!"
+	"hs": {
+		"wz": {
+			"max_registration_roles": 4,
+			"min_registration_roles": 1,
+			"default_title": "Anmeldung",
+			"default_description": "Klicke zum An-/Abmelden eine der Schaltflächen unten!"
+		}
 	}
 }

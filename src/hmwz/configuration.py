@@ -27,11 +27,19 @@ def _default_config() -> dict:
             "disk_threshold": 90.0,
             "temperature_threshold": 80.0,
         },
-        "wz_registration": {
-            "max_registration_roles": 4,
-            "min_registration_roles": 1,
-            "default_title": "Anmeldung",
-            "default_description": "Klicke zum An-/Abmelden eine der Schaltflächen unten!",
+        "hs": {
+            "wz": {
+                "max_registration_roles": 4,
+                "min_registration_roles": 1,
+                "default_title": "Anmeldung",
+                "default_description": "Klicke zum An-/Abmelden eine der Schaltflächen unten!",
+            },
+            "qs": {
+                "max_registration_roles": 4,
+                "default_title": "QS-Anmeldung",
+                "default_description": "Melde dich über eine der Schaltflächen an. "
+                "Die Übersicht dient der Planung.",
+            },
         },
     }
 
@@ -60,6 +68,26 @@ def _load_configuration(path: str = "configuration.json") -> dict:
 global config
 
 config: dict = _load_configuration()
+
+
+def wz_registration_config() -> dict:
+    """Return WZ settings from the new namespace or the legacy config key."""
+    return registration_defaults("wz")
+
+
+def registration_defaults(module_key: str) -> dict:
+    """Return per-registration-type defaults from the HS configuration."""
+    hs_config = config.get("hs")
+    if isinstance(hs_config, dict):
+        registration_config = hs_config.get(module_key)
+        if isinstance(registration_config, dict):
+            return registration_config
+    if module_key != "wz":
+        return {}
+    legacy_config = config.get("wz_registration")
+    return legacy_config if isinstance(legacy_config, dict) else {}
+
+
 """
 Konfigurationen des Bots, geladen aus der Datei "configuration.json". Zugriff auf die Konfigurationen erfolgt über dieses Dictionary.
 
@@ -73,7 +101,7 @@ Konfigurationen des Bots, geladen aus der Datei "configuration.json". Zugriff au
 - "memory_threshold": Die Speicherauslastungsgrenze in Prozent, bei der eine Warnung ausgegeben wird.
 - "disk_threshold": Die Festplattenauslastungsgrenze in Prozent, bei der eine Warnung ausgegeben wird.
 - "temperature_threshold": Die Temperaturgrenze in Grad Celsius, bei der eine Warnung ausgegeben wird.
-# Gruppe "wz_registration":
+# Gruppe "hs.wz" (der alte Schlüssel "wz_registration" bleibt kompatibel):
 - "max_registration_roles": Die maximale Anzahl von Rollen, die für die Anmeldung verwendet werden können.
 - "min_registration_roles": Die minimale Anzahl von Rollen, die für die Anmeldung verwendet werden müssen
 - "default_title": Der Standardtitel für die Anmeldungsübersicht.

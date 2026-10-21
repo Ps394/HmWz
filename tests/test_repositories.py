@@ -8,8 +8,8 @@ import discord
 import pytest
 
 from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
-from hmwz.modules.wz_registration.repositories import (
-    MemberGameAccountRepository,
+from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
+from hmwz.modules.hs.wz.repositories import (
     MemberRegistrationRepository,
     PurgeChannelRepository,
     RegistrationMessageRepository,
@@ -214,3 +214,73 @@ async def test_repository_reports_failed_foreign_key_write(tmp_path: Path) -> No
 
     assert not await repository.upsert(guild=guild, channel_id=456)
     assert await repository.get(guild=guild) is None
+
+
+@pytest.mark.asyncio
+async def test_wz_registrations_are_isolated_by_channel(tmp_path: Path) -> None:
+    database = Database(folder=str(tmp_path), filename="scoped-registrations.db")
+    await initialize_database(database)
+    guild = cast(
+        discord.Guild,
+        SimpleNamespace(
+            id=123,
+            name="test guild",
+            get_channel_or_thread=lambda channel_id: SimpleNamespace(
+                id=channel_id, name=f"channel-{channel_id}"
+            ),
+            get_member=lambda member_id: SimpleNamespace(
+                id=member_id, name="player", display_name="Player One"
+            ),
+            get_role=lambda role_id: SimpleNamespace(
+                id=role_id, name=f"role-{role_id}"
+            ),
+        ),
+    )
+    assert await ServerRepository(database).add(guild=guild)
+
+    settings = RegistrationSettingsRepository(database)
+    assert await settings.upsert(guild=guild, channel_id=456)
+    assert await settings.upsert(guild=guild, channel_id=457)
+    registration_records = await settings.get_all(guild=guild)
+    assert registration_records is not None
+    assert {record.channel for record in registration_records} == {456, 457}
+
+    roles = RegistrationRoleRepository(database)
+    assert await roles.add(guild=guild, role=789, channel_id=456)
+    assert not await roles.add(guild=guild, role=789, channel_id=457)
+    assert await roles.add(guild=guild, role=790, channel_id=457)
+    first_roles = await roles.get(guild=guild, channel_id=456)
+    second_roles = await roles.get(guild=guild, channel_id=457)
+    assert first_roles is not None and [record.role for record in first_roles] == [789]
+    assert second_roles is not None and [record.role for record in second_roles] == [
+        790
+    ]
+
+    members = MemberRegistrationRepository(database)
+    assert await members.add(guild=guild, member=234, role=789, channel_id=456)
+    assert await members.add(guild=guild, member=234, role=790, channel_id=457)
+    first_members = await members.get(guild=guild, channel_id=456)
+    second_members = await members.get(guild=guild, channel_id=457)
+    assert first_members is not None and first_members[0].role == 789
+    assert second_members is not None and second_members[0].role == 790
+
+    purge_channels = PurgeChannelRepository(database)
+    assert await purge_channels.add(
+        guild=guild, channel_id=800, registration_channel_id=456
+    )
+    assert await purge_channels.add(
+        guild=guild, channel_id=801, registration_channel_id=457
+    )
+    assert not await purge_channels.add(
+        guild=guild, channel_id=800, registration_channel_id=457
+    )
+    first_purge_channels = await purge_channels.get(
+        guild=guild, registration_channel_id=456
+    )
+    second_purge_channels = await purge_channels.get(
+        guild=guild, registration_channel_id=457
+    )
+    assert first_purge_channels is not None
+    assert [record.channel_id for record in first_purge_channels] == [800]
+    assert second_purge_channels is not None
+    assert [record.channel_id for record in second_purge_channels] == [801]

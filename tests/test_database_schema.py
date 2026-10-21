@@ -8,8 +8,8 @@ import discord
 import pytest
 
 from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
-from hmwz.modules.wz_registration.repositories import (
-    MemberGameAccountRepository,
+from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
+from hmwz.modules.hs.wz.repositories import (
     MemberRegistrationRepository,
     PurgeChannelRepository,
     RegistrationMessageRepository,
@@ -206,6 +206,25 @@ async def test_wz_table_name_columns_migrate_and_backfill(tmp_path: Path) -> Non
         row = await database.fetch_one(query)
         assert row is not None
         assert tuple(row) == expected_values
+
+    migrated_role = await database.fetch_one(
+        "SELECT Channel FROM WzRoles WHERE Guild = ? AND Role = ?",
+        (123, 789),
+    )
+    assert migrated_role is not None and migrated_role["Channel"] == 456
+    migrated_registration = await database.fetch_one(
+        "SELECT Channel FROM WzRegistrations WHERE Guild = ? AND Member = ?",
+        (123, 234),
+    )
+    assert migrated_registration is not None
+    assert migrated_registration["Channel"] == 456
+    migrated_purge_channel = await database.fetch_one(
+        "SELECT RegistrationChannel FROM WzPurgeChannels "
+        "WHERE Guild = ? AND Channel = ?",
+        (123, 456),
+    )
+    assert migrated_purge_channel is not None
+    assert migrated_purge_channel["RegistrationChannel"] == 456
 
     migrated_columns = await database.fetch_all('PRAGMA table_info("WzRegistrations")')
     account_column = next(

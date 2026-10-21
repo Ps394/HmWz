@@ -3,11 +3,11 @@ from typing import cast
 
 import discord
 
-from hmwz.modules.wz_registration.models.registration import Registration
-from hmwz.modules.wz_registration.models.registration_member import (
+from hmwz.modules.hs.wz.models.registration import Registration
+from hmwz.modules.hs.wz.models.registration_member import (
     RegistrationMember,
 )
-from hmwz.modules.wz_registration.models.registration_role import RegistrationRole
+from hmwz.modules.hs.wz.models.registration_role import RegistrationRole
 
 
 def test_registration_counts_and_score_follow_role_properties() -> None:

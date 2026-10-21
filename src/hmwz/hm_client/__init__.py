@@ -62,7 +62,7 @@ class Client(discord.Client):
                 raise RuntimeError("Failed to create Discord entity database tables.")
         if not await self._servers.migrate_legacy_servers():
             raise RuntimeError("Failed to migrate legacy server records.")
-        from hmwz.modules.wz_registration.repositories import (
+        from hmwz.modules.hs.wz.repositories import (
             WzConfigurationRepository,
         )
 
@@ -411,11 +411,17 @@ class Client(discord.Client):
         """
         Registriert die Befehle aus dem Commands-Modul.
         """
+        from hmwz.modules.hs.account.commands import AccountGroup
+        from hmwz.modules.hs.qs.commands import QsGroup
+        from hmwz.modules.hs.wz.commands import WzGroup
+
         _logger.info("Registering commands...")
 
         self.add_command(commands.AboutBot)
         self.add_command(commands.Purge)
-        self.add_command(modules.wz_registration.commands.WzGroup(self))
+        self.add_command(WzGroup(self))
+        self.add_command(QsGroup())
+        self.add_command(AccountGroup())
 
         @self.CommandTree.error
         async def tree_on_error(
