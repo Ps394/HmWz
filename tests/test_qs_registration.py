@@ -9,6 +9,7 @@ import pytest
 from hmwz.modules.registrations.qs import QsRegistrationModule
 from hmwz.modules.registrations.commands.qs.setup import QsSetupGroup
 from hmwz.modules.registrations.commands.qs.setup.configure import configure
+from hmwz.modules.registrations.commands.wz.registration import RegistrationGroup
 from hmwz.modules.registrations.repositories import (
     QSMemberRegistrationRepository,
     QSRegistrationMessageRepository,
@@ -34,6 +35,26 @@ def test_qs_setup_group_registers_configure_command() -> None:
         "role-remove",
     }
     assert [parameter.name for parameter in configure.parameters] == ["role"]
+
+
+def test_registration_command_group_uses_requested_hierarchy() -> None:
+    group = RegistrationGroup()
+
+    assert {command.name for command in group.commands} == {
+        "csv",
+        "deregister",
+        "register",
+        "reset",
+        "setup",
+    }
+    setup = next(command for command in group.commands if command.name == "setup")
+    assert isinstance(setup, discord.app_commands.Group)
+    assert {command.name for command in setup.commands} == {
+        "configure",
+        "message",
+        "roles-add",
+        "roles-delete",
+    }
 
 
 @pytest.mark.asyncio

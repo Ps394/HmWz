@@ -1,9 +1,8 @@
 from discord.app_commands import Group, checks, default_permissions, locale_str
 
 from hmwz.i18n import CommandLocalizations
-from hmwz.modules.registrations.commands.wz.setup import message, roles
 
-from . import configure, purge_channels
+from . import purge_channels
 
 __all__ = ["SetupGroup"]
 
@@ -21,9 +20,5 @@ class SetupGroup(Group):
                 key="wz.setup.group.description",
             ),
         )
-        self.add_command(configure.configure)
-        self.add_command(message.message)
-        self.add_command(roles.add.add)
-        self.add_command(roles.remove.remove)
         self.add_command(purge_channels.add.add)
         self.add_command(purge_channels.remove.remove)

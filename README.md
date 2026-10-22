@@ -52,7 +52,7 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 5. Setze den Bot in der Rollenliste über die Rollen, die er vergeben oder entfernen soll. Discord erlaubt dem Bot keine Verwaltung gleichrangiger oder höherer Rollen.
 6. Starte den Bot. Beim Start werden die Slash-Commands global synchronisiert; bis sie in Discord erscheinen, kann es kurz dauern.
 
-Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Setup- und Registrierungsverwaltungsbefehle beziehen sich auf den WZ-Anmeldungskanal, in dem sie aufgerufen werden; `/wz setup configure` richtet diesen Kanal mit der angegebenen Registrierungsrolle ein. Dabei kann angegeben werden, ob die Rolle permanent ist (Standard: `false`). Zusätzliche Bereinigungskanäle werden ebenfalls je WZ-Anmeldung verwaltet und dürfen weder zwischen Anmeldungen noch als anderer Anmeldungskanal wiederverwendet werden. Die Account-Befehle liegen unabhängig davon unter `/account`.
+Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Registrierungsverwaltungsbefehle beziehen sich auf den WZ-Anmeldungskanal, in dem sie aufgerufen werden; `/registration setup configure` richtet diesen Kanal mit der angegebenen Registrierungsrolle ein. Dabei kann angegeben werden, ob die Rolle permanent ist (Standard: `false`). Zusätzliche Bereinigungskanäle werden ebenfalls je WZ-Anmeldung verwaltet und dürfen weder zwischen Anmeldungen noch als anderer Anmeldungskanal wiederverwendet werden. Die Account-Befehle liegen unabhängig davon unter `/account`.
 
 QS-Anmeldungen werden kanalbezogen unter `/qs setup` eingerichtet. Pro Anmeldung sind höchstens vier Rollen erlaubt; diese Rollen sind nie permanent. Die Übersicht zählt pro Discord-Mitglied höchstens eine Anmeldung. `/qs reset` setzt nur nach Bestätigung die Anmeldungen im aktuellen QS-Kanal zurück. Sorge dafür, dass der Bot Nachrichten in den Registrierungs- und Bereinigungskanälen sehen und verwalten kann.
 
@@ -115,7 +115,7 @@ Der Token darf nicht in Git eingecheckt oder öffentlich geteilt werden. Bei ver
 
 ## Commands
 
-Alle Bot-Befehle sind Discord-Slash-Commands. WZ-Registrierungsfunktionen liegen unter `/wz registration`; Einrichtung und Konfiguration unter `/wz setup`. QS-Anmeldungen werden unter `/qs` verwaltet. Verknüpfte Ingame-Accounts werden guildweit unter `/account` verwaltet.
+Alle Bot-Befehle sind Discord-Slash-Commands. Registrierungen werden unter `/registration` verwaltet; Einrichtung und Konfiguration liegen unter `/registration setup`. WZ-Kanalbereinigung wird unter `/wz setup` konfiguriert. QS-Anmeldungen werden unter `/qs` verwaltet. Verknüpfte Ingame-Accounts werden guildweit unter `/account` verwaltet.
 
 ### Übersicht und allgemeine Moderation
 
@@ -132,27 +132,28 @@ Alle Bot-Befehle sind Discord-Slash-Commands. WZ-Registrierungsfunktionen liegen
 | `/account account-add account:<Account>` | Verknüpft einen Ingame-Account mit deinem Discord-Mitglied. Ein Account kann pro Server nur einem Discord-Mitglied zugeordnet sein. |
 | `/account account-remove account:<Account>` | Entfernt einen verknüpften Ingame-Account sowie dessen WZ-Anmeldungen und die zugehörigen Discord-Rollen, sofern kein anderer deiner Accounts diese Rollen benötigt. |
 | `/account account-list` | Zeigt deinen Discord-Anzeigenamen als Account sowie alle verknüpften Ingame-Accounts an. |
-| `/wz registration register account:<Account> role:<Anmeldungsrolle>` | Meldet einen deiner verknüpften Ingame-Accounts für die angegebene konfigurierte Rolle an. |
-| `/wz registration deregister account:<Account>` | Meldet den Account von seiner aktuellen Anmeldungsrolle ab. Die Rolle wird automatisch aus der Registrierung ermittelt und nur entfernt, wenn kein weiterer Account dieses Mitglieds dafür registriert ist. |
-| `/wz registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Ingame-Account, Rolle, Zeitstempel und Rollenscore. Antwortstandard: privat. Der Befehl ist pro Server auf einen Aufruf alle 120 Sekunden begrenzt. |
-| `/wz registration reset` | Entfernt Registrierungen und Rollen aller **nicht permanenten** Registrierungsrollen. Standardmäßig (`purge: true`) werden außerdem im Registrierungskanal und in den konfigurierten Bereinigungskanälen jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots gelöscht. Mit `purge: false` bleibt die Kanalbereinigung aus. Antwortstandard: nicht privat. |
-| `/wz registration purge-list` | Zeigt vor der Bereinigung die konfigurierten Kanäle zur Bestätigung an und löscht dort jeweils bis zu 500 nicht angepinnte Nachrichten von Nicht-Bots; Registrierungen und Rollen werden dabei nicht zurückgesetzt. Antwortstandard: privat. |
+| `/registration register account:<Account> role:<Anmeldungsrolle>` | Meldet einen deiner verknüpften Ingame-Accounts für die angegebene konfigurierte Rolle an. |
+| `/registration deregister account:<Account>` | Meldet den Account von seiner aktuellen Anmeldungsrolle ab. Die Rolle wird automatisch aus der Registrierung ermittelt und nur entfernt, wenn kein weiterer Account dieses Mitglieds dafür registriert ist. |
+| `/registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Ingame-Account, Rolle, Zeitstempel und Rollenscore. |
+| `/registration reset` | Setzt die nicht permanenten Registrierungen im aktuellen Anmeldungskanal zurück. |
 | `/qs reset` | Zeigt eine Bestätigung an und setzt nach Bestätigung alle Anmeldungen im aktuellen QS-Kanal zurück. Zugehörige QS-Rollen werden ebenfalls entfernt. |
 
-`reset` und `purge-list` wirken destruktiv. Prüfe die angezeigten Kanäle und sichere benötigte Informationen, bevor du sie ausführst. Angepinnte Nachrichten und Nachrichten von Bots werden bei diesen beiden Bereinigungsbefehlen übersprungen.
+`/registration reset` wirkt destruktiv. Prüfe den aktuellen Anmeldungskanal und sichere benötigte Informationen, bevor du den Befehl ausführst.
 
 Verknüpfe Accounts mit `account-add`, bevor du sie anmeldest. Registrierungen über die Übersichtsschaltflächen bleiben Discord-Mitglied-bezogen; die Commands `register` und `deregister` verwalten gezielt den angegebenen Ingame-Account. Vorhandene Registrierungen bleiben beim Datenbank-Upgrade erhalten.
 
 ### Einrichtung
 
-Die Befehle in `/wz setup` setzen für den ausführenden Benutzer **Manage Roles**, **Manage Messages** und **Manage Channels** voraus.
+Die Befehle in `/registration setup` setzen für den ausführenden Benutzer **Manage Roles**, **Manage Messages** und **Manage Channels** voraus.
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/wz setup configure role:<Rolle> [permanent:<true\|false>]` | Richtet den Kanal, in dem der Befehl aufgerufen wird, für die Registrierungsübersicht ein und fügt die Registrierungsrolle hinzu. `permanent` ist standardmäßig `false`. |
-| `/wz setup role-add role:<Rolle> [permanent:<true/false>]` | Fügt eine Registrierungsrolle hinzu. Standard für `permanent` ist `false`; maximal vier Rollen sind vorgesehen. |
-| `/wz setup role-remove role:<Rolle>` | Entfernt eine konfigurierte Registrierungsrolle, die zugehörigen gespeicherten Registrierungen und die Rolle von betroffenen Servermitgliedern. Die letzte konfigurierte Rolle kann nicht entfernt werden. |
-| `/wz setup message [title:<Text>] [message:<Text>] [message_upload:<TXT-Datei>]` | Ändert Titel und/oder Beschreibung der Übersicht. Für die Beschreibung kann Text oder eine UTF-8-codierte `.txt`-Datei verwendet werden, nicht beides gleichzeitig. Die Datei `assets/DiscordMessageExample.txt` dient als Beispiel. |
+| `/registration setup configure role:<Rolle> [permanent:<true\|false>]` | Richtet den Kanal, in dem der Befehl aufgerufen wird, für die Registrierungsübersicht ein und fügt die Registrierungsrolle hinzu. `permanent` ist standardmäßig `false`. |
+| `/registration setup roles-add role:<Rolle> [permanent:<true/false>]` | Fügt eine Registrierungsrolle hinzu. Standard für `permanent` ist `false`; maximal vier Rollen sind vorgesehen. |
+| `/registration setup roles-delete role:<Rolle>` | Löscht eine konfigurierte Registrierungsrolle, die zugehörigen gespeicherten Registrierungen und die Rolle von betroffenen Servermitgliedern. Die letzte konfigurierte Rolle kann nicht gelöscht werden. |
+| `/registration setup message [title:<Text>] [message:<Text>] [message_upload:<TXT-Datei>]` | Ändert Titel und/oder Beschreibung der Übersicht. Für die Beschreibung kann Text oder eine UTF-8-codierte `.txt`-Datei verwendet werden, nicht beides gleichzeitig. Die Datei `assets/DiscordMessageExample.txt` dient als Beispiel. |
+| `/wz setup purge-channel-add` | Öffnet im Anmeldungskanal eine Auswahl zum Hinzufügen zusätzlicher Textkanäle für dessen Bereinigung beim Registrierungs-Reset. |
+| `/wz setup purge-channel-remove` | Öffnet im Anmeldungskanal eine Auswahl zum Entfernen der zugehörigen Bereinigungskanäle. |
 | `/wz setup purge-channel-add` | Öffnet im Anmeldungskanal eine Auswahl zum Hinzufügen zusätzlicher Textkanäle für dessen Bereinigung beim Registrierungs-Reset. Höchstens 25 Kanäle je WZ-Anmeldung; WZ-Anmeldekanäle dürfen nicht als zusätzliche Bereinigungskanäle zugeordnet werden. |
 | `/wz setup purge-channel-remove` | Öffnet im Anmeldungskanal eine Auswahl zum Entfernen der zugehörigen Bereinigungskanäle. |
 | `/qs setup role-add role:<Rolle>` | Fügt dem aktuellen Kanal eine nicht permanente QS-Anmeldungsrolle hinzu. Höchstens vier Rollen je Anmeldung. |

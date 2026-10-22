@@ -44,7 +44,7 @@ async def remove_autocomplete(
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="role-remove",
+    name="roles-delete",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
             "command.description.wz.setup.roles.remove", "-"

@@ -414,6 +414,9 @@ class Client(discord.Client):
         from hmwz.modules.hs.account.commands import AccountGroup
         from hmwz.modules.hs.qs.commands import QsGroup
         from hmwz.modules.hs.wz.commands import WzGroup
+        from hmwz.modules.registrations.commands.wz.registration import (
+            RegistrationGroup,
+        )
 
         _logger.info("Registering commands...")
 
@@ -422,6 +425,7 @@ class Client(discord.Client):
         self.add_command(WzGroup(self))
         self.add_command(QsGroup())
         self.add_command(AccountGroup())
+        self.add_command(RegistrationGroup())
 
         @self.CommandTree.error
         async def tree_on_error(

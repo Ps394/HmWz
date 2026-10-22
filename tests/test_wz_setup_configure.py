@@ -1,4 +1,4 @@
-from hmwz.modules.hs.wz.commands.setup.configure import configure
+from hmwz.modules.registrations.commands.wz.setup.configure import configure
 
 
 def test_configure_command_uses_invocation_channel_and_role_parameters() -> None:

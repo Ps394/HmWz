@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="role-add",
+    name="roles-add",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
             "command.description.wz.setup.roles.add", "-"
