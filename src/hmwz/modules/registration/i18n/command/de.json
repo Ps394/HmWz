@@ -1,0 +1,21 @@
+{
+  "group.description.registration.group": "Befehle für Registrierungen",
+  "group.description.wz.registration.setup.group": "Setup-Befehle für Registrierungen",
+  "command.description.wz.registration.csv": "Gibt die Registrierungen als CSV-Datei aus",
+  "command.description.wz.registration.register": "Für ein WZ-Event anmelden",
+  "command.description.wz.registration.deregister": "Einen Ingame-Account von einem WZ-Event abmelden",
+  "command.description.wz.registration.reset": "Setzt Registrierungen zurück und bereinigt Registrierungs- und Zusatzkanäle (Standard).",
+  "command.description.wz.registration.purge": "Bestätige die Kanäle, bevor bis zu 500 Nachrichten je Kanal gelöscht werden.",
+  "command.description.wz.setup.roles.add": "Anmeldungsrolle hinzufügen (maximal 4 Rollen möglich)",
+  "parameter.description.wz.setup.roles.add.role": "Registrierungsrolle",
+  "parameter.description.wz.setup.roles.add.permanent": "Ob die Rolle permanent ist (optional, Standard: false)",
+  "command.description.wz.setup.roles.remove": "Löscht eine Registrierungsrolle",
+  "parameter.description.wz.setup.roles.remove.role": "Registrierungsrolle, die entfernt werden soll",
+  "command.description.wz.setup.registration.remove": "Entfernt die Anmeldung in diesem Kanal samt Teilnahmen und vergebenen Rollen.",
+  "parameter.description.wz.setup.message.title": "Titel für die Nachricht (max. 256 Zeichen; Standard: nicht gesetzt)",
+  "parameter.description.wz.setup.message.message": "Text für die Nachricht (max. 4096 Zeichen; Standard: nicht gesetzt)",
+  "parameter.description.wz.setup.message.message_upload": "TXT-Datei (UTF-8 codiert) mit der Nachricht (max. 4096 Zeichen; Standard: nicht gesetzt)",
+  "command.description.wz.setup.message": "Lege die Nachricht für die WZ-Registrierung fest.",
+  "command.description.wz.setup.event_log": "Lege den Kanal für JSON-Snapshots zu Registrierungsereignissen fest.",
+  "parameter.description.wz.setup.event_log.channel": "Kanal für Registrierungs-JSON-Dateien; leer lassen zum Deaktivieren"
+}

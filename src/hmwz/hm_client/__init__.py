@@ -414,9 +414,7 @@ class Client(discord.Client):
         from hmwz.modules.hs.account.commands import AccountGroup
         from hmwz.modules.hs.qs.commands import QsGroup
         from hmwz.modules.hs.wz.commands import WzGroup
-        from hmwz.modules.registrations.commands.wz.registration import (
-            RegistrationGroup,
-        )
+        from hmwz.modules.registration.commands import RegistrationGroup
 
         _logger.info("Registering commands...")
 

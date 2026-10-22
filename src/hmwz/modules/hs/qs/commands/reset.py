@@ -8,7 +8,7 @@ from discord import app_commands
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
-from hmwz.modules.registrations.qs import QsRegistrationModule
+from hmwz.modules.hs.qs.module import QsRegistrationModule
 
 _logger = logging.getLogger(__name__)
 

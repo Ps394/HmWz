@@ -19,6 +19,7 @@ REREGISTER: Final[str] = "🔄"
 UNREGISTER: Final[str] = "➖"
 PERMA_REGISTRATION: Final[str] = "🔒"
 NORMAL_REGISTRATION: Final[str] = "🔓"
+GAMEPAD: Final[str] = "🎮"
 
 
 # Navigation / UI hints

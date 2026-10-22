@@ -1,0 +1,21 @@
+{
+  "group.description.registration.group": "Registration commands",
+  "group.description.wz.registration.setup.group": "Registration setup commands",
+  "command.description.wz.registration.csv": "Export registrations as CSV",
+  "command.description.wz.registration.register": "Sign up for a WZ event",
+  "command.description.wz.registration.deregister": "Deregister an in-game account from a WZ event",
+  "command.description.wz.registration.reset": "Remove non-permanent registrations and purge the registration and configured channels by default.",
+  "command.description.wz.registration.purge": "Confirm channels before deleting up to 500 messages in each.",
+  "command.description.wz.setup.roles.add": "Add registration role (max 4 roles possible)",
+  "parameter.description.wz.setup.roles.add.role": "Registration role",
+  "parameter.description.wz.setup.roles.add.permanent": "Whether the role is permanent (optional, default: false)",
+  "command.description.wz.setup.roles.remove": "Delete a registration role",
+  "parameter.description.wz.setup.roles.remove.role": "Registration role to remove",
+  "command.description.wz.setup.registration.remove": "Remove this channel's registration, sign-ups, and assigned roles.",
+  "parameter.description.wz.setup.message.title": "Title for the message (max. 256 characters; default: not set)",
+  "parameter.description.wz.setup.message.message": "Text for the message (max. 4096 characters; default: not set)",
+  "parameter.description.wz.setup.message.message_upload": "UTF-8 encoded TXT file containing the message (max. 4096 characters; default: not set)",
+  "command.description.wz.setup.message": "Set the message for the WZ registration.",
+  "command.description.wz.setup.event_log": "Set the channel for JSON registration event snapshots.",
+  "parameter.description.wz.setup.event_log.channel": "Channel for registration JSON files; omit to disable"
+}

@@ -1,4 +1,4 @@
-from hmwz.modules.registrations.repositories.qs import (
+from .qs import (
     QSMemberRegistrationRepository,
     QSRegistrationMessageRepository,
     QSRegistrationRoleRepository,

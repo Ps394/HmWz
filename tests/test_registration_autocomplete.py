@@ -12,14 +12,14 @@ from hmwz.modules.hs.account.commands import list as account_list_commands
 from hmwz.modules.hs.account.commands import remove as account_remove_commands
 from hmwz.modules.hs.account.commands import AccountGroup
 from hmwz.i18n import CommandLocalizations
-from hmwz.modules.registrations.commands.wz.registration.autocomplete import (
+from hmwz.modules.registration.commands.autocomplete import (
     DISPLAY_NAME_ACCOUNT_VALUE,
     linked_accounts,
     registered_accounts,
     registration_roles,
 )
-from hmwz.modules.registrations.commands.wz.registration.deregister import deregister
-from hmwz.modules.registrations.commands.wz.registration.register import register
+from hmwz.modules.registration.commands.deregister import deregister
+from hmwz.modules.registration.commands.register import register
 
 account_list = account_list_commands.account_list
 account_remove = account_remove_commands.account_remove

@@ -7,7 +7,7 @@ import discord
 from hmwz.configuration import registration_defaults
 from hmwz.i18n import t
 
-from hmwz.modules.registrations.qs import QsRegistrationModule
+from hmwz.modules.hs.qs.module import QsRegistrationModule
 
 
 @dataclass(frozen=True)

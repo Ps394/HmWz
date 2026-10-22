@@ -6,11 +6,12 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
-from hmwz.modules.registrations.qs import QsRegistrationModule
-from hmwz.modules.registrations.commands.qs.setup import QsSetupGroup
-from hmwz.modules.registrations.commands.qs.setup.configure import configure
-from hmwz.modules.registrations.commands.wz.registration import RegistrationGroup
-from hmwz.modules.registrations.repositories import (
+from hmwz.modules.hs.qs.module import QsRegistrationModule
+from hmwz.modules.hs.qs.commands import QsGroup
+from hmwz.modules.hs.qs.commands.setup import QsSetupGroup
+from hmwz.modules.hs.qs.commands.setup.configure import configure
+from hmwz.modules.registration.commands import RegistrationGroup
+from hmwz.modules.hs.qs.repositories import (
     QSMemberRegistrationRepository,
     QSRegistrationMessageRepository,
     QSRegistrationRoleRepository,
@@ -22,7 +23,31 @@ from hmwz.modules.hs.wz.repositories import (
     RegistrationRoleRepository,
     RegistrationSettingsRepository,
 )
+from hmwz.i18n.loader import load_translations
 from hmwz.sqlite_db import Database
+
+
+def test_qs_translations_are_owned_by_hs_catalog() -> None:
+    modules_dir = Path(__file__).parents[1] / "src" / "hmwz" / "modules"
+    registration_catalogs = (
+        load_translations(modules_dir / "registration" / "i18n" / "command"),
+        load_translations(modules_dir / "registration" / "i18n" / "runtime"),
+    )
+    hs_catalogs = (
+        load_translations(modules_dir / "hs" / "i18n" / "command"),
+        load_translations(modules_dir / "hs" / "i18n" / "runtime"),
+    )
+
+    assert all(
+        not any(
+            key.startswith("qs.")
+            for translations in catalogs.values()
+            for key in translations
+        )
+        for catalogs in registration_catalogs
+    )
+    assert "group.description.qs.group" in hs_catalogs[0]["de"]
+    assert "qs.registration.error.not_configured" in hs_catalogs[1]["de"]
 
 
 def test_qs_setup_group_registers_configure_command() -> None:
@@ -35,6 +60,12 @@ def test_qs_setup_group_registers_configure_command() -> None:
         "role-remove",
     }
     assert [parameter.name for parameter in configure.parameters] == ["role"]
+
+
+def test_qs_commands_remain_registered_in_hs_module() -> None:
+    group = QsGroup()
+
+    assert {command.name for command in group.commands} == {"reset", "setup"}
 
 
 def test_registration_command_group_uses_requested_hierarchy() -> None:
@@ -52,6 +83,7 @@ def test_registration_command_group_uses_requested_hierarchy() -> None:
     assert {command.name for command in setup.commands} == {
         "configure",
         "message",
+        "remove",
         "roles-add",
         "roles-delete",
     }

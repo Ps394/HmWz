@@ -149,13 +149,17 @@ Die Befehle in `/registration setup` setzen für den ausführenden Benutzer **Ma
 | Befehl | Beschreibung |
 | --- | --- |
 | `/registration setup configure role:<Rolle> [permanent:<true\|false>]` | Richtet den Kanal, in dem der Befehl aufgerufen wird, für die Registrierungsübersicht ein und fügt die Registrierungsrolle hinzu. `permanent` ist standardmäßig `false`. |
+| `/registration setup remove` | Entfernt nach Bestätigung die Anmeldung im aktuellen Kanal einschließlich Teilnahmen, vergebener Rollen, Übersichten und zugehöriger Konfiguration. |
 | `/registration setup roles-add role:<Rolle> [permanent:<true/false>]` | Fügt eine Registrierungsrolle hinzu. Standard für `permanent` ist `false`; maximal vier Rollen sind vorgesehen. |
 | `/registration setup roles-delete role:<Rolle>` | Löscht eine konfigurierte Registrierungsrolle, die zugehörigen gespeicherten Registrierungen und die Rolle von betroffenen Servermitgliedern. Die letzte konfigurierte Rolle kann nicht gelöscht werden. |
 | `/registration setup message [title:<Text>] [message:<Text>] [message_upload:<TXT-Datei>]` | Ändert Titel und/oder Beschreibung der Übersicht. Für die Beschreibung kann Text oder eine UTF-8-codierte `.txt`-Datei verwendet werden, nicht beides gleichzeitig. Die Datei `assets/DiscordMessageExample.txt` dient als Beispiel. |
-| `/wz setup purge-channel-add` | Öffnet im Anmeldungskanal eine Auswahl zum Hinzufügen zusätzlicher Textkanäle für dessen Bereinigung beim Registrierungs-Reset. |
-| `/wz setup purge-channel-remove` | Öffnet im Anmeldungskanal eine Auswahl zum Entfernen der zugehörigen Bereinigungskanäle. |
-| `/wz setup purge-channel-add` | Öffnet im Anmeldungskanal eine Auswahl zum Hinzufügen zusätzlicher Textkanäle für dessen Bereinigung beim Registrierungs-Reset. Höchstens 25 Kanäle je WZ-Anmeldung; WZ-Anmeldekanäle dürfen nicht als zusätzliche Bereinigungskanäle zugeordnet werden. |
-| `/wz setup purge-channel-remove` | Öffnet im Anmeldungskanal eine Auswahl zum Entfernen der zugehörigen Bereinigungskanäle. |
+| `/registration setup event-log [channel:<Textkanal>]` | Legt guildweit den JSON-Zielkanal für WZ- und QS-Registrierungen fest. Anmeldung, Wechsel, Abmeldung und Sync senden einen Snapshot mit Anmeldungskanal und Mitgliedern; ohne `channel` wird der Versand deaktiviert. |
+| `/wz setup channel-add` | Öffnet im WZ-Anmeldungskanal eine Mehrfachauswahl für zusätzliche Bereinigungskanäle. Die Auswahl wird vor der Änderung zur Bestätigung aufgelistet. |
+| `/wz setup channel-remove` | Öffnet im WZ-Anmeldungskanal eine Mehrfachauswahl zum Entfernen zugehöriger Bereinigungskanäle. |
+| `/wz setup role-add [permanent:<true\|false>]` | Fügt der WZ-Anmeldung im aktuellen Kanal mehrere Rollen hinzu. Die Rollen werden vor der Änderung zur Bestätigung aufgelistet. |
+| `/wz setup role-remove` | Entfernt mehrere WZ-Anmeldungsrollen und nimmt sie nach Bestätigung den Mitgliedern ab. Mindestens eine Rolle muss konfiguriert bleiben. |
+| `/wz clean-channels [ignore_pinned:<true\|false>]` | Bereinigt alle konfigurierten WZ-Kanäle (bis zu 500 Nachrichten je Kanal). Angepinnte Nachrichten werden standardmäßig ausgelassen. |
+| `/wz reset-roles` | Entfernt nach ausdrücklicher Bestätigung alle konfigurierten WZ-Rollen von allen Servermitgliedern. |
 | `/qs setup role-add role:<Rolle>` | Fügt dem aktuellen Kanal eine nicht permanente QS-Anmeldungsrolle hinzu. Höchstens vier Rollen je Anmeldung. |
 | `/qs setup configure role:<Rolle>` | Richtet den aktuellen Kanal als QS-Anmeldung ein und fügt die erste nicht permanente Rolle hinzu. |
 | `/qs setup role-remove role:<Rolle>` | Entfernt eine QS-Anmeldungsrolle, deren gespeicherte Registrierungen und die Rolle von betroffenen Servermitgliedern. |
@@ -199,14 +203,15 @@ src/
     hm_client/                  Discord-Client, Commands und Monitoring
       repositories/             Serverdatenzugriff
     modules/                    Modulsystem
-      registrations/            Botweite Registrierungsbasis
-        commands/               Gemeinsame WZ-/QS-Anmeldebefehle
+      registration/             Botweite Registrierungsbasis
+        commands/               Gemeinsame Registrierungsbefehle
         i18n/                   Übersetzungen der Anmeldungsfunktion
         models/                 Allgemeine Registrierungsmodelle
-        repositories/           WZ- und QS-Registrierungsdatenzugriff
+        repositories/           Gemeinsamer Registrierungsdatenzugriff
       hs/
         account/                Guildweite Account-Verwaltung
         qs/                     QS-spezifische Funktionen und Commands
+          repositories/         QS-Registrierungsdatenzugriff
         i18n/                   gemeinsame HS-Übersetzungen
         wz/                     WZ-Kanalverwaltung und Commands
           repositories/         WZ-Konfiguration und Bereinigungskanäle
@@ -219,7 +224,7 @@ pyproject.toml                  Paket-, Hatch-Build- und optionale Entwicklungsa
 configuration.json              Laufzeitkonfiguration
 ```
 
-`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. Das botweite `registrations`-Modul stellt WZ und QS gemeinsame Commands, Modelle und Logik bereit; beide speichern ihre Daten weiterhin in getrennten Tabellen.
+`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. Das botweite `registration`-Modul stellt gemeinsame Registrierungsbefehle, Modelle und Logik bereit; QS-spezifische Commands und Datenzugriff liegen bei `hs.qs`. WZ und QS speichern ihre Registrierungen weiterhin in getrennten Tabellen.
 
 ## Entwicklung und Tests
 

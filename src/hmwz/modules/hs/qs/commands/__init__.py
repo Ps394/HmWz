@@ -1,8 +1,9 @@
 from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
-from hmwz.modules.registrations.commands.qs import reset
-from hmwz.modules.registrations.commands.qs.setup import QsSetupGroup
+
+from . import reset
+from .setup import QsSetupGroup
 
 
 @checks.bot_has_permissions(

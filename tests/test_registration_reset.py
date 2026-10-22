@@ -1,10 +1,11 @@
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import discord
 import pytest
 
-from hmwz.modules.registrations.commands.wz.registration import reset
+reset = import_module("hmwz.modules.registration.commands.reset")
 
 
 @pytest.mark.asyncio

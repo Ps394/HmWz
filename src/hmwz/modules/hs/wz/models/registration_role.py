@@ -1,3 +1,3 @@
-from hmwz.modules.registrations.models.registration_role import RegistrationRole
+from hmwz.modules.registration.models.registration_role import RegistrationRole
 
 __all__ = ["RegistrationRole"]

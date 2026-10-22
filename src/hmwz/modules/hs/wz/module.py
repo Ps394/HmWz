@@ -7,7 +7,7 @@ import discord
 from hmwz import events, sqlite_db
 from ...registry import register
 from ..account.repositories import MemberGameAccountRepository
-from hmwz.modules.registrations import RegistrationModuleBase
+from hmwz.modules.registration import RegistrationModuleBase
 from . import repositories
 
 _logger = logging.getLogger(__name__)
@@ -61,6 +61,7 @@ class WzRegistrationModule(RegistrationModuleBase):
             for repository in (
                 self.configuration,
                 self.registration,
+                self.registration_event_channel,
                 self.roles,
                 self.registrations,
                 self.game_accounts,
@@ -93,6 +94,7 @@ class WzRegistrationModule(RegistrationModuleBase):
         if not await self.sync_names():
             return False
         if startup:
+            await self.send_registration_sync_events()
             _logger.debug(
                 "%s (%s) - WZ module startup sync done.",
                 self.guild.name,
@@ -153,6 +155,7 @@ class WzRegistrationModule(RegistrationModuleBase):
             return False
         await self.configuration.remove(guild=guild)
         await self.registration.remove(guild=guild)
+        await self.registration_event_channel.remove(guild=guild)
         await self.purge_channels.remove(guild=guild)
         await self.roles.remove(guild=guild)
         await self.list.remove(guild=guild)
@@ -178,7 +181,13 @@ class WzRegistrationModule(RegistrationModuleBase):
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         """Bestaetigt Relevanz des Events fuer diese Guild."""
-        return channel.guild.id == self.guild.id
+        if channel.guild.id != self.guild.id:
+            return False
+        if await self.registration_event_channel.get(guild=self.guild) == channel.id:
+            await self.registration_event_channel.remove_channel(
+                guild=self.guild, channel_id=channel.id
+            )
+        return True
 
     async def on_guild_role_update(
         self, before: discord.Role, after: discord.Role

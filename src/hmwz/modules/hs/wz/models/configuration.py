@@ -1,3 +1,3 @@
-from hmwz.modules.registrations.models.configuration import Configuration
+from hmwz.modules.registration.models.configuration import Configuration
 
 __all__ = ["Configuration"]
