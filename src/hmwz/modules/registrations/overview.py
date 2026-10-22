@@ -16,7 +16,7 @@ from hmwz.i18n import t
 from . import models
 
 if TYPE_CHECKING:
-    from ..wz import repositories
+    from . import repositories
 
 _logger = logging.getLogger(__name__)
 RegistrationHandler = Callable[[discord.Interaction, discord.Role], Awaitable[None]]

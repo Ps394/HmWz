@@ -8,7 +8,9 @@ from discord import Interaction, app_commands
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
-from ...wz.commands.registration.autocomplete import linked_accounts
+from hmwz.modules.registrations.commands.wz.registration.autocomplete import (
+    linked_accounts,
+)
 from .common import command_description, get_member_context
 
 logger = logging.getLogger(__name__)

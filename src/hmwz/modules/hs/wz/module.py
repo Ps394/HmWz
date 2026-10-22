@@ -7,7 +7,7 @@ import discord
 from hmwz import events, sqlite_db
 from ...registry import register
 from ..account.repositories import MemberGameAccountRepository
-from ..registration.base import RegistrationModuleBase
+from hmwz.modules.registrations import RegistrationModuleBase
 from . import repositories
 
 _logger = logging.getLogger(__name__)

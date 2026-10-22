@@ -198,13 +198,17 @@ src/
     hm_client/                  Discord-Client, Commands und Monitoring
       repositories/             Serverdatenzugriff
     modules/                    Modulsystem
+      registrations/            Botweite Registrierungsbasis
+        commands/               Gemeinsame WZ-/QS-Anmeldebefehle
+        i18n/                   Übersetzungen der Anmeldungsfunktion
+        models/                 Allgemeine Registrierungsmodelle
+        repositories/           WZ- und QS-Registrierungsdatenzugriff
       hs/
         account/                Guildweite Account-Verwaltung
-        qs/                     QS-Anmeldung und Commands
-        registration/           gemeinsame WZ-/QS-Registrierungsbasis
+        qs/                     QS-spezifische Funktionen und Commands
         i18n/                   gemeinsame HS-Übersetzungen
-        wz/                     WZ-Anmeldungen und Commands
-          repositories/         WZ-Datenzugriff
+        wz/                     WZ-Kanalverwaltung und Commands
+          repositories/         WZ-Konfiguration und Bereinigungskanäle
     hm_models/                  gemeinsame Daten- und Embed-Modelle
     i18n/                       gemeinsame Übersetzungen
     configuration.py            Laden der Laufzeitkonfiguration
@@ -214,7 +218,7 @@ pyproject.toml                  Paket-, Hatch-Build- und optionale Entwicklungsa
 configuration.json              Laufzeitkonfiguration
 ```
 
-`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. WZ und QS verwenden gemeinsame Registrierungsmodelle und -logik, speichern ihre Daten aber in getrennten Tabellen.
+`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. Das botweite `registrations`-Modul stellt WZ und QS gemeinsame Commands, Modelle und Logik bereit; beide speichern ihre Daten weiterhin in getrennten Tabellen.
 
 ## Entwicklung und Tests
 

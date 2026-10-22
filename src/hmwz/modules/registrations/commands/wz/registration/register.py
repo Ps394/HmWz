@@ -13,7 +13,7 @@ from .autocomplete import (
     linked_accounts,
     registration_roles,
 )
-from ...module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
 

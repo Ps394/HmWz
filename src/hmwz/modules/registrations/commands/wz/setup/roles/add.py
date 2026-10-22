@@ -6,7 +6,7 @@ from hmwz import utils
 from hmwz.configuration import wz_registration_config
 from hmwz.i18n import CommandLocalizations, t
 
-from ....module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
 

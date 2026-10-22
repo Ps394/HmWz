@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
-from hmwz.modules.hs.qs.module import QsRegistrationModule
-from hmwz.modules.hs.qs.commands import QsSetupGroup
-from hmwz.modules.hs.qs.commands.setup.configure import configure
-from hmwz.modules.hs.qs.repositories import (
+from hmwz.modules.registrations.qs import QsRegistrationModule
+from hmwz.modules.registrations.commands.qs.setup import QsSetupGroup
+from hmwz.modules.registrations.commands.qs.setup.configure import configure
+from hmwz.modules.registrations.repositories import (
     QSMemberRegistrationRepository,
     QSRegistrationMessageRepository,
     QSRegistrationRoleRepository,

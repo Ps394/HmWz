@@ -7,7 +7,7 @@ from discord import Interaction, app_commands
 
 from hmwz.i18n import t
 
-from ...module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
 DISPLAY_NAME_ACCOUNT_VALUE = "__discord_display_name__"

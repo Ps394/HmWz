@@ -14,7 +14,7 @@ from hmwz.modules.basic_module import BasicModule
 from .overview import RegistrationOverview
 
 if TYPE_CHECKING:
-    from ..wz.repositories import (
+    from .repositories import (
         MemberRegistrationRepository,
         RegistrationMessageRepository,
         RegistrationRoleRepository,

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
-from hmwz.modules.hs.wz.commands.registration import reset
+from hmwz.modules.registrations.commands.wz.registration import reset
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ from discord import Attachment, Interaction, app_commands
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
-from ...module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
 

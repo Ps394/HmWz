@@ -9,7 +9,7 @@ from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 
 from .autocomplete import DISPLAY_NAME_ACCOUNT_VALUE, registered_accounts
-from ...module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
 

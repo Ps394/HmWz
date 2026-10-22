@@ -1,8 +1,9 @@
 from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
+from hmwz.modules.registrations.commands.wz.registration import RegistrationGroup
 
-from . import registration, setup
+from . import setup
 
 __all__ = ["WzGroup"]
 
@@ -29,4 +30,4 @@ class WzGroup(Group):
         )
         self.bot = bot
         self.add_command(setup.SetupGroup())
-        self.add_command(registration.RegistrationGroup())
+        self.add_command(RegistrationGroup())
