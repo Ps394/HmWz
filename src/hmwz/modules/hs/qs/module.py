@@ -5,7 +5,6 @@ import logging
 import discord
 
 from hmwz import events, sqlite_db
-from hmwz.hm_client.repositories import DiscordEntityRepository
 from hmwz.modules.registration import RegistrationModuleBase
 from hmwz.modules.registry import register
 
@@ -30,7 +29,6 @@ class QsRegistrationModule(RegistrationModuleBase):
         self.roles = repositories.QSRegistrationRoleRepository(database)
         self.registrations = repositories.QSMemberRegistrationRepository(database)
         self.list = repositories.QSRegistrationMessageRepository(database)
-        self.entities = DiscordEntityRepository(database)
         self._initialize_registration(
             registration=self.registration,
             roles=self.roles,
@@ -67,12 +65,13 @@ class QsRegistrationModule(RegistrationModuleBase):
             )
             return False
 
-    async def sync_names(self) -> bool:
+    async def migrate_schema(self) -> bool:
+        """Migrate QS registration tables to the current schema."""
         if not await self._ensure_schema():
             return False
         synced = True
         for repository in (self.registration, self.roles, self.registrations):
-            if not await repository.migrate_names():
+            if not await repository.migrate_schema():
                 _logger.error(
                     "%s Failed to sync names in QS table %s.",
                     self.guild.name,
@@ -82,10 +81,10 @@ class QsRegistrationModule(RegistrationModuleBase):
         return synced
 
     async def sync(self, startup: bool = False) -> bool:
-        if not await self.sync_names():
+        if not await self.migrate_schema():
             return False
         if startup:
-            await self.send_registration_sync_events()
+            await self.export_startup_snapshots()
             _logger.debug(
                 "%s (%s) - QS module startup sync done.", self.guild.name, self.guild.id
             )
@@ -100,7 +99,7 @@ class QsRegistrationModule(RegistrationModuleBase):
     async def on_guild_update(
         self, before: discord.Guild, after: discord.Guild
     ) -> bool:
-        return after.id == self.guild.id and await self.sync_names()
+        return after.id == self.guild.id
 
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
         if guild.id != self.guild.id:
@@ -112,14 +111,14 @@ class QsRegistrationModule(RegistrationModuleBase):
         return True
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
-        return channel.guild.id == self.guild.id and await self.sync_names()
+        return channel.guild.id == self.guild.id
 
     async def on_guild_channel_update(
         self,
         before: discord.abc.GuildChannel,
         after: discord.abc.GuildChannel,
     ) -> bool:
-        return before.guild.id == self.guild.id and await self.sync_names()
+        return before.guild.id == self.guild.id
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         return channel.guild.id == self.guild.id
@@ -127,7 +126,7 @@ class QsRegistrationModule(RegistrationModuleBase):
     async def on_guild_role_update(
         self, before: discord.Role, after: discord.Role
     ) -> bool:
-        return before.guild.id == self.guild.id and await self.sync_names()
+        return before.guild.id == self.guild.id
 
     async def on_guild_role_delete(self, role: discord.Role) -> bool:
         if role.guild.id != self.guild.id:

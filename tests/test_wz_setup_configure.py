@@ -58,9 +58,6 @@ async def test_registration_settings_create_is_unique_per_guild_and_channel(
     )
 
     assert await database.execute("CREATE TABLE Servers (Guild INTEGER PRIMARY KEY)")
-    assert await database.execute(
-        "CREATE TABLE DiscordChannels (Guild INTEGER, Channel INTEGER, Name TEXT)"
-    )
     assert await database.execute(repository.table)
     assert await database.execute("INSERT INTO Servers (Guild) VALUES (?)", (guild.id,))
 

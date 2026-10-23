@@ -42,9 +42,6 @@ class Client(discord.Client):
         self._servers: repositories.ServerRepository = repositories.ServerRepository(
             self._database
         )
-        self._entities: repositories.DiscordEntityRepository = (
-            repositories.DiscordEntityRepository(self._database)
-        )
         self.module_manager = modules.Manager(self)
 
         self.CommandTree = discord.app_commands.CommandTree(self)
@@ -57,20 +54,10 @@ class Client(discord.Client):
         """
         if not await self._database.execute(self._servers.table):
             raise RuntimeError("Failed to create the server database table.")
-        for table in self._entities.tables:
-            if not await self._database.execute(table):
-                raise RuntimeError("Failed to create Discord entity database tables.")
+        if not await self._database.remove_legacy_tables():
+            raise RuntimeError("Failed to remove legacy database tables.")
         if not await self._servers.migrate_legacy_servers():
             raise RuntimeError("Failed to migrate legacy server records.")
-        from hmwz.modules.hs.wz.repositories import (
-            WzConfigurationRepository,
-        )
-
-        configuration = WzConfigurationRepository(self._database)
-        if not await self._database.execute(configuration.table):
-            raise RuntimeError("Failed to create the WZ configuration table.")
-        if not await configuration.migrate_legacy_configuration():
-            raise RuntimeError("Failed to migrate legacy WZ configuration.")
         await self.CommandTree.set_translator(CommandTranslator())
 
         await self.register_commands()
@@ -106,8 +93,6 @@ class Client(discord.Client):
                     "%s Failed to save guild name.", self._servers.log_prefix(guild)
                 )
                 continue
-            await self._entities.sync_guild(guild)
-
         await self.module_manager.startup()
 
     async def on_guild_join(self, guild: discord.Guild):
@@ -120,8 +105,6 @@ class Client(discord.Client):
         try:
             if not await self._servers.add(guild=guild):
                 raise RuntimeError("Failed to save guild name.")
-            if not await self._entities.sync_guild(guild):
-                raise RuntimeError("Failed to save member and channel names.")
             await self.module_manager.on_guild_join(guild)
             _logger.info(f"{guild.name} ({guild.id}) - Guild added to database.")
         except Exception as e:
@@ -138,8 +121,6 @@ class Client(discord.Client):
         """
         try:
             await self.module_manager.on_guild_remove(guild)
-            if not await self._entities.remove_guild(guild=guild):
-                raise RuntimeError("Failed to remove cached Discord entity names.")
             await self._servers.remove(guild=guild)
             _logger.info(f"{guild.name} ({guild.id}) - Guild removed from database.")
         except Exception as e:
@@ -157,17 +138,6 @@ class Client(discord.Client):
             )
             return
         await self.module_manager.on_guild_update(before, after)
-
-    async def on_member_join(self, member: discord.Member):
-        """Persist a member's username and display name when they join."""
-        if not await self._entities.add_member(guild=member.guild, member=member):
-            _logger.error(
-                "%s Failed to save member name for %s / %s (%s).",
-                self._servers.log_prefix(member.guild),
-                member.name,
-                member.display_name,
-                member.id,
-            )
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
         """
@@ -195,13 +165,6 @@ class Client(discord.Client):
         :param after: Der Kanal nach der Aktualisierung
         :type after: discord.TextChannel
         """
-        if not await self._entities.add_channel(guild=after.guild, channel=after):
-            _logger.error(
-                "%s Failed to update channel name %s (%s).",
-                self._servers.log_prefix(after.guild),
-                after.name,
-                after.id,
-            )
         await self.module_manager.on_guild_channel_update(before, after)
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
@@ -211,13 +174,6 @@ class Client(discord.Client):
         :param channel: Der erstellte Kanal
         :type channel: discord.TextChannel
         """
-        if not await self._entities.add_channel(guild=channel.guild, channel=channel):
-            _logger.error(
-                "%s Failed to save channel name %s (%s).",
-                self._servers.log_prefix(channel.guild),
-                channel.name,
-                channel.id,
-            )
         await self.module_manager.on_guild_channel_create(channel)
 
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
@@ -229,24 +185,7 @@ class Client(discord.Client):
         :param after: Die Rolle nach der Aktualisierung
         :type after: discord.Role
         """
-        if not await self._entities.add_role(role=after):
-            _logger.error(
-                "%s Failed to update role name %s (%s).",
-                self._servers.log_prefix(after.guild),
-                after.name,
-                after.id,
-            )
         await self.module_manager.on_guild_role_update(before, after)
-
-    async def on_guild_role_create(self, role: discord.Role):
-        """Persist the name of a newly created role."""
-        if not await self._entities.add_role(role=role):
-            _logger.error(
-                "%s Failed to save role name %s (%s).",
-                self._servers.log_prefix(role.guild),
-                role.name,
-                role.id,
-            )
 
     async def on_guild_role_delete(self, role: discord.Role):
         """
@@ -255,13 +194,6 @@ class Client(discord.Client):
         :param role: Die gelöschte Rolle
         :type role: discord.Role
         """
-        if not await self._entities.add_role(role=role):
-            _logger.error(
-                "%s Failed to preserve deleted role name %s (%s).",
-                self._servers.log_prefix(role.guild),
-                role.name,
-                role.id,
-            )
         await self.module_manager.on_guild_role_delete(role)
 
     async def on_raw_member_remove(self, payload: events.RawMemberRemoveEvent):
@@ -271,16 +203,6 @@ class Client(discord.Client):
         :param payload: Ereignis Payload des entfernen Benutzers
         :type payload: events.RawMemberRemoveEvent
         """
-        guild = self.get_guild(payload.guild_id)
-        if guild is not None and not await self._entities.add_member(
-            guild=guild, member=payload.user
-        ):
-            _logger.error(
-                "%s Failed to update departing member name %s (%s).",
-                self._servers.log_prefix(guild),
-                payload.user.name,
-                payload.user.id,
-            )
         await self.module_manager.on_raw_member_remove(payload)
 
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -292,14 +214,6 @@ class Client(discord.Client):
         :param after: Das Mitglied nach der Aktualisierung
         :type after: discord.Member
         """
-        if not await self._entities.add_member(guild=after.guild, member=after):
-            _logger.error(
-                "%s Failed to update member name %s / %s (%s).",
-                self._servers.log_prefix(after.guild),
-                after.name,
-                after.display_name,
-                after.id,
-            )
         await self.module_manager.on_member_update(before, after)
 
     async def on_raw_message_delete(self, payload: events.RawMessageDeleteEvent):
@@ -414,6 +328,8 @@ class Client(discord.Client):
         from hmwz.modules.hs.account.commands import AccountGroup
         from hmwz.modules.hs.qs.commands import QsGroup
         from hmwz.modules.hs.wz.commands import WzGroup
+        from hmwz.modules.donation.commands import DonationGroup
+        from hmwz.modules.queue.commands import QueueGroup
         from hmwz.modules.registration.commands import RegistrationGroup
 
         _logger.info("Registering commands...")
@@ -424,6 +340,8 @@ class Client(discord.Client):
         self.add_command(QsGroup())
         self.add_command(AccountGroup())
         self.add_command(RegistrationGroup())
+        self.add_command(DonationGroup())
+        self.add_command(QueueGroup())
 
         @self.CommandTree.error
         async def tree_on_error(

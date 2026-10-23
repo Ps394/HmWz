@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="channel-remove",
+    name="remove",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
-            "command.description.wz.setup.channel.remove", "-"
+            "command.description.wz.channel.remove", "-"
         ),
-        key="wz.setup.channel.remove.description",
+        key="wz.channel.remove.description",
     ),
 )
 async def remove(interaction: Interaction) -> None:

@@ -151,20 +151,29 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             account=canonical_account,
             role=selected_role.id,
             channel_id=channel_id,
+            member_username=member.name,
+            member_display_name=member.display_name,
+            role_name=selected_role.name,
         ):
             await interaction.followup.send(
                 t(interaction, "wz.registration.account.error"), ephemeral=True
             )
             return
 
-        await module.send_registration_event(
+        await module.export_registration_snapshot(
             channel_id, "registration_change" if is_update else "registration"
         )
         if current is not None and current.role is not None:
+            all_member_registrations = await module.registrations.get(
+                guild=guild, member=member.id
+            )
             other_uses_of_old_role = any(
-                record.account.casefold() != canonical_account.casefold()
+                (
+                    record.channel_id != channel_id
+                    or record.account.casefold() != canonical_account.casefold()
+                )
                 and record.role == current.role
-                for record in registrations or ()
+                for record in all_member_registrations or ()
             )
             old_role = guild.get_role(current.role)
             if not other_uses_of_old_role and old_role is not None:

@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="role-remove",
+    name="remove",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
-            "command.description.wz.setup.role.remove", "-"
+            "command.description.wz.role.remove", "-"
         ),
-        key="wz.setup.role.remove.description",
+        key="wz.role.remove.description",
     ),
 )
 async def remove(interaction: discord.Interaction) -> None:

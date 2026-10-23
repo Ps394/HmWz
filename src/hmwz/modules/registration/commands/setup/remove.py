@@ -72,12 +72,27 @@ class RegistrationRemoveConfirmation(discord.ui.View):
             registrations = await module.registrations.get(
                 guild=self.guild, channel_id=self.channel_id
             )
-            roles_to_remove = {
-                (record.member, record.role)
-                for record in registrations or ()
-                if record.member is not None and record.role is not None
-            }
-            role_removal_failed = await self._remove_member_roles(roles_to_remove)
+            role_removal_failed = False
+            if registrations:
+                all_registrations = await module.registrations.get(guild=self.guild)
+                if all_registrations is None:
+                    role_removal_failed = True
+                else:
+                    roles_used_elsewhere = {
+                        (record.member, record.role)
+                        for record in all_registrations
+                        if record.channel_id != self.channel_id
+                    }
+                    roles_to_remove = {
+                        (record.member, record.role)
+                        for record in registrations
+                        if record.member is not None
+                        and record.role is not None
+                        and (record.member, record.role) not in roles_used_elsewhere
+                    }
+                    role_removal_failed = await self._remove_member_roles(
+                        roles_to_remove
+                    )
 
             list_messages = await module.list.get(
                 guild=self.guild, channel=self.channel_id
@@ -85,7 +100,10 @@ class RegistrationRemoveConfirmation(discord.ui.View):
             message_ids = {record.message for record in list_messages or ()}
             if registration.message is not None:
                 message_ids.add(registration.message)
-            message_removal_failed = await self._remove_messages(message_ids)
+            bot_user = interaction.client.user
+            message_removal_failed = await self._remove_messages(
+                message_ids, bot_id=bot_user.id if bot_user is not None else None
+            )
 
             for message_id in message_ids:
                 module._overview_for(self.channel_id).forget_message(message_id)
@@ -140,32 +158,73 @@ class RegistrationRemoveConfirmation(discord.ui.View):
                 )
         return failed
 
-    async def _remove_messages(self, message_ids: set[int]) -> bool:
-        if not message_ids:
-            return False
-
+    async def _remove_messages(
+        self, message_ids: set[int], *, bot_id: int | None
+    ) -> bool:
         channel = await utils.fetch_channel(self.guild, self.channel_id)
         if channel is None:
             _logger.warning(
                 "Could not fetch registration channel %s in guild %s to remove "
-                "its overview messages.",
+                "its bot messages.",
                 self.channel_id,
                 self.guild.id,
             )
             return True
 
-        failed = False
+        failed = bot_id is None
+        if bot_id is None:
+            _logger.error(
+                "Could not identify the bot user to remove its messages from "
+                "channel %s in guild %s.",
+                self.channel_id,
+                self.guild.id,
+            )
+
+        handled_message_ids: set[int] = set()
+
+        async def delete_message(message: discord.Message) -> None:
+            nonlocal failed
+            handled_message_ids.add(message.id)
+            try:
+                await message.delete()
+            except discord.NotFound:
+                pass
+            except discord.HTTPException:
+                failed = True
+                _logger.exception(
+                    "Failed to delete registration message %s in channel %s.",
+                    message.id,
+                    self.channel_id,
+                )
+
         for message_id in message_ids:
             try:
                 message = await channel.fetch_message(message_id)
-                await message.delete()
             except discord.NotFound:
+                handled_message_ids.add(message_id)
                 continue
             except discord.HTTPException:
                 failed = True
                 _logger.exception(
                     "Failed to delete registration message %s in channel %s.",
                     message_id,
+                    self.channel_id,
+                )
+                continue
+            await delete_message(message)
+
+        if bot_id is not None:
+            try:
+                async for message in channel.history(limit=None):
+                    if (
+                        message.id not in handled_message_ids
+                        and message.author.id == bot_id
+                    ):
+                        await delete_message(message)
+            except discord.HTTPException:
+                failed = True
+                _logger.exception(
+                    "Failed to scan bot messages in registration channel %s.",
                     self.channel_id,
                 )
         return failed

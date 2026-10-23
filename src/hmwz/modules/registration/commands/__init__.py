@@ -15,6 +15,7 @@ __all__ = ["RegistrationGroup"]
     send_messages=True,
     read_message_history=True,
     attach_files=True,
+    embed_links=True,
 )
 @checks.cooldown(
     1, 10, key=lambda interaction: (interaction.guild_id, interaction.user.id)

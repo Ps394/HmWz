@@ -25,8 +25,6 @@ class PurgeChannelRepository(sqlite_db.Base):
         Guild: str = "Guild"
         RegistrationChannel: str = "RegistrationChannel"
         Channel: str = "Channel"
-        GuildName: str = "GuildName"
-        ChannelName: str = "ChannelName"
 
     @property
     def table(self) -> str:
@@ -35,8 +33,6 @@ class PurgeChannelRepository(sqlite_db.Base):
             {self.TableCols.Guild} INTEGER NOT NULL,
             {self.TableCols.RegistrationChannel} INTEGER NOT NULL DEFAULT 0,
             {self.TableCols.Channel} INTEGER NOT NULL,
-            {self.TableCols.GuildName} TEXT,
-            {self.TableCols.ChannelName} TEXT,
             PRIMARY KEY (
                 {self.TableCols.Guild}, {self.TableCols.Channel}
             ),
@@ -44,21 +40,17 @@ class PurgeChannelRepository(sqlite_db.Base):
         ) WITHOUT ROWID
         """
 
-    async def migrate_names(self) -> bool:
-        """Add and populate readable names for existing purge-channel records."""
+    async def migrate_schema(self) -> bool:
+        """Add registration scope to legacy purge channels and remove cached names."""
         if not await self.ensure_columns(
-            (
-                (self.TableCols.RegistrationChannel, "INTEGER NOT NULL DEFAULT 0"),
-                (self.TableCols.GuildName, "TEXT"),
-                (self.TableCols.ChannelName, "TEXT"),
-            )
+            ((self.TableCols.RegistrationChannel, "INTEGER NOT NULL DEFAULT 0"),)
         ):
             return False
         if not await self.database.execute(
             f"""
             UPDATE {self.table_name}
             SET {self.TableCols.RegistrationChannel} = COALESCE(
-                (SELECT Channel FROM WzRegistration
+                (SELECT Channel FROM Registration_Settings
                  WHERE Guild = {self.table_name}.Guild
                  ORDER BY Channel LIMIT 1),
                 0
@@ -67,21 +59,7 @@ class PurgeChannelRepository(sqlite_db.Base):
             """
         ):
             return False
-        return await self.database.execute(
-            f"""
-            UPDATE {self.table_name}
-            SET {self.TableCols.GuildName} = COALESCE(
-                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
-                    {self.TableCols.GuildName}
-                ),
-                {self.TableCols.ChannelName} = COALESCE(
-                    (SELECT Name FROM DiscordChannels
-                     WHERE Guild = {self.table_name}.Guild
-                       AND Channel = {self.table_name}.Channel),
-                    {self.TableCols.ChannelName}
-                )
-            """
-        )
+        return await self.drop_columns(("GuildName", "ChannelName"))
 
     type Records = tuple[PurgeChannel, ...] | None
 
@@ -151,9 +129,8 @@ class PurgeChannelRepository(sqlite_db.Base):
                 f"""
                 INSERT OR IGNORE INTO {self.table_name}
                     ({self.TableCols.Guild}, {self.TableCols.RegistrationChannel},
-                     {self.TableCols.Channel},
-                     {self.TableCols.GuildName}, {self.TableCols.ChannelName})
-                SELECT ?, ?, ?, ?, ?
+                     {self.TableCols.Channel})
+                SELECT ?, ?, ?
                 WHERE (
                     SELECT COUNT(*) FROM {self.table_name}
                     WHERE {self.TableCols.Guild} = ?
@@ -164,8 +141,6 @@ class PurgeChannelRepository(sqlite_db.Base):
                     guild.id,
                     registration_channel_id,
                     channel_id,
-                    guild.name,
-                    resolved_channel_name,
                     guild.id,
                     registration_channel_id,
                     PurgeChannel.MAX_PER_REGISTRATION,

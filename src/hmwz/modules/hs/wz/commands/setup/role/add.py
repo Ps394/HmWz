@@ -15,20 +15,18 @@ logger = logging.getLogger(__name__)
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="role-add",
+    name="add",
     description=app_commands.locale_str(
-        CommandLocalizations.get("en", {}).get(
-            "command.description.wz.setup.role.add", "-"
-        ),
-        key="wz.setup.role.add.description",
+        CommandLocalizations.get("en", {}).get("command.description.wz.role.add", "-"),
+        key="wz.role.add.description",
     ),
 )
 @app_commands.describe(
     permanent=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
-            "parameter.description.wz.setup.role.add.permanent", "-"
+            "parameter.description.wz.role.add.permanent", "-"
         ),
-        key="wz.setup.role.add.permanent.description",
+        key="wz.role.add.permanent.description",
     )
 )
 async def add(interaction: discord.Interaction, permanent: bool = False) -> None:

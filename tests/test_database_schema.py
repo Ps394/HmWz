@@ -7,7 +7,7 @@ from typing import cast
 import discord
 import pytest
 
-from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
+from hmwz.hm_client.repositories import ServerRepository
 from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.modules.hs.wz.repositories import (
     MemberRegistrationRepository,
@@ -15,7 +15,6 @@ from hmwz.modules.hs.wz.repositories import (
     RegistrationMessageRepository,
     RegistrationRoleRepository,
     RegistrationSettingsRepository,
-    WzConfigurationRepository,
 )
 from hmwz.sqlite_db import Base, Database
 
@@ -23,8 +22,6 @@ from hmwz.sqlite_db import Base, Database
 def make_repositories(database: Database) -> tuple[Base, ...]:
     return (
         ServerRepository(database),
-        DiscordEntityRepository(database),
-        WzConfigurationRepository(database),
         RegistrationRoleRepository(database),
         RegistrationSettingsRepository(database),
         MemberRegistrationRepository(database),
@@ -37,13 +34,7 @@ def make_repositories(database: Database) -> tuple[Base, ...]:
 async def initialize_schema(database: Database) -> tuple[Base, ...]:
     repositories = make_repositories(database)
     for repository in repositories:
-        statements = (
-            repository.tables
-            if isinstance(repository, DiscordEntityRepository)
-            else (repository.table,)
-        )
-        for statement in statements:
-            assert await database.execute(statement)
+        assert await database.execute(repository.table)
     return repositories
 
 
@@ -55,13 +46,7 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
     repositories = await initialize_schema(database)
 
     for repository in repositories:
-        statements = (
-            repository.tables
-            if isinstance(repository, DiscordEntityRepository)
-            else (repository.table,)
-        )
-        for statement in statements:
-            assert await database.execute(statement)
+        assert await database.execute(repository.table)
 
     tables = await database.fetch_all(
         "SELECT name FROM sqlite_master WHERE type = 'table'"
@@ -69,15 +54,11 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
     table_names = {row["name"] for row in tables}
     assert table_names == {
         "Servers",
-        "DiscordMembers",
-        "DiscordChannels",
-        "DiscordRoles",
-        "WzConfiguration",
-        "WzRoles",
-        "WzRegistration",
-        "WzRegistrations",
+        "Registration_Roles",
+        "Registration_Settings",
+        "Registration_Members",
         "WzGameAccounts",
-        "WzList",
+        "Registration_Messages",
         "WzPurgeChannels",
     }
 
@@ -113,220 +94,159 @@ async def test_schema_enforces_server_foreign_keys(tmp_path: Path) -> None:
     )
 
     assert not executed
-    assert await database.fetch_one("SELECT 1 FROM WzRegistration") is None
+    assert await database.fetch_one("SELECT 1 FROM Registration_Settings") is None
 
 
 @pytest.mark.asyncio
-async def test_wz_table_name_columns_migrate_and_backfill(tmp_path: Path) -> None:
-    database = Database(folder=str(tmp_path), filename="wz-name-migration.db")
-    servers = ServerRepository(database)
-    entities = DiscordEntityRepository(database)
-    assert await database.execute(servers.table)
-    for statement in entities.tables:
-        assert await database.execute(statement)
-
+async def test_legacy_schema_migrates_without_name_caches_and_keeps_aliases(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="legacy-registration.db")
+    assert await database.execute(ServerRepository(database).table)
     assert await database.execute(
         "INSERT INTO Servers (Guild, Name) VALUES (?, ?)", (123, "Guild Name")
     )
     assert await database.execute(
-        "INSERT INTO DiscordMembers (Guild, Member, Username, DisplayName) "
-        "VALUES (?, ?, ?, ?)",
-        (123, 234, "player-name", "Player Nickname"),
+        """
+        CREATE TABLE DiscordMembers (
+            Guild INTEGER, Member INTEGER, Username TEXT, DisplayName TEXT
+        )
+        """
     )
     assert await database.execute(
-        "INSERT INTO DiscordChannels (Guild, Channel, Name) VALUES (?, ?, ?)",
-        (123, 456, "registration-channel"),
+        "CREATE TABLE DiscordChannels (Guild INTEGER, Channel INTEGER, Name TEXT)"
     )
     assert await database.execute(
-        "INSERT INTO DiscordRoles (Guild, Role, Name) VALUES (?, ?, ?)",
-        (123, 789, "registration-role"),
+        "CREATE TABLE DiscordRoles (Guild INTEGER, Role INTEGER, Name TEXT)"
     )
-
-    assert await database.execute(
-        "CREATE TABLE WzRoles (Guild INTEGER, Role INTEGER, Permanent BOOLEAN, "
-        "Score INTEGER DEFAULT 1, PRIMARY KEY (Guild, Role)) WITHOUT ROWID"
-    )
-    assert await database.execute(
-        "INSERT INTO WzRoles (Guild, Role, Permanent, Score) VALUES (?, ?, ?, ?)",
-        (123, 789, 1, 3),
-    )
-    assert await database.execute(
-        "CREATE TABLE WzRegistrations (Guild INTEGER, Member INTEGER, Role INTEGER, "
-        "Timestamp TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (Guild, Member)) "
-        "WITHOUT ROWID"
-    )
-    assert await database.execute(
-        "INSERT INTO WzRegistrations (Guild, Member, Role) VALUES (?, ?, ?)",
-        (123, 234, 789),
-    )
-    assert await database.execute(
-        "CREATE TABLE WzRegistration (Guild INTEGER PRIMARY KEY, Channel INTEGER, "
-        "Message INTEGER, Title TEXT, Description TEXT) WITHOUT ROWID"
-    )
-    assert await database.execute(
-        "INSERT INTO WzRegistration (Guild, Channel) VALUES (?, ?)", (123, 456)
-    )
-    assert await database.execute(
-        "CREATE TABLE WzPurgeChannels (Guild INTEGER NOT NULL, Channel INTEGER NOT NULL, "
-        "PRIMARY KEY (Guild, Channel)) WITHOUT ROWID"
-    )
-    assert await database.execute(
-        "INSERT INTO WzPurgeChannels (Guild, Channel) VALUES (?, ?)", (123, 456)
-    )
-
-    repositories = (
-        RegistrationRoleRepository(database),
-        MemberRegistrationRepository(database),
-        RegistrationSettingsRepository(database),
-        PurgeChannelRepository(database),
-    )
-    for repository in repositories:
-        assert await repository.migrate_names()
-
-    expected = {
-        "WzRoles": (
-            "SELECT GuildName, RoleName FROM WzRoles",
-            ("Guild Name", "registration-role"),
-        ),
-        "WzRegistrations": (
-            "SELECT GuildName, MemberUsername, MemberDisplayName, RoleName "
-            "FROM WzRegistrations",
-            ("Guild Name", "player-name", "Player Nickname", "registration-role"),
-        ),
-        "WzRegistration": (
-            "SELECT GuildName, ChannelName FROM WzRegistration",
-            ("Guild Name", "registration-channel"),
-        ),
-        "WzPurgeChannels": (
-            "SELECT GuildName, ChannelName FROM WzPurgeChannels",
-            ("Guild Name", "registration-channel"),
-        ),
-    }
-    for query, expected_values in expected.values():
-        row = await database.fetch_one(query)
-        assert row is not None
-        assert tuple(row) == expected_values
-
-    migrated_role = await database.fetch_one(
-        "SELECT Channel FROM WzRoles WHERE Guild = ? AND Role = ?",
-        (123, 789),
-    )
-    assert migrated_role is not None and migrated_role["Channel"] == 456
-    migrated_registration = await database.fetch_one(
-        "SELECT Channel FROM WzRegistrations WHERE Guild = ? AND Member = ?",
-        (123, 234),
-    )
-    assert migrated_registration is not None
-    assert migrated_registration["Channel"] == 456
-    migrated_purge_channel = await database.fetch_one(
-        "SELECT RegistrationChannel FROM WzPurgeChannels "
-        "WHERE Guild = ? AND Channel = ?",
-        (123, 456),
-    )
-    assert migrated_purge_channel is not None
-    assert migrated_purge_channel["RegistrationChannel"] == 456
-
-    migrated_columns = await database.fetch_all('PRAGMA table_info("WzRegistrations")')
-    account_column = next(
-        column for column in migrated_columns if column["name"] == "Account"
-    )
-    assert account_column["pk"] > 0
     assert await database.execute(
         """
-        INSERT INTO WzRegistrations
-        (Guild, Member, Account, Role, Timestamp)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """,
-        (123, 234, "alt-account", 789),
+        CREATE TABLE Registration_Settings (
+            Guild INTEGER PRIMARY KEY, Channel INTEGER, Message INTEGER, Title TEXT,
+            Description TEXT, GuildName TEXT, ChannelName TEXT
+        ) WITHOUT ROWID
+        """
     )
-    account_rows = await database.fetch_all(
-        "SELECT Account FROM WzRegistrations WHERE Guild = ? AND Member = ? "
-        "ORDER BY Account",
-        (123, 234),
+    assert await database.execute(
+        "INSERT INTO Registration_Settings (Guild, Channel, GuildName, ChannelName) "
+        "VALUES (?, ?, ?, ?)",
+        (123, 456, "Guild Name", "registration-channel"),
     )
-    assert tuple(row["Account"] for row in account_rows) == ("", "alt-account")
+    assert await database.execute(RegistrationRoleRepository(database).table)
+    assert await database.execute(
+        """
+        CREATE TABLE Roles (
+            Guild INTEGER, Role INTEGER, Permanent BOOLEAN, Score INTEGER,
+            GuildName TEXT, RoleName TEXT, PRIMARY KEY (Guild, Role)
+        ) WITHOUT ROWID
+        """
+    )
+    assert await database.execute(
+        "INSERT INTO Roles VALUES (?, ?, ?, ?, ?, ?)",
+        (123, 789, 1, 3, "Guild Name", "registration-role"),
+    )
+    assert await database.execute(
+        """
+        CREATE TABLE Registrations_Member (
+            Guild INTEGER, Member INTEGER, Account TEXT, Role INTEGER,
+            Timestamp TEXT, GuildName TEXT, MemberUsername TEXT,
+            MemberDisplayName TEXT, RoleName TEXT,
+            PRIMARY KEY (Guild, Member, Account)
+        ) WITHOUT ROWID
+        """
+    )
+    assert await database.execute(
+        "INSERT INTO Registrations_Member VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)",
+        (123, 234, "", 789, "Guild Name", "player", "Player", "role"),
+    )
+    assert await database.execute(
+        "INSERT INTO Registrations_Member VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)",
+        (123, 234, "alt-account", 789, "Guild Name", "player", "Player", "role"),
+    )
+    assert await database.execute(MemberRegistrationRepository(database).table)
+    assert await database.execute(
+        """
+        CREATE TABLE WzPurgeChannels (
+            Guild INTEGER NOT NULL, Channel INTEGER NOT NULL,
+            GuildName TEXT, ChannelName TEXT,
+            PRIMARY KEY (Guild, Channel)
+        ) WITHOUT ROWID
+        """
+    )
+    assert await database.execute(
+        "INSERT INTO WzPurgeChannels VALUES (?, ?, ?, ?)",
+        (123, 321, "Guild Name", "purge-channel"),
+    )
 
+    assert await database.remove_legacy_tables()
+    for repository in (
+        RegistrationSettingsRepository(database),
+        RegistrationRoleRepository(database),
+        MemberRegistrationRepository(database),
+        PurgeChannelRepository(database),
+    ):
+        assert await repository.migrate_schema()
 
-@pytest.mark.asyncio
-async def test_discord_entity_names_are_saved_and_updated(tmp_path: Path) -> None:
-    database = Database(folder=str(tmp_path), filename="entity-names.db")
-    servers = ServerRepository(database)
-    entities = DiscordEntityRepository(database)
-    assert await database.execute(servers.table)
-    for statement in entities.tables:
-        assert await database.execute(statement)
+    roles = await database.fetch_all("SELECT Channel FROM Registration_Roles")
+    registrations = await database.fetch_all(
+        "SELECT Channel, Alias FROM Registration_Members ORDER BY Alias"
+    )
+    purge_channels = await database.fetch_all(
+        "SELECT RegistrationChannel FROM WzPurgeChannels"
+    )
+    assert tuple(roles[0]) == (456,)
+    assert tuple(tuple(row) for row in registrations) == (
+        (456, ""),
+        (456, "alt-account"),
+    )
+    assert tuple(purge_channels[0]) == (456,)
 
-    guild_data = SimpleNamespace(
-        id=123,
-        name="test guild",
-        members=[],
-        channels=[],
-        threads=[],
-        roles=[],
-        get_channel_or_thread=lambda channel_id: None,
-        get_member=lambda member_id: None,
-        get_role=lambda role_id: None,
+    for table_name in (
+        "DiscordMembers",
+        "DiscordChannels",
+        "DiscordRoles",
+        "Registrations_Member",
+    ):
+        assert (
+            await database.fetch_one(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table_name,),
+            )
+            is None
+        )
+    for table_name in (
+        "Registration_Roles",
+        "Registration_Members",
+        "Registration_Settings",
+        "WzPurgeChannels",
+    ):
+        columns = await database.fetch_all(f'PRAGMA table_info("{table_name}")')
+        column_names = {column["name"] for column in columns}
+        assert not {"GuildName", "ChannelName"}.intersection(column_names)
+    registration_columns = await database.fetch_all(
+        'PRAGMA table_info("Registration_Members")'
     )
-    guild = cast(discord.Guild, guild_data)
-    member = cast(
-        discord.Member,
-        SimpleNamespace(id=234, name="player", display_name="Player Nickname"),
+    assert {
+        "MemberUsername",
+        "MemberDisplayName",
+        "RoleName",
+    }.issubset(column["name"] for column in registration_columns)
+    migrated_names = await database.fetch_all(
+        """
+        SELECT MemberUsername, MemberDisplayName, RoleName
+        FROM Registration_Members ORDER BY Alias
+        """
     )
-    channel = cast(
-        discord.TextChannel,
-        SimpleNamespace(id=456, name="registration"),
+    assert tuple(tuple(row) for row in migrated_names) == (
+        ("player", "Player", "role"),
+        ("player", "Player", "role"),
     )
-    assert await servers.add(guild=guild)
-    assert await entities.add_member(guild=guild, member=member)
-    assert await entities.add_channel(guild=guild, channel=channel)
-    updated_member = cast(
-        discord.Member,
-        SimpleNamespace(id=234, name="updated-player", display_name="Updated Nickname"),
+    assert (
+        await database.fetch_one(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Roles'"
+        )
+        is None
     )
-    updated_channel = cast(
-        discord.TextChannel,
-        SimpleNamespace(id=456, name="wz"),
-    )
-    updated_role = cast(
-        discord.Role,
-        SimpleNamespace(
-            id=789,
-            name="Registration",
-            guild=guild,
-        ),
-    )
-    assert await entities.add_member(guild=guild, member=updated_member)
-    assert await entities.add_channel(guild=guild, channel=updated_channel)
-    assert await entities.add_role(role=updated_role)
-
-    guild_data.members = [updated_member]
-    guild_data.channels = [updated_channel]
-    guild_data.roles = [updated_role]
-    assert await entities.sync_guild(guild)
-
-    stored_member = await database.fetch_one(
-        "SELECT Username, DisplayName FROM DiscordMembers WHERE Guild = ? AND Member = ?",
-        (123, 234),
-    )
-    stored_channel = await database.fetch_one(
-        "SELECT Name FROM DiscordChannels WHERE Guild = ? AND Channel = ?",
-        (123, 456),
-    )
-    stored_role = await database.fetch_one(
-        "SELECT Name FROM DiscordRoles WHERE Guild = ? AND Role = ?",
-        (123, 789),
-    )
-    assert stored_member is not None
-    assert tuple(stored_member) == ("updated-player", "Updated Nickname")
-    assert stored_channel is not None
-    assert stored_channel["Name"] == "wz"
-    assert stored_role is not None
-    assert stored_role["Name"] == "Registration"
-    assert await entities.member_log_name(guild, 234) == (
-        "updated-player / Updated Nickname (234)"
-    )
-    assert await entities.channel_log_name(guild, 456) == "wz (456)"
-    assert await entities.role_log_name(guild, 789) == "Registration (789)"
 
 
 @pytest.mark.asyncio
@@ -361,55 +281,30 @@ async def test_legacy_server_rows_are_copied_and_old_table_is_removed(
 
 
 @pytest.mark.asyncio
-async def test_legacy_configuration_tables_are_migrated_and_removed(
+async def test_legacy_registration_tables_are_removed(
     tmp_path: Path,
 ) -> None:
-    database = Database(folder=str(tmp_path), filename="legacy-configuration.db")
-    servers = ServerRepository(database)
-    assert await database.execute(servers.table)
-    guild = cast(discord.Guild, SimpleNamespace(id=321, name="legacy guild"))
-    assert await servers.add(guild=guild)
-    other_guild = cast(
-        discord.Guild, SimpleNamespace(id=322, name="another legacy guild")
-    )
-    assert await servers.add(guild=other_guild)
-    for table_name in ("Configuration", "WzConfig"):
+    database = Database(folder=str(tmp_path), filename="legacy-registration.db")
+    for table_name in (
+        "QsList",
+        "QsRegistration",
+        "QsRegistrations",
+        "QsRoles",
+        "WzConfiguration",
+    ):
         assert await database.execute(
-            f"""
-            CREATE TABLE "{table_name}" (
-                Guild INTEGER PRIMARY KEY,
-                ChannelID INTEGER,
-                ScoreModLvl BOOLEAN DEFAULT 0,
-                Matchmaker BOOLEAN DEFAULT 0
-            )
-            """
+            f'CREATE TABLE "{table_name}" (Guild INTEGER PRIMARY KEY)'
         )
-    assert await database.execute(
-        "INSERT INTO Configuration (Guild, ChannelID, ScoreModLvl, Matchmaker) "
-        "VALUES (?, ?, ?, ?)",
-        (321, 654, 1, 0),
-    )
-    assert await database.execute(
-        "INSERT INTO WzConfig (Guild, ChannelID, ScoreModLvl, Matchmaker) "
-        "VALUES (?, ?, ?, ?)",
-        (322, 655, 0, 1),
-    )
 
-    configuration = WzConfigurationRepository(database)
-    assert await configuration.migrate_legacy_configuration()
-    assert await configuration.migrate_legacy_configuration()
-
-    migrated = await database.fetch_all(
-        "SELECT Guild, ChannelID, ScoreModLvl, Matchmaker "
-        "FROM WzConfiguration ORDER BY Guild"
+    assert await database.remove_legacy_tables()
+    assert await database.remove_legacy_tables()
+    tables = await database.fetch_all(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
     )
-    assert [tuple(row) for row in migrated] == [
-        (321, 654, 1, 0),
-        (322, 655, 0, 1),
-    ]
-    for table_name in ("Configuration", "WzConfig"):
-        legacy = await database.fetch_one(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            (table_name,),
-        )
-        assert legacy is None
+    assert not {
+        "QsList",
+        "QsRegistration",
+        "QsRegistrations",
+        "QsRoles",
+        "WzConfiguration",
+    }.intersection(row["name"] for row in tables)

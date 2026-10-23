@@ -15,8 +15,9 @@ _logger = logging.getLogger(__name__)
 class MemberRegistrationRepository(sqlite_db.Base):
     """Repository fuer Mitgliederregistrierungen je Guild."""
 
-    table_name = "Registrations_Member"
-    settings_table_name = "Registration"
+    table_name = "Registration_Members"
+    legacy_table_name: str | None = "Registrations_Member"
+    settings_table_name = "Registration_Settings"
 
     def __init__(self, database: sqlite_db.Database):
         super().__init__(database)
@@ -26,10 +27,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
         Guild: str = "Guild"
         Channel: str = "Channel"
         Member: str = "Member"
-        Account: str = "Account"
+        Account: str = "Alias"
         Role: str = "Role"
         Timestamp: str = "Timestamp"
-        GuildName: str = "GuildName"
         MemberUsername: str = "MemberUsername"
         MemberDisplayName: str = "MemberDisplayName"
         RoleName: str = "RoleName"
@@ -44,7 +44,6 @@ class MemberRegistrationRepository(sqlite_db.Base):
             {self.TableCols.Account} TEXT NOT NULL DEFAULT '',
             {self.TableCols.Role} INTEGER,
             {self.TableCols.Timestamp} TEXT DEFAULT CURRENT_TIMESTAMP,
-            {self.TableCols.GuildName} TEXT,
             {self.TableCols.MemberUsername} TEXT,
             {self.TableCols.MemberDisplayName} TEXT,
             {self.TableCols.RoleName} TEXT,
@@ -55,12 +54,11 @@ class MemberRegistrationRepository(sqlite_db.Base):
         ) WITHOUT ROWID
         """
 
-    async def migrate_names(self) -> bool:
-        """Add and populate readable names for existing registration records."""
+    async def migrate_schema(self) -> bool:
+        """Migrate legacy registration records while preserving alternate accounts."""
         if not await self.ensure_columns(
             (
                 (self.TableCols.Channel, "INTEGER NOT NULL DEFAULT 0"),
-                (self.TableCols.GuildName, "TEXT"),
                 (self.TableCols.MemberUsername, "TEXT"),
                 (self.TableCols.MemberDisplayName, "TEXT"),
                 (self.TableCols.RoleName, "TEXT"),
@@ -69,33 +67,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
             return False
         if not await self._migrate_account_key():
             return False
-        return await self.database.execute(
-            f"""
-            UPDATE {self.table_name}
-            SET {self.TableCols.GuildName} = COALESCE(
-                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
-                    {self.TableCols.GuildName}
-                ),
-                {self.TableCols.MemberUsername} = COALESCE(
-                    (SELECT Username FROM DiscordMembers
-                     WHERE Guild = {self.table_name}.Guild
-                       AND Member = {self.table_name}.Member),
-                    {self.TableCols.MemberUsername}
-                ),
-                {self.TableCols.MemberDisplayName} = COALESCE(
-                    (SELECT DisplayName FROM DiscordMembers
-                     WHERE Guild = {self.table_name}.Guild
-                       AND Member = {self.table_name}.Member),
-                    {self.TableCols.MemberDisplayName}
-                ),
-                {self.TableCols.RoleName} = COALESCE(
-                    (SELECT Name FROM DiscordRoles
-                     WHERE Guild = {self.table_name}.Guild
-                       AND Role = {self.table_name}.Role),
-                    {self.TableCols.RoleName}
-                )
-            """
-        )
+        if not await self._migrate_legacy_table():
+            return False
+        return await self.drop_columns(("GuildName",))
 
     async def _migrate_account_key(self) -> bool:
         """Move legacy registrations to a key that supports multiple accounts."""
@@ -106,39 +80,60 @@ class MemberRegistrationRepository(sqlite_db.Base):
                     f'PRAGMA table_info("{self.table_name}")'
                 )
                 columns = await cursor.fetchall()
-                account_column = next(
-                    (column for column in columns if column["name"] == "Account"),
-                    None,
+                column_names = {column["name"] for column in columns}
+                primary_key = {column["name"] for column in columns if column["pk"] > 0}
+                alias_column = (
+                    "Alias"
+                    if "Alias" in column_names
+                    else "Account"
+                    if "Account" in column_names
+                    else None
                 )
-                channel_column = next(
-                    (column for column in columns if column["name"] == "Channel"),
-                    None,
-                )
-                if (
-                    account_column is not None
-                    and account_column["pk"] > 0
-                    and channel_column is not None
-                    and channel_column["pk"] > 0
-                ):
+                if {"Guild", "Channel", "Member", "Alias"}.issubset(
+                    primary_key
+                ) and "Account" not in column_names:
                     await connection.commit()
                     return True
 
                 account_value = (
-                    f"COALESCE({self.TableCols.Account}, '')"
-                    if account_column is not None
+                    f"COALESCE(legacy.\"{alias_column}\", '')"
+                    if alias_column is not None
                     else "''"
                 )
-                channel_value = (
-                    f"COALESCE({self.TableCols.Channel}, 0)"
-                    if channel_column is not None and channel_column["pk"] > 0
-                    else f"""
-                    COALESCE(
-                        (SELECT Channel FROM {self.settings_table_name}
-                         WHERE Guild = {self.table_name}_legacy.Guild
-                         ORDER BY Channel LIMIT 1),
-                        0
+                if "Channel" in primary_key:
+                    channel_value = 'COALESCE(legacy."Channel", 0)'
+                else:
+                    stored_channel = (
+                        'NULLIF(legacy."Channel", 0)'
+                        if "Channel" in column_names
+                        else "NULL"
                     )
+                    channel_value = f"""COALESCE(
+                            {stored_channel},
+                            (SELECT Channel FROM "{self.settings_table_name}"
+                             WHERE Guild = legacy.Guild
+                             ORDER BY Channel LIMIT 1),
+                            0
+                        )
                     """
+                role_value = 'legacy."Role"' if "Role" in column_names else "NULL"
+                timestamp_value = (
+                    'legacy."Timestamp"'
+                    if "Timestamp" in column_names
+                    else "CURRENT_TIMESTAMP"
+                )
+                member_username_value = (
+                    'legacy."MemberUsername"'
+                    if "MemberUsername" in column_names
+                    else "NULL"
+                )
+                member_display_name_value = (
+                    'legacy."MemberDisplayName"'
+                    if "MemberDisplayName" in column_names
+                    else "NULL"
+                )
+                role_name_value = (
+                    'legacy."RoleName"' if "RoleName" in column_names else "NULL"
                 )
                 await connection.execute(
                     f"""
@@ -146,25 +141,26 @@ class MemberRegistrationRepository(sqlite_db.Base):
                         Guild INTEGER,
                         Channel INTEGER NOT NULL DEFAULT 0,
                         Member INTEGER,
-                        Account TEXT NOT NULL DEFAULT '',
+                        Alias TEXT NOT NULL DEFAULT '',
                         Role INTEGER,
                         Timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-                        GuildName TEXT,
                         MemberUsername TEXT,
                         MemberDisplayName TEXT,
                         RoleName TEXT,
-                        PRIMARY KEY (Guild, Channel, Member, Account)
+                        PRIMARY KEY (Guild, Channel, Member, Alias)
                     ) WITHOUT ROWID
                     """
                 )
                 await connection.execute(
                     f"""
                     INSERT OR IGNORE INTO "{self.table_name}_new"
-                    (Guild, Channel, Member, Account, Role, Timestamp, GuildName,
+                    (Guild, Channel, Member, Alias, Role, Timestamp,
                      MemberUsername, MemberDisplayName, RoleName)
-                    SELECT Guild, {channel_value}, Member, {account_value}, Role, Timestamp,
-                           GuildName, MemberUsername, MemberDisplayName, RoleName
-                    FROM "{self.table_name}" AS {self.table_name}_legacy
+                    SELECT legacy."Guild", {channel_value}, legacy."Member",
+                           {account_value}, {role_value}, {timestamp_value},
+                           {member_username_value}, {member_display_name_value},
+                           {role_name_value}
+                    FROM "{self.table_name}" AS legacy
                     """
                 )
                 await connection.execute(f'DROP TABLE "{self.table_name}"')
@@ -180,6 +176,96 @@ class MemberRegistrationRepository(sqlite_db.Base):
             )
             return False
 
+    async def _migrate_legacy_table(self) -> bool:
+        """Copy registrations from the former table name before removing it."""
+        if self.legacy_table_name is None:
+            return True
+
+        try:
+            legacy_table = await self.database.fetch_one(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (self.legacy_table_name,),
+            )
+            if legacy_table is None:
+                return True
+
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                cursor = await connection.execute(
+                    f'PRAGMA table_info("{self.legacy_table_name}")'
+                )
+                columns = await cursor.fetchall()
+                column_names = {column["name"] for column in columns}
+                primary_key = {column["name"] for column in columns if column["pk"] > 0}
+                alias_column = (
+                    "Alias"
+                    if "Alias" in column_names
+                    else "Account"
+                    if "Account" in column_names
+                    else None
+                )
+                alias_value = (
+                    f"COALESCE(legacy.\"{alias_column}\", '')"
+                    if alias_column is not None
+                    else "''"
+                )
+                if "Channel" in primary_key:
+                    channel_value = 'COALESCE(legacy."Channel", 0)'
+                else:
+                    stored_channel = (
+                        'NULLIF(legacy."Channel", 0)'
+                        if "Channel" in column_names
+                        else "NULL"
+                    )
+                    channel_value = f"""COALESCE(
+                        {stored_channel},
+                        (SELECT Channel FROM "{self.settings_table_name}"
+                         WHERE Guild = legacy.Guild
+                         ORDER BY Channel LIMIT 1),
+                        0
+                    )"""
+                role_value = 'legacy."Role"' if "Role" in column_names else "NULL"
+                timestamp_value = (
+                    'legacy."Timestamp"'
+                    if "Timestamp" in column_names
+                    else "CURRENT_TIMESTAMP"
+                )
+                member_username_value = (
+                    'legacy."MemberUsername"'
+                    if "MemberUsername" in column_names
+                    else "NULL"
+                )
+                member_display_name_value = (
+                    'legacy."MemberDisplayName"'
+                    if "MemberDisplayName" in column_names
+                    else "NULL"
+                )
+                role_name_value = (
+                    'legacy."RoleName"' if "RoleName" in column_names else "NULL"
+                )
+                await connection.execute(
+                    f"""
+                    INSERT OR IGNORE INTO "{self.table_name}"
+                        (Guild, Channel, Member, Alias, Role, Timestamp,
+                         MemberUsername, MemberDisplayName, RoleName)
+                    SELECT legacy."Guild", {channel_value}, legacy."Member",
+                           {alias_value}, {role_value}, {timestamp_value},
+                           {member_username_value}, {member_display_name_value},
+                           {role_name_value}
+                    FROM "{self.legacy_table_name}" AS legacy
+                    """
+                )
+                await connection.execute(f'DROP TABLE "{self.legacy_table_name}"')
+                await connection.commit()
+            return True
+        except Exception:
+            _logger.exception(
+                "%s Failed to migrate registrations from legacy table %s.",
+                self.log_prefix(),
+                self.legacy_table_name,
+            )
+            return False
+
     @dataclass(frozen=True)
     class _Data:
         guild_id: int
@@ -188,6 +274,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
         account: str
         role: int | None
         timestamp: str
+        member_username: str | None
+        member_display_name: str | None
+        role_name: str | None
 
         @property
         def has_member(self) -> bool:
@@ -286,6 +375,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
                     account=rec[self.TableCols.Account],
                     role=rec[self.TableCols.Role],
                     timestamp=rec[self.TableCols.Timestamp],
+                    member_username=rec[self.TableCols.MemberUsername],
+                    member_display_name=rec[self.TableCols.MemberDisplayName],
+                    role_name=rec[self.TableCols.RoleName],
                 )
 
             out: list[MemberRegistrationRepository._Data] = await asyncio.gather(
@@ -306,11 +398,13 @@ class MemberRegistrationRepository(sqlite_db.Base):
         role: int,
         account: str = "",
         channel_id: int = 0,
+        member_username: str | None = None,
+        member_display_name: str | None = None,
+        role_name: str | None = None,
     ) -> bool:
         member_name = f"unknown member ({member})"
         try:
             member_names = await self.member_names(guild, member)
-            role_name = await self.role_name(guild, role)
             if member_names is not None:
                 member_name = f"{member_names[0]} / {member_names[1]} ({member})"
             executed = await self.database.execute(
@@ -318,10 +412,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
                 INSERT OR REPLACE INTO {self.table_name}
                 ({self.TableCols.Guild}, {self.TableCols.Channel}, {self.TableCols.Member},
                  {self.TableCols.Account}, {self.TableCols.Role},
-                 {self.TableCols.Timestamp}, {self.TableCols.GuildName},
-                 {self.TableCols.MemberUsername}, {self.TableCols.MemberDisplayName},
-                 {self.TableCols.RoleName})
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
+                 {self.TableCols.Timestamp}, {self.TableCols.MemberUsername},
+                 {self.TableCols.MemberDisplayName}, {self.TableCols.RoleName})
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
                 """,
                 (
                     guild.id,
@@ -329,9 +422,8 @@ class MemberRegistrationRepository(sqlite_db.Base):
                     member,
                     account,
                     role,
-                    guild.name,
-                    member_names[0] if member_names is not None else None,
-                    member_names[1] if member_names is not None else None,
+                    member_username,
+                    member_display_name,
                     role_name,
                 ),
             )

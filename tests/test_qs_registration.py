@@ -82,6 +82,7 @@ def test_registration_command_group_uses_requested_hierarchy() -> None:
     assert isinstance(setup, discord.app_commands.Group)
     assert {command.name for command in setup.commands} == {
         "configure",
+        "event-log",
         "message",
         "remove",
         "roles-add",
@@ -90,7 +91,7 @@ def test_registration_command_group_uses_requested_hierarchy() -> None:
 
 
 @pytest.mark.asyncio
-async def test_qs_registration_repositories_use_independent_tables(
+async def test_qs_registration_repositories_use_shared_tables(
     tmp_path: Path,
 ) -> None:
     database = Database(folder=str(tmp_path), filename="qs-registration.db")
@@ -108,34 +109,27 @@ async def test_qs_registration_repositories_use_independent_tables(
         assert await database.execute(repository.table)
 
     for table_name in (
-        "WzRegistration",
-        "WzRoles",
-        "WzRegistrations",
-        "WzList",
-        "QsRegistration",
-        "QsRoles",
-        "QsRegistrations",
-        "QsList",
+        "Registration_Settings",
+        "Registration_Roles",
+        "Registration_Members",
+        "Registration_Messages",
     ):
         assert await database.fetch_one(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
             (table_name,),
         )
 
-    assert (
-        QSRegistrationSettingsRepository.table_name
-        != RegistrationSettingsRepository.table_name
-    )
-    assert (
-        QSRegistrationRoleRepository.table_name != RegistrationRoleRepository.table_name
-    )
-    assert (
-        QSMemberRegistrationRepository.table_name
-        != MemberRegistrationRepository.table_name
-    )
-    assert (
-        QSRegistrationMessageRepository.table_name
-        != RegistrationMessageRepository.table_name
+    assert QSRegistrationSettingsRepository is RegistrationSettingsRepository
+    assert QSRegistrationRoleRepository is RegistrationRoleRepository
+    assert QSMemberRegistrationRepository is MemberRegistrationRepository
+    assert QSRegistrationMessageRepository is RegistrationMessageRepository
+    assert not await database.fetch_all(
+        """
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name IN (
+            'QsList', 'QsRegistration', 'QsRegistrations', 'QsRoles'
+        )
+        """
     )
 
 
@@ -166,7 +160,6 @@ async def test_qs_registration_has_no_player_limit(tmp_path: Path) -> None:
             followup=followup,
         ),
     )
-    module.entities.add_member = AsyncMock(return_value=True)
     module.registrations.get = AsyncMock(return_value=None)
     module.registrations.count = AsyncMock(return_value=40)
     module.registrations.add = AsyncMock(return_value=True)

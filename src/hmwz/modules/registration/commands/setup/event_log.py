@@ -5,7 +5,7 @@ from discord import Interaction, app_commands
 
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.modules.registration.base import RegistrationModuleBase
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,8 @@ async def event_log(
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
+        module: RegistrationModuleBase = await manager.get_module(
+            guild, RegistrationModuleBase
         )
         if channel is None:
             if not await module.registration_event_channel.remove(guild=guild):

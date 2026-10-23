@@ -2,7 +2,7 @@ from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import clean_channels, reset_roles, setup
+from . import channel, clean_channels, reset_roles, role
 
 __all__ = ["WzGroup"]
 
@@ -14,6 +14,7 @@ __all__ = ["WzGroup"]
     send_messages=True,
     read_message_history=True,
     attach_files=True,
+    embed_links=True,
 )
 @checks.cooldown(1, 10, key=lambda i: (i.guild_id, i.user.id))
 class WzGroup(Group):
@@ -28,6 +29,7 @@ class WzGroup(Group):
             ),
         )
         self.bot = bot
-        self.add_command(setup.SetupGroup())
+        self.add_command(channel.ChannelGroup())
+        self.add_command(role.RoleGroup())
         self.add_command(clean_channels.clean_channels)
         self.add_command(reset_roles.reset_roles)

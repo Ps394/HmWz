@@ -144,10 +144,18 @@ async def reset(
             reg for reg in registrations if reg.role in non_permanent_roles
         ]
         if len(non_permanent_registrations) > 0:
+            all_member_registrations = await module.registrations.get(guild=guild)
             roles_to_remove = {
                 (reg.member, reg.role)
                 for reg in non_permanent_registrations
-                if reg.member is not None and reg.role is not None
+                if reg.member is not None
+                and reg.role is not None
+                and not any(
+                    other.member == reg.member
+                    and other.role == reg.role
+                    and other.channel_id != channel_id
+                    for other in all_member_registrations or ()
+                )
             }
             await _remove_registration_roles(guild, roles_to_remove)
 
@@ -161,7 +169,7 @@ async def reset(
                     t(interaction, "wz.registration.reset.error"), ephemeral=True
                 )
                 return
-            await module.send_registration_event(channel_id, "sync")
+            await module.export_registration_snapshot(channel_id, "sync")
 
         if purge:
             channels_to_purge = await module.purge_channels.get(

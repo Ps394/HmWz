@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import io
-import json
 import logging
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import discord
 
 from hmwz import sqlite_db, utils
-from hmwz.hm_client.repositories import DiscordEntityRepository
 from hmwz.i18n import t
 from hmwz.modules.basic_module import BasicModule
+from hmwz.modules.snapshots.registration import (
+    RegistrationEventType,
+    RegistrationSnapshotExporter,
+)
 
 from .overview import RegistrationOverview
 from .repositories import RegistrationEventChannelRepository
@@ -37,7 +38,6 @@ class RegistrationModuleBase(BasicModule):
     roles: RegistrationRoleRepository
     registrations: MemberRegistrationRepository
     list: RegistrationMessageRepository
-    entities: DiscordEntityRepository
     registration_event_channel: RegistrationEventChannelRepository
 
     def _initialize_registration(
@@ -55,8 +55,14 @@ class RegistrationModuleBase(BasicModule):
         self.roles = roles
         self.registrations = registrations
         self.list = lists
-        self.entities = DiscordEntityRepository(database)
         self.registration_event_channel = RegistrationEventChannelRepository(database)
+        self._registration_snapshot_exporter = RegistrationSnapshotExporter(
+            guild=self.guild,
+            module_key=self.module_key,
+            event_channel=self.registration_event_channel,
+            registration=self.registration,
+            registrations=self.registrations,
+        )
         self._overviews: dict[int, RegistrationOverview] = {}
         self._registration_locks: dict[int, asyncio.Lock] = {}
 
@@ -101,15 +107,6 @@ class RegistrationModuleBase(BasicModule):
 
         lock = self._registration_locks.setdefault(channel_id, asyncio.Lock())
         async with lock:
-            if not await self.entities.add_member(guild=guild, member=member):
-                await self._send_registration_error(interaction)
-                _logger.error(
-                    "%s Failed to persist member %s before registration.",
-                    sqlite_db.Base.log_prefix(guild),
-                    member.id,
-                )
-                return
-
             records = await self.registrations.get(
                 guild=guild,
                 member=member.id,
@@ -126,7 +123,7 @@ class RegistrationModuleBase(BasicModule):
                 ):
                     await self._send_registration_error(interaction)
                     return
-                await self.send_registration_event(channel_id, "deregistration")
+                await self.export_registration_snapshot(channel_id, "deregistration")
                 remaining = await self.registrations.get(
                     guild=guild, member=member.id, channel_id=channel_id
                 )
@@ -170,12 +167,15 @@ class RegistrationModuleBase(BasicModule):
                 role=role.id,
                 account="",
                 channel_id=channel_id,
+                member_username=member.name,
+                member_display_name=member.display_name,
+                role_name=role.name,
             ):
                 await self._send_registration_error(interaction)
                 return
 
             is_update = current is not None and current.role != role.id
-            await self.send_registration_event(
+            await self.export_registration_snapshot(
                 channel_id, "registration_change" if is_update else "registration"
             )
             if current and current.role is not None and current.role != role.id:
@@ -205,115 +205,15 @@ class RegistrationModuleBase(BasicModule):
             )
             await self.compose_registration_overview(force=True, channel_id=channel_id)
 
-    async def send_registration_event(
-        self,
-        channel_id: int,
-        event_type: Literal[
-            "registration", "registration_change", "deregistration", "sync"
-        ],
+    async def export_registration_snapshot(
+        self, channel_id: int, event_type: RegistrationEventType
     ) -> bool:
-        """Send the current registration snapshot to the configured guild channel."""
-        log_channel_id = await self.registration_event_channel.get(guild=self.guild)
-        if log_channel_id is None:
-            return True
+        """Export the current registration snapshot through the shared contract."""
+        return await self._registration_snapshot_exporter.export(channel_id, event_type)
 
-        log_channel = await utils.fetch_channel(self.guild, log_channel_id)
-        if log_channel is None:
-            _logger.error(
-                "%s Registration event channel %s is unavailable.",
-                sqlite_db.Base.log_prefix(self.guild),
-                log_channel_id,
-            )
-            return False
-
-        source_channel = self.guild.get_channel_or_thread(channel_id)
-        source_channel_name = (
-            source_channel.name
-            if source_channel is not None
-            else await self.entities.channel_name(self.guild, channel_id)
-        )
-        configuration = await self.registration.get(
-            guild=self.guild, channel_id=channel_id
-        )
-        registration_records = await self.registrations.get(
-            guild=self.guild, channel_id=channel_id
-        )
-
-        valid_records = []
-        for record in registration_records or ():
-            if record.member is None:
-                _logger.warning(
-                    "%s Skipping registration without a member ID in channel %s.",
-                    sqlite_db.Base.log_prefix(self.guild),
-                    channel_id,
-                )
-                continue
-            valid_records.append((record, record.member))
-
-        member_names = await asyncio.gather(
-            *(
-                self.registrations.member_names(self.guild, member_id)
-                for _, member_id in valid_records
-            )
-        )
-        registrations: list[dict[str, int | str]] = []
-        for (record, member_id), names in zip(valid_records, member_names, strict=True):
-            member_name = names[1] if names is not None else str(member_id)
-            registrations.append(
-                {
-                    "member_id": member_id,
-                    "member_name": member_name,
-                    "registration_alias": record.account or member_name,
-                }
-            )
-
-        payload = {
-            "event": {
-                "type": event_type,
-                "module": self.module_key,
-                "name": (
-                    configuration.title
-                    if configuration is not None and configuration.title
-                    else source_channel_name or str(channel_id)
-                ),
-                "channel_id": channel_id,
-                "channel_name": source_channel_name or str(channel_id),
-            },
-            "registration_channel": {
-                "id": channel_id,
-                "name": source_channel_name or str(channel_id),
-            },
-            "delivery_channel": {
-                "id": log_channel.id,
-                "name": log_channel.name,
-            },
-            "registrations": registrations,
-        }
-        encoded_payload = json.dumps(payload, ensure_ascii=False, indent=2).encode(
-            "utf-8"
-        )
-        file = discord.File(
-            io.BytesIO(encoded_payload),
-            filename=f"{self.module_key}-{channel_id}-{event_type}.json",
-        )
-        try:
-            await log_channel.send(file=file)
-            return True
-        except discord.HTTPException:
-            _logger.exception(
-                "%s Failed to send %s registration snapshot for channel %s to %s.",
-                sqlite_db.Base.log_prefix(self.guild),
-                event_type,
-                channel_id,
-                log_channel_id,
-            )
-            return False
-
-    async def send_registration_sync_events(self) -> None:
-        """Send a full registration snapshot for each configured channel."""
-        for configuration in await self.registration.get_all(guild=self.guild) or ():
-            if configuration.channel is not None:
-                await self.send_registration_event(configuration.channel, "sync")
+    async def export_startup_snapshots(self) -> None:
+        """Export one startup snapshot for each configured registration channel."""
+        await self._registration_snapshot_exporter.export_startup_snapshots()
 
     async def _send_registration_error(self, interaction: discord.Interaction) -> None:
         await interaction.followup.send(
@@ -324,8 +224,8 @@ class RegistrationModuleBase(BasicModule):
             ephemeral=True,
         )
 
-    async def sync_names(self) -> bool:
-        """Ensure shared registration tables exist and synchronize cached names."""
+    async def migrate_schema(self) -> bool:
+        """Ensure shared registration tables exist and migrate their schema."""
         if not await self._ensure_registration_schema():
             return False
         for repository in (
@@ -333,7 +233,7 @@ class RegistrationModuleBase(BasicModule):
             self.roles,
             self.registrations,
         ):
-            if not await repository.migrate_names():
+            if not await repository.migrate_schema():
                 _logger.error(
                     "%s Failed to synchronize %s table %s.",
                     sqlite_db.Base.log_prefix(self.guild),
@@ -349,7 +249,7 @@ class RegistrationModuleBase(BasicModule):
         """Keep manually changed registration roles in sync with stored signups."""
         if before.guild.id != self.guild.id:
             return False
-        if not await self.sync_names():
+        if not await self.migrate_schema():
             return False
 
         before_role_ids = {role.id for role in before.roles}
@@ -417,6 +317,13 @@ class RegistrationModuleBase(BasicModule):
                     role=min(role_ids),
                     account="",
                     channel_id=channel_id,
+                    member_username=after.name,
+                    member_display_name=after.display_name,
+                    role_name=(
+                        role.name
+                        if (role := self.guild.get_role(min(role_ids))) is not None
+                        else None
+                    ),
                 )
                 or changed
             )
@@ -424,7 +331,7 @@ class RegistrationModuleBase(BasicModule):
 
         if changed:
             for channel_id in changed_channels:
-                await self.send_registration_event(channel_id, "sync")
+                await self.export_registration_snapshot(channel_id, "sync")
             for channel_id in changed_channels:
                 await self.compose_registration_overview(
                     force=True, channel_id=channel_id

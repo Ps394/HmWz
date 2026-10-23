@@ -1,5 +1,4 @@
 from .purge_channels import PurgeChannelRepository
-from .wz_configuration import WzConfigurationRepository
 from hmwz.modules.registration.repositories import (
     MemberRegistrationRepository,
     RegistrationMessageRepository,
@@ -13,5 +12,4 @@ __all__ = [
     "RegistrationMessageRepository",
     "RegistrationRoleRepository",
     "RegistrationSettingsRepository",
-    "WzConfigurationRepository",
 ]

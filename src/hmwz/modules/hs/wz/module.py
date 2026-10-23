@@ -17,6 +17,8 @@ _logger = logging.getLogger(__name__)
 class WzRegistrationModule(RegistrationModuleBase):
     """Guild-spezifisches WZ-Registrierungsmodul."""
 
+    module_key = "wz"
+
     def __init__(self, guild: discord.Guild, client: discord.Client) -> None:
         """Initialisiert Repositories und Laufzeitzustand fuer die Guild."""
         super().__init__(guild, client)
@@ -24,9 +26,6 @@ class WzRegistrationModule(RegistrationModuleBase):
         if not isinstance(database, sqlite_db.Database):
             raise RuntimeError("WZ registration module requires a database.")
         self._database: sqlite_db.Database = database
-        self.configuration: repositories.WzConfigurationRepository = (
-            repositories.WzConfigurationRepository(self._database)
-        )
         self.roles: repositories.RegistrationRoleRepository = (
             repositories.RegistrationRoleRepository(self._database)
         )
@@ -50,7 +49,6 @@ class WzRegistrationModule(RegistrationModuleBase):
             repositories.PurgeChannelRepository(self._database)
         )
         self._schema_ready: bool = False
-        self.module_key = "wz"
         self.max_players = None
 
     async def _ensure_schema(self) -> bool:
@@ -59,7 +57,6 @@ class WzRegistrationModule(RegistrationModuleBase):
             return True
         try:
             for repository in (
-                self.configuration,
                 self.registration,
                 self.registration_event_channel,
                 self.roles,
@@ -91,10 +88,10 @@ class WzRegistrationModule(RegistrationModuleBase):
 
     async def sync(self, startup: bool = False) -> bool:
         """Synchronisiert den technischen Modulzustand (Schema)."""
-        if not await self.sync_names():
+        if not await self.migrate_schema():
             return False
         if startup:
-            await self.send_registration_sync_events()
+            await self.export_startup_snapshots()
             _logger.debug(
                 "%s (%s) - WZ module startup sync done.",
                 self.guild.name,
@@ -102,8 +99,8 @@ class WzRegistrationModule(RegistrationModuleBase):
             )
         return True
 
-    async def sync_names(self) -> bool:
-        """Synchronize current Discord names into the WZ tables."""
+    async def migrate_schema(self) -> bool:
+        """Migrate WZ registration tables to the current schema."""
         if not await self._ensure_schema():
             return False
         synced = True
@@ -113,9 +110,9 @@ class WzRegistrationModule(RegistrationModuleBase):
             self.registrations,
             self.purge_channels,
         ):
-            if not await repository.migrate_names():
+            if not await repository.migrate_schema():
                 _logger.error(
-                    "%s (%s) - Failed to sync names in table %s.",
+                    "%s (%s) - Failed to migrate schema for table %s.",
                     self.guild.name,
                     self.guild.id,
                     repository.table_name,
@@ -144,16 +141,13 @@ class WzRegistrationModule(RegistrationModuleBase):
     async def on_guild_update(
         self, before: discord.Guild, after: discord.Guild
     ) -> bool:
-        """Aktualisiert gespeicherte Guild-Namen nach einer Umbenennung."""
-        if after.id != self.guild.id:
-            return False
-        return await self.sync_names()
+        """Handle guild updates relevant to this module."""
+        return after.id == self.guild.id
 
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
         """Entfernt guild-bezogene WZ-Daten beim Verlassen der Guild."""
         if guild.id != self.guild.id:
             return False
-        await self.configuration.remove(guild=guild)
         await self.registration.remove(guild=guild)
         await self.registration_event_channel.remove(guild=guild)
         await self.purge_channels.remove(guild=guild)
@@ -167,7 +161,7 @@ class WzRegistrationModule(RegistrationModuleBase):
         """Bestaetigt Relevanz des Events fuer diese Guild."""
         if channel.guild.id != self.guild.id:
             return False
-        return await self.sync_names()
+        return True
 
     async def on_guild_channel_update(
         self,
@@ -177,7 +171,7 @@ class WzRegistrationModule(RegistrationModuleBase):
         """Bestaetigt Relevanz des Events fuer diese Guild."""
         if before.guild.id != self.guild.id:
             return False
-        return await self.sync_names()
+        return True
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         """Bestaetigt Relevanz des Events fuer diese Guild."""
@@ -195,7 +189,7 @@ class WzRegistrationModule(RegistrationModuleBase):
         """Bestaetigt Relevanz des Events fuer diese Guild."""
         if before.guild.id != self.guild.id:
             return False
-        return await self.sync_names()
+        return True
 
     async def on_guild_role_delete(self, role: discord.Role) -> bool:
         """Bereinigt geloeschte Rollen aus Rollen- und Registrierungsdaten."""
@@ -209,7 +203,7 @@ class WzRegistrationModule(RegistrationModuleBase):
         """Entfernt Registrierungen fuer verlassende Mitglieder."""
         if payload.guild_id != self.guild.id:
             return False
-        if not await self.sync_names():
+        if not await self.migrate_schema():
             return False
         await self.registrations.remove(
             guild=self.guild,

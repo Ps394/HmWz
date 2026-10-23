@@ -53,7 +53,7 @@ class RegistrationOverview:
         lists: repositories.RegistrationMessageRepository,
         registration_handler: RegistrationHandler,
         channel_id: int,
-        module_key: str = "wz",
+        module_key: str = "registration",
         max_players: int | None = None,
     ) -> None:
         self.guild = guild
@@ -371,6 +371,19 @@ class RegistrationOverview:
             )
             return False
 
+        missing_permissions = self._missing_send_permissions(channel)
+        if missing_permissions:
+            _logger.warning(
+                "%s (%s) - Cannot compose registration overview in #%s (%s); "
+                "bot is missing channel permissions: %s.",
+                self.guild.name,
+                self.guild.id,
+                channel.name,
+                channel.id,
+                ", ".join(missing_permissions),
+            )
+            return False
+
         default_title = self._translate(f"{self.module_key}.overview.default_title")
         default_description = self._translate(
             f"{self.module_key}.overview.default_description"
@@ -416,7 +429,19 @@ class RegistrationOverview:
         registrations = await self._load_registrations(configuration)
 
         if message is None:
-            message = await channel.send(embed=embed, view=view)
+            try:
+                message = await channel.send(embed=embed, view=view)
+            except discord.Forbidden:
+                _logger.warning(
+                    "%s (%s) - Discord denied sending the registration overview "
+                    "in #%s (%s); verify the bot's channel permissions.",
+                    self.guild.name,
+                    self.guild.id,
+                    channel.name,
+                    channel.id,
+                    exc_info=True,
+                )
+                return False
             self._overview_message = message
             self._overview_signature = overview_signature
             action = "Created"
@@ -447,6 +472,17 @@ class RegistrationOverview:
             channel.id,
         )
         return True
+
+    def _missing_send_permissions(
+        self, channel: discord.TextChannel
+    ) -> tuple[str, ...]:
+        """Return required channel permissions missing from the bot member."""
+        bot_member = self.guild.me
+        if bot_member is None:
+            return ()
+        permissions = channel.permissions_for(bot_member)
+        required = ("view_channel", "send_messages", "embed_links")
+        return tuple(name for name in required if not getattr(permissions, name))
 
     async def compose(self, force: bool = False) -> bool:
         now = time.monotonic()

@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="channel-add",
+    name="add",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
-            "command.description.wz.setup.channel.add", "-"
+            "command.description.wz.channel.add", "-"
         ),
-        key="wz.setup.channel.add.description",
+        key="wz.channel.add.description",
     ),
 )
 async def add(interaction: Interaction) -> None:

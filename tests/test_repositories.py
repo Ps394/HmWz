@@ -7,7 +7,7 @@ from typing import cast
 import discord
 import pytest
 
-from hmwz.hm_client.repositories import DiscordEntityRepository, ServerRepository
+from hmwz.hm_client.repositories import ServerRepository
 from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.modules.hs.wz.repositories import (
     MemberRegistrationRepository,
@@ -15,7 +15,6 @@ from hmwz.modules.hs.wz.repositories import (
     RegistrationMessageRepository,
     RegistrationRoleRepository,
     RegistrationSettingsRepository,
-    WzConfigurationRepository,
 )
 from hmwz.sqlite_db import Database
 
@@ -23,8 +22,6 @@ from hmwz.sqlite_db import Database
 async def initialize_database(database: Database) -> None:
     repositories = (
         ServerRepository(database),
-        DiscordEntityRepository(database),
-        WzConfigurationRepository(database),
         RegistrationRoleRepository(database),
         RegistrationSettingsRepository(database),
         MemberRegistrationRepository(database),
@@ -33,13 +30,7 @@ async def initialize_database(database: Database) -> None:
         PurgeChannelRepository(database),
     )
     for repository in repositories:
-        statements = (
-            repository.tables
-            if isinstance(repository, DiscordEntityRepository)
-            else (repository.table,)
-        )
-        for statement in statements:
-            assert await database.execute(statement)
+        assert await database.execute(repository.table)
 
 
 @pytest.mark.asyncio
@@ -69,21 +60,6 @@ async def test_repositories_create_read_update_and_remove_records(
     assert await servers.add(guild=guild)
     assert await servers.count_all() == 1
 
-    configuration = WzConfigurationRepository(database)
-    assert await configuration.upsert(
-        guild=guild,
-        channel_id=456,
-        score_mod_lvl=True,
-        matchmaker=False,
-    )
-    configured = await configuration.get(guild=guild)
-    assert configured is not None
-    assert configured.channel_id == 456
-    assert configured.score_mod_lvl is True
-    assert configured.matchmaker is False
-    assert await configuration.remove(guild=guild)
-    assert await configuration.get(guild=guild) is None
-
     roles = RegistrationRoleRepository(database)
     assert await roles.add(guild=guild, role=789, permanent=True, score=3)
     role_records = await roles.get(guild=guild, permanent=True)
@@ -91,11 +67,12 @@ async def test_repositories_create_read_update_and_remove_records(
     assert role_records[0].role == 789
     assert role_records[0].score == 3
     saved_role = await database.fetch_one(
-        "SELECT GuildName, RoleName FROM WzRoles WHERE Guild = ? AND Role = ?",
+        "SELECT Guild, Role, Permanent, Score FROM Registration_Roles "
+        "WHERE Guild = ? AND Role = ?",
         (123, 789),
     )
     assert saved_role is not None
-    assert tuple(saved_role) == ("test guild", "Registration Role")
+    assert tuple(saved_role) == (123, 789, 1, 3)
     assert await roles.remove(guild=guild, role=789)
     assert await roles.get(guild=guild) is None
 
@@ -112,11 +89,11 @@ async def test_repositories_create_read_update_and_remove_records(
     assert settings_record.channel == 456
     assert settings_record.message == 101112
     saved_settings = await database.fetch_one(
-        "SELECT GuildName, ChannelName FROM WzRegistration WHERE Guild = ?",
+        "SELECT Guild, Channel FROM Registration_Settings WHERE Guild = ?",
         (123,),
     )
     assert saved_settings is not None
-    assert tuple(saved_settings) == ("test guild", "registration-channel")
+    assert tuple(saved_settings) == (123, 456)
     assert await settings.remove(guild=guild)
     assert await settings.get(guild=guild) is None
 
@@ -128,18 +105,13 @@ async def test_repositories_create_read_update_and_remove_records(
     assert member_records[0].member == 234
     saved_registration = await database.fetch_one(
         """
-        SELECT GuildName, MemberUsername, MemberDisplayName, RoleName
-        FROM WzRegistrations WHERE Guild = ? AND Member = ?
+        SELECT Guild, Channel, Member, Alias, Role
+        FROM Registration_Members WHERE Guild = ? AND Member = ?
         """,
         (123, 234),
     )
     assert saved_registration is not None
-    assert tuple(saved_registration) == (
-        "test guild",
-        "player",
-        "Player One",
-        "Registration Role",
-    )
+    assert tuple(saved_registration) == (123, 0, 234, "", 789)
     assert await registrations.remove(guild=guild, member=234)
     assert await registrations.get(guild=guild, member=234) is None
 
@@ -182,12 +154,12 @@ async def test_repositories_create_read_update_and_remove_records(
     assert purge_records is not None
     assert purge_records[0].channel_id == 456
     saved_purge_channel = await database.fetch_one(
-        "SELECT GuildName, ChannelName FROM WzPurgeChannels "
+        "SELECT Guild, RegistrationChannel, Channel FROM WzPurgeChannels "
         "WHERE Guild = ? AND Channel = ?",
         (123, 456),
     )
     assert saved_purge_channel is not None
-    assert tuple(saved_purge_channel) == ("test guild", "registration-channel")
+    assert tuple(saved_purge_channel) == (123, 0, 456)
     assert await purge_channels.remove(guild=guild, channel_id=456)
     assert await purge_channels.get(guild=guild) is None
 
@@ -257,11 +229,22 @@ async def test_wz_registrations_are_isolated_by_channel(tmp_path: Path) -> None:
     ]
 
     members = MemberRegistrationRepository(database)
-    assert await members.add(guild=guild, member=234, role=789, channel_id=456)
+    assert await members.add(
+        guild=guild,
+        member=234,
+        role=789,
+        channel_id=456,
+        member_username="player",
+        member_display_name="Player Name",
+        role_name="WZ Role",
+    )
     assert await members.add(guild=guild, member=234, role=790, channel_id=457)
     first_members = await members.get(guild=guild, channel_id=456)
     second_members = await members.get(guild=guild, channel_id=457)
     assert first_members is not None and first_members[0].role == 789
+    assert first_members[0].member_username == "player"
+    assert first_members[0].member_display_name == "Player Name"
+    assert first_members[0].role_name == "WZ Role"
     assert second_members is not None and second_members[0].role == 790
 
     purge_channels = PurgeChannelRepository(database)

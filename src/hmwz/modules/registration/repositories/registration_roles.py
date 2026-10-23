@@ -12,7 +12,8 @@ _logger = logging.getLogger(__name__)
 
 
 class RegistrationRoleRepository(sqlite_db.Base):
-    table_name = "Roles"
+    table_name = "Registration_Roles"
+    legacy_table_name = "Roles"
     settings_table_name = "Registration_Settings"
 
     def __init__(self, database: sqlite_db.Database):
@@ -25,8 +26,6 @@ class RegistrationRoleRepository(sqlite_db.Base):
         Role: str = "Role"
         Permanent: str = "Permanent"
         Score: str = "Score"
-        GuildName: str = "GuildName"
-        RoleName: str = "RoleName"
 
     @property
     def table(self) -> str:
@@ -40,21 +39,17 @@ class RegistrationRoleRepository(sqlite_db.Base):
         {self.TableCols.Role} INTEGER NOT NULL,
         {self.TableCols.Permanent} BOOLEAN,
         {self.TableCols.Score} INTEGER DEFAULT 1,
-        {self.TableCols.GuildName} TEXT,
-        {self.TableCols.RoleName} TEXT,
         PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Role})
         )WITHOUT ROWID
         """
 
-    async def migrate_names(self) -> bool:
-        """Add and populate readable names for existing role records."""
+    async def migrate_schema(self) -> bool:
+        """Add channel scope to legacy role records and remove cached names."""
         if not await self.ensure_columns(
-            (
-                (self.TableCols.Channel, "INTEGER NOT NULL DEFAULT 0"),
-                (self.TableCols.GuildName, "TEXT"),
-                (self.TableCols.RoleName, "TEXT"),
-            )
+            ((self.TableCols.Channel, "INTEGER NOT NULL DEFAULT 0"),)
         ):
+            return False
+        if not await self._migrate_legacy_table():
             return False
         if not await self.database.execute(
             f"""
@@ -69,21 +64,75 @@ class RegistrationRoleRepository(sqlite_db.Base):
             """
         ):
             return False
-        return await self.database.execute(
-            f"""
-            UPDATE {self.table_name}
-            SET {self.TableCols.GuildName} = COALESCE(
-                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
-                    {self.TableCols.GuildName}
-                ),
-                {self.TableCols.RoleName} = COALESCE(
-                    (SELECT Name FROM DiscordRoles
-                     WHERE Guild = {self.table_name}.Guild
-                       AND Role = {self.table_name}.Role),
-                    {self.TableCols.RoleName}
+        return await self.drop_columns(("GuildName", "RoleName"))
+
+    async def _migrate_legacy_table(self) -> bool:
+        """Move role assignments from the former ``Roles`` table."""
+        try:
+            legacy_table = await self.database.fetch_one(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (self.legacy_table_name,),
+            )
+            if legacy_table is None:
+                return True
+
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                cursor = await connection.execute(
+                    f'PRAGMA table_info("{self.legacy_table_name}")'
                 )
-            """
-        )
+                columns = await cursor.fetchall()
+                column_names = {column["name"] for column in columns}
+                channel_value = (
+                    f"""
+                    COALESCE(
+                        NULLIF(legacy."{self.TableCols.Channel}", 0),
+                        (SELECT Channel FROM "{self.settings_table_name}"
+                         WHERE Guild = legacy."{self.TableCols.Guild}"
+                         ORDER BY Channel LIMIT 1),
+                        0
+                    )
+                    """
+                    if self.TableCols.Channel in column_names
+                    else f"""
+                    COALESCE(
+                        (SELECT Channel FROM "{self.settings_table_name}"
+                         WHERE Guild = legacy."{self.TableCols.Guild}"
+                         ORDER BY Channel LIMIT 1),
+                        0
+                    )
+                    """
+                )
+                permanent_value = (
+                    f'legacy."{self.TableCols.Permanent}"'
+                    if self.TableCols.Permanent in column_names
+                    else "0"
+                )
+                score_value = (
+                    f'legacy."{self.TableCols.Score}"'
+                    if self.TableCols.Score in column_names
+                    else "1"
+                )
+                await connection.execute(
+                    f"""
+                    INSERT OR IGNORE INTO "{self.table_name}"
+                        (Guild, Channel, Role, Permanent, Score)
+                    SELECT legacy."{self.TableCols.Guild}", {channel_value},
+                           legacy."{self.TableCols.Role}", {permanent_value},
+                           {score_value}
+                    FROM "{self.legacy_table_name}" AS legacy
+                    """
+                )
+                await connection.execute(f'DROP TABLE "{self.legacy_table_name}"')
+                await connection.commit()
+            return True
+        except Exception:
+            _logger.exception(
+                "%s Failed to migrate role assignments from %s.",
+                self.log_prefix(),
+                self.legacy_table_name,
+            )
+            return False
 
     @dataclass(frozen=True)
     class _Data:
@@ -248,13 +297,11 @@ class RegistrationRoleRepository(sqlite_db.Base):
             executed = await self.database.execute(
                 f"""
                 INSERT INTO {self.table_name}
-                    (Guild, Channel, Role, Permanent, Score, GuildName, RoleName)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (Guild, Channel, Role, Permanent, Score)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(Guild, Role) DO UPDATE SET
                     Permanent = excluded.Permanent,
-                    Score = excluded.Score,
-                    GuildName = excluded.GuildName,
-                    RoleName = excluded.RoleName
+                    Score = excluded.Score
                 WHERE {self.table_name}.Channel = excluded.Channel
                 """,
                 (
@@ -263,8 +310,6 @@ class RegistrationRoleRepository(sqlite_db.Base):
                     role,
                     int(permanent is True),
                     score,
-                    guild.name,
-                    resolved_role_name,
                 ),
             )
             if not executed:

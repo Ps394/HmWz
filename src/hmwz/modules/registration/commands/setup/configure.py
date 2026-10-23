@@ -74,12 +74,9 @@ async def configure(
             )
             return
 
-        configured_role_count = await module.roles.count(
-            guild=guild, roles=[role.id], channel_id=channel_id
-        )
         max_roles = int(wz_registration_config().get("max_registration_roles", 4))
         role_count = await module.roles.count(guild=guild, channel_id=channel_id)
-        if configured_role_count == 0 and role_count >= max_roles:
+        if role_count >= max_roles:
             await interaction.followup.send(
                 t(interaction, "wz.setup.roles.add.max_roles", max_roles=max_roles),
                 ephemeral=True,

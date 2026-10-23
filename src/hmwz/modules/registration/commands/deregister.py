@@ -90,12 +90,13 @@ async def deregister(interaction: Interaction, account: str) -> None:
             )
             return
         role = guild.get_role(current.role)
-        remaining = await module.registrations.get(
-            guild=guild, member=member.id, channel_id=channel_id
-        )
+        remaining = await module.registrations.get(guild=guild, member=member.id)
         other_accounts_use_role = any(
-            record.account.casefold() != canonical_account.casefold()
-            and record.role == current.role
+            record.role == current.role
+            and (
+                record.channel_id != channel_id
+                or record.account.casefold() != canonical_account.casefold()
+            )
             for record in remaining or ()
         )
         if role is not None and not other_accounts_use_role and role in member.roles:
@@ -111,7 +112,7 @@ async def deregister(interaction: Interaction, account: str) -> None:
             )
             return
 
-        await module.send_registration_event(channel_id, "deregistration")
+        await module.export_registration_snapshot(channel_id, "deregistration")
         await module.compose_registration_overview(force=True, channel_id=channel_id)
         await interaction.followup.send(
             t(

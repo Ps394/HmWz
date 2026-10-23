@@ -82,18 +82,7 @@ class Base:
         member = guild.get_member(member_id)
         if member is not None:
             return member.name, member.display_name
-
-        row = await self.database.fetch_one(
-            """
-            SELECT Username, DisplayName
-            FROM DiscordMembers
-            WHERE Guild = ? AND Member = ?
-            """,
-            (guild.id, member_id),
-        )
-        if row is None:
-            return None
-        return row["Username"], row["DisplayName"]
+        return None
 
     async def channel_log_name(self, guild: Guild, channel_id: int) -> str:
         """Return a known Discord channel name for a channel log."""
@@ -105,18 +94,7 @@ class Base:
     async def channel_name(self, guild: Guild, channel_id: int) -> str | None:
         """Return the known name for a guild channel."""
         channel = guild.get_channel_or_thread(channel_id)
-        if channel is not None:
-            return channel.name
-
-        row = await self.database.fetch_one(
-            """
-            SELECT Name
-            FROM DiscordChannels
-            WHERE Guild = ? AND Channel = ?
-            """,
-            (guild.id, channel_id),
-        )
-        return row["Name"] if row is not None else None
+        return channel.name if channel is not None else None
 
     async def role_log_name(self, guild: Guild, role_id: int) -> str:
         """Return a known Discord role name for a role log."""
@@ -128,18 +106,7 @@ class Base:
     async def role_name(self, guild: Guild, role_id: int) -> str | None:
         """Return the known name for a guild role."""
         role = guild.get_role(role_id)
-        if role is not None:
-            return role.name
-
-        row = await self.database.fetch_one(
-            """
-            SELECT Name
-            FROM DiscordRoles
-            WHERE Guild = ? AND Role = ?
-            """,
-            (guild.id, role_id),
-        )
-        return row["Name"] if row is not None else None
+        return role.name if role is not None else None
 
     async def ensure_columns(self, columns: tuple[tuple[str, str], ...]) -> bool:
         """Add missing columns to this repository's existing table."""
@@ -149,6 +116,17 @@ class Base:
             if column_name not in existing and not await self.database.execute(
                 f'ALTER TABLE "{self.table_name}" '
                 f'ADD COLUMN "{column_name}" {column_type}'
+            ):
+                return False
+        return True
+
+    async def drop_columns(self, columns: tuple[str, ...]) -> bool:
+        """Remove obsolete columns from this repository's existing table."""
+        rows = await self.database.fetch_all(f'PRAGMA table_info("{self.table_name}")')
+        existing = {row["name"] for row in rows}
+        for column_name in columns:
+            if column_name in existing and not await self.database.execute(
+                f'ALTER TABLE "{self.table_name}" DROP COLUMN "{column_name}"'
             ):
                 return False
         return True
@@ -172,6 +150,30 @@ class Database:
         self.file = os.path.join(folder, filename)
         _logger = logging.getLogger(__name__)
         self._write_lock = asyncio.Lock()
+
+    async def remove_legacy_tables(self) -> bool:
+        """Drop obsolete Discord entity and registration tables."""
+        for table_name in (
+            "DiscordMembers",
+            "DiscordChannels",
+            "DiscordRoles",
+            "QsList",
+            "QsRegistration",
+            "QsRegistrations",
+            "QsRoles",
+            "WzConfiguration",
+            "Configuration",
+            "WzConfig",
+        ):
+            table = await self.fetch_one(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table_name,),
+            )
+            if table is not None and not await self.execute(
+                f'DROP TABLE "{table_name}"'
+            ):
+                return False
+        return True
 
     @asynccontextmanager
     async def connect(self):

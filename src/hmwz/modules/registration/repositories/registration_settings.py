@@ -26,8 +26,6 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         Message: str = "Message"
         Title: str = "Title"
         Description: str = "Description"
-        GuildName: str = "GuildName"
-        ChannelName: str = "ChannelName"
 
     @property
     def table(self) -> str:
@@ -38,36 +36,16 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             {self.TableCols.Message} INTEGER,
             {self.TableCols.Title} TEXT,
             {self.TableCols.Description} TEXT,
-            {self.TableCols.GuildName} TEXT,
-            {self.TableCols.ChannelName} TEXT,
             PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Channel}),
             FOREIGN KEY ({self.TableCols.Guild}) REFERENCES Servers(Guild)
         )
         """
 
-    async def migrate_names(self) -> bool:
-        """Add and populate readable names for existing registration settings."""
+    async def migrate_schema(self) -> bool:
+        """Migrate legacy registration settings to channel-scoped records."""
         if not await self._migrate_channel_key():
             return False
-        if not await self.ensure_columns(
-            ((self.TableCols.GuildName, "TEXT"), (self.TableCols.ChannelName, "TEXT"))
-        ):
-            return False
-        return await self.database.execute(
-            f"""
-            UPDATE {self.table_name}
-            SET {self.TableCols.GuildName} = COALESCE(
-                    (SELECT Name FROM Servers WHERE Guild = {self.table_name}.Guild),
-                    {self.TableCols.GuildName}
-                ),
-                {self.TableCols.ChannelName} = COALESCE(
-                    (SELECT Name FROM DiscordChannels
-                     WHERE Guild = {self.table_name}.Guild
-                       AND Channel = {self.table_name}.Channel),
-                    {self.TableCols.ChannelName}
-                )
-            """
-        )
+        return await self.drop_columns(("GuildName", "ChannelName"))
 
     async def _migrate_channel_key(self) -> bool:
         """Rebuild the legacy guild-only table with one row per registration channel."""
@@ -97,17 +75,11 @@ class RegistrationSettingsRepository(sqlite_db.Base):
                     f'ALTER TABLE "{self.table_name}" RENAME TO "{self.table_name}_legacy"'
                 )
                 await connection.execute(self.table)
-                legacy_columns = {column["name"] for column in columns}
-                name_columns = (
-                    "GuildName" if "GuildName" in legacy_columns else "NULL",
-                    "ChannelName" if "ChannelName" in legacy_columns else "NULL",
-                )
                 await connection.execute(
                     f"""
                     INSERT OR IGNORE INTO "{self.table_name}"
-                        (Guild, Channel, Message, Title, Description, GuildName, ChannelName)
-                    SELECT Guild, Channel, Message, Title, Description,
-                           {name_columns[0]}, {name_columns[1]}
+                        (Guild, Channel, Message, Title, Description)
+                    SELECT Guild, Channel, Message, Title, Description
                     FROM "{self.table_name}_legacy"
                     """
                 )
@@ -221,25 +193,9 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         title: str | None = None,
         description: str | None = None,
     ) -> bool:
-        channel_name: str | None = None
         try:
-            resolved_channel_name = (
-                await self.channel_name(guild, channel_id)
-                if channel_id is not None
-                else None
-            )
-            channel_name = (
-                f"{resolved_channel_name} ({channel_id})"
-                if channel_id is not None and resolved_channel_name is not None
-                else None
-            )
-            cols: list[str] = []
-            vals: list[typing.Any] = []
-
-            cols.append(self.TableCols.Channel)
-            vals.append(channel_id)
-            cols.append(self.TableCols.ChannelName)
-            vals.append(resolved_channel_name)
+            cols = [self.TableCols.Channel]
+            vals: list[typing.Any] = [channel_id]
             if message_id is not None:
                 cols.append(self.TableCols.Message)
                 vals.append(message_id)
@@ -253,8 +209,6 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             if not cols:
                 return False
 
-            cols.insert(0, self.TableCols.GuildName)
-            vals.insert(0, guild.name)
             columns = f"{self.TableCols.Guild}, " + ", ".join(cols)
             placeholders = ", ".join(["?"] * (1 + len(cols)))
             update_clause = ", ".join([f"{c}=excluded.{c}" for c in cols])
@@ -269,36 +223,33 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             params = [guild.id] + vals
             if not await self.database.execute(query, tuple(params)):
                 return False
-            channel_context = (
-                f" for channel {channel_name}" if channel_name is not None else ""
-            )
             _logger.debug(
-                f"{self.log_prefix(guild)} WZ registration upserted{channel_context}."
+                "%s Registration upserted for channel %s.",
+                self.log_prefix(guild),
+                channel_id,
             )
             return True
         except Exception as e:
             _logger.exception(
                 f"{self.log_prefix(guild)} Failed to upsert WZ registration "
-                f"for channel {channel_name or 'not specified'}: {e}"
+                f"for channel {channel_id}: {e}"
             )
             return False
 
     async def create(self, *, guild: discord.Guild, channel_id: int) -> bool:
         """Create a registration only if the guild/channel pair is unused."""
         try:
-            channel_name = await self.channel_name(guild, channel_id)
             async with self.database.connect() as connection:
                 async with connection.execute(
                     f"""
                     INSERT INTO {self.table_name}
-                        ({self.TableCols.Guild}, {self.TableCols.Channel},
-                         {self.TableCols.GuildName}, {self.TableCols.ChannelName})
-                    VALUES (?, ?, ?, ?)
+                        ({self.TableCols.Guild}, {self.TableCols.Channel})
+                    VALUES (?, ?)
                     ON CONFLICT({self.TableCols.Guild}, {self.TableCols.Channel})
                     DO NOTHING
                     RETURNING {self.TableCols.Channel}
                     """,
-                    (guild.id, channel_id, guild.name, channel_name),
+                    (guild.id, channel_id),
                 ) as cursor:
                     created = await cursor.fetchone() is not None
                 await connection.commit()
