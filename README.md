@@ -13,9 +13,16 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 - QS-Anmeldungen auf derselben Registrierungsbasis wie WZ, mit bis zu vier
   nicht permanenten Rollen.
 - Kanalbezogene QS-Übersichten; ein Reset benötigt eine ausdrückliche Bestätigung.
-- Mehrere kanalbezogene Queues mit eigener Run-Größe, Bestätigungswartezeit und
-  Erinnerungsintervall. Runs starten automatisch bei voller Gruppe; alle
-  Teilnehmenden bestätigen den Abschluss im privaten Run-Thread.
+- Kanalbezogene Queues in drei Modi: stufenlos, mit getrennten Stufen und mit
+  benannten Staffeln samt Zielzähler.
+- Min/Max-Run-Größe; Runs starten automatisch bei Max. In Stufenqueues kann ab
+  Min ein einstimmiger Frühstart abgestimmt werden.
+- Interaktiver Queue-Setup-Dialog mit anpassbarem Übersichtstitel/-text,
+  Run-Größe und einem Einstellungsmenü für die ausgewählte Queue-Art.
+- Private Run-Threads, eine einmalige Run-Information mit optionalem Ping und
+  zeitgesteuerte Abschlussbestätigung ohne Erinnerungsfunktion.
+- Nummerierte Stufen und nach Stunden von 00:00 bis 23:00 benannte Staffeln;
+  Staffel-Ziellimit und -Beschriftung gelten einheitlich für alle Staffeln.
 - Interaktive Anmeldung und Abmeldung über Schaltflächen in der jeweiligen Übersicht.
 - Verknüpfung mehrerer Ingame-Accounts mit einem Discord-Mitglied sowie
   accountbezogene An- und Abmeldung (einschließlich ALT-Anmeldungen).
@@ -53,24 +60,101 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 5. Setze den Bot in der Rollenliste über die Rollen, die er vergeben oder entfernen soll. Discord erlaubt dem Bot keine Verwaltung gleichrangiger oder höherer Rollen.
 6. Starte den Bot. Beim Start werden die Slash-Commands global synchronisiert; bis sie in Discord erscheinen, kann es kurz dauern.
 
-Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Registrierungsverwaltungsbefehle beziehen sich auf den WZ-Anmeldungskanal, in dem sie aufgerufen werden; `/registration setup configure` richtet diesen Kanal mit der angegebenen Registrierungsrolle ein. Dabei kann angegeben werden, ob die Rolle permanent ist (Standard: `false`). Zusätzliche Bereinigungskanäle werden ebenfalls je WZ-Anmeldung verwaltet und dürfen weder zwischen Anmeldungen noch als anderer Anmeldungskanal wiederverwendet werden. Die Account-Befehle liegen unabhängig davon unter `/account`.
+Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Registrierungsverwaltungsbefehle beziehen sich auf den WZ-Anmeldungskanal, in dem sie aufgerufen werden. `/registration setup config` öffnet dort ein privates Dialogmenü zum Bearbeiten von Titel und Text, Hinzufügen permanenter oder nicht permanenter Anmelde-Rollen sowie zum Festlegen oder Deaktivieren des guildweiten JSON-Exportkanals. Zusätzliche Bereinigungskanäle werden ebenfalls je WZ-Anmeldung verwaltet und dürfen weder zwischen Anmeldungen noch als anderer Anmeldungskanal wiederverwendet werden. Die Account-Befehle liegen unabhängig davon unter `/account`.
 
 QS-Anmeldungen werden kanalbezogen unter `/qs setup` eingerichtet. Pro Anmeldung sind höchstens vier Rollen erlaubt; diese Rollen sind nie permanent. Die Übersicht zählt pro Discord-Mitglied höchstens eine Anmeldung. `/qs reset` setzt nur nach Bestätigung die Anmeldungen im aktuellen QS-Kanal zurück. Sorge dafür, dass der Bot Nachrichten in den Registrierungs- und Bereinigungskanälen sehen und verwalten kann.
 
-Queues werden pro Textkanal mit `/queue setup configure` eingerichtet; mehrere
-Queues können auf demselben Server in verschiedenen Kanälen betrieben werden.
-Konfiguriere Namen, Run-Größe, Bestätigungswartezeit und Erinnerungsintervall.
-`min_players` ist 0 oder gleich der Run-Größe; ein vorzeitiger manueller Start
-ist nicht vorgesehen. Bei voller Gruppe erstellt der Bot einen privaten Thread,
-lädt alle Teilnehmenden ein und startet dort die Bestätigung nach Ablauf der
-Wartezeit. Jedes Mitglied bestätigt selbst; bis dahin erinnert der Bot die noch
-nicht bestätigten Teilnehmenden im Thread. `/queue setup remove` entfernt die
-Queue im aktuellen Kanal. Der Bot benötigt dafür das Erstellen privater Threads,
-Threads zu verwalten und Nachrichten darin zu senden.
+Queues werden pro Textkanal mit `/queue setup config` eingerichtet und können
+auch bei Teilnehmenden oder laufenden Runs neu konfiguriert werden. Das
+Auswahlmenü für den Queue-Typ bleibt während des gesamten Setups verfügbar.
+Gemeinsam konfigurierbar sind Titel, Übersichtstext und der optionale Ping beim
+Start eines Runs. Ein Queue-Typwechsel muss bestätigt werden; er entfernt die
+bisherigen Modus-Einstellungen, Teilnahmen, laufenden Runs und zugehörigen
+Threads, behält aber die gemeinsamen Queue-Einstellungen. Für **Stufenlos**
+und **Stufen** lassen sich Min/Max festlegen
+(`1 ≤ Min ≤ Max ≤ 100`); Runs starten automatisch bei Max. Ab Min können die
+Wartenden einer Stufe einstimmig für einen sofortigen Start abstimmen. Bei
+**Stufen** werden Anzahl und Text-Prefix festgelegt. Jede Stufe hat einen
+eigenen Pool; in der Teilnehmenden-Übersicht erscheinen nur belegte Stufen.
+Die An-/Abmelde-Schaltflächen bleiben für alle Stufen verfügbar und zeigen
+ausschließlich Prefix und Stufennummer. Erneutes Drücken meldet ab,
+während die Auswahl einer anderen Stufe die Anmeldung in diesen Pool wechselt.
+Für **Staffeln** werden bis zu sechs Stunden zwischen `00:00` und `23:00`, ein
+gemeinsamer Start-Kalendertag samt IANA-Zeitzone und eine Dauer von 12, 24, 36,
+48, 60 oder 72 Stunden festgelegt. Aufgaben werden als Name und jeweiliges
+Abschlusslimit konfiguriert. Jede Staffel hat eine eigene Schaltfläche, die
+ausschließlich die Uhrzeit zeigt, sowie einen privaten Thread mit
+Teilnehmendenzugriff. Nur Staffeln mit Teilnehmenden erscheinen in der
+Teilnehmenden-Übersicht. Ein Mitglied kann gleichzeitig in mehreren Staffeln
+aktiv sein; die jeweilige Schaltfläche erteilt beziehungsweise entzieht den
+Thread-Zugriff. Anmeldung und Thread-Zugriff sind vor dem Start möglich. Erst ab
+dem jeweiligen Staffelstart werden die Teilnehmenden benachrichtigt und
+Aufgabenbestätigungen freigeschaltet. Im Thread und im Queue-Kanal wird der
+Fortschritt je Aufgabe angezeigt. Ein Mitglied kann pro Queue genau eine Aufgabe
+bestätigen, auch wenn es in mehreren Staffel-Threads teilnimmt. Das jeweilige
+Limit verhindert weitere Bestätigungen für eine volle Aufgabe; nach Erreichen
+aller Aufgabenlimits oder Ablauf der Dauer wird die Staffelqueue abgeschlossen.
+Wird ein neuer Staffelstart (Datum, Zeitzone oder Staffelstunden) gespeichert,
+werden Teilnahmen, Bestätigungen und Thread-Inhalte bereinigt und die Zähler
+zurückgesetzt.
+In stufenlosen Queues schaltet dieselbe An-/Abmelde-Schaltfläche die Teilnahme
+um. `/queue setup reset` setzt nach
+Bestätigung alle Staffel-Zähler zurück, löscht Teilnahmen und Ziele und
+bereinigt Bot-Nachrichten im Queue-Kanal und in den Staffel-Threads. Die
+Staffel-Threads selbst bleiben erhalten. `/queue setup remove` entfernt die
+Queue im aktuellen Kanal einschließlich wartender Teilnahmen und des
+gespeicherten Queue-Verlaufs; aktive Runs müssen vorher abgeschlossen sein. Der
+Bot benötigt das Erstellen privater Threads, das Verwalten von Threads und das
+Senden von Nachrichten darin. Für den Reset benötigt er außerdem die
+Berechtigung **Manage Messages**, um die Staffel-Thread-Inhalte zu leeren.
 
 ### Spendenübersichten
 
-Spendenarten und Spendenkanäle werden je Server über `/spenden setup` verwaltet. Füge mit `/spenden setup art-hinzufuegen` eine Art mit einem Namen und optional einem Zusatzfeld hinzu. Zum Beispiel kann „Credits“ ohne Zusatzfeld eingerichtet werden; „Kristalle“ mit dem Zusatzfeld „Zeit“ fragt beim Eintragen Wert und Zeit ab. Danach richtet `/spenden setup kanal` im aktuellen Textkanal eine Übersicht ein. Richte den Befehl in beliebig vielen Kanälen aus, um mehrere getrennte Spendenübersichten zu verwenden. Mitglieder tragen Spenden über den Button in der Übersicht oder `/spenden eintragen` ein. `/spenden setup art-entfernen` entfernt eine Art, `/spenden setup kanal-entfernen` deaktiviert den aktuellen Kanal; gespeicherte Einträge bleiben erhalten. Die Übersicht zeigt die letzten 20 Spenden.
+Mit `/donation setup` öffnest du im aktuellen Textkanal das interaktive
+Setup-Menü. Zuerst wählst du **Einfache Spende** oder **Rush-Spende**. Im Menü
+konfigurierst du Titel und Beschreibung, die Anzahl der letzten Einträge
+(1–20, Standard 20) und ob das kanalbezogene All-Time-Ranking angezeigt wird.
+Bei einfachen Spenden sind Einheit und optionale feste Betragsauswahl einstellbar;
+neu eingerichtete einfache Spenden verwenden standardmäßig vier Credit-Buttons:
+`10.000`, `100.000`, `1.000.000` und `8.000.000` Credits. Die festen Werte
+können im Setup angepasst werden; ohne feste Werte bleibt die freie Eingabe
+verfügbar.
+
+Rush-Spenden verwenden fest die Optionen **1h**, **8h** und **24h** sowie
+Kristalle als Einheit. Der Start wird mit Datum und Uhrzeit in
+`Europe/Berlin` festgelegt. Ein Rush-Zeitraum dauert neun Tage; Spenden sind bis
+einschließlich acht Tage nach dem Start möglich. Die Preise richten sich nach
+der seit dem Start vergangenen Zeit: 0–72h, 72–144h und 144–192h. Die
+Kristallpreise je Option und Zone sind:
+
+| Option | 0–72h | 72–144h | 144–192h |
+| --- | ---: | ---: | ---: |
+| 1h | 28 | 56 | 84 |
+| 8h | 223 | 445 | 667 |
+| 24h | 667 | 1.334 | 2.001 |
+
+Die Übersicht zeigt die drei Preiszonen und hebt die aktuell geltende Zone
+hervor. Überschreitet eine Option eine Zonengrenze, erhöht sich der Preis der
+aktuellen Zone nach `(1 + (x / 24)) * aktueller Preis`, wobei `x` die Stunden
+der Spende in der nächsten Zone aufgerundet auf angefangene Stunden bezeichnet;
+das Ergebnis wird kaufmännisch auf ganze Kristalle gerundet. Die
+Rush-Schaltflächen **1h**, **8h** und **24h**
+stehen direkt bei der Übersicht und werden außerhalb des zulässigen Zeitraums
+ausgeblendet. Vor dem Speichern wird der berechnete Preis bestätigt. Die
+Übersicht zeigt die Spenden und Zeitersparnis des aktuellen Zyklus. Das
+optionale separate Ranking bleibt kanalbezogen und zählt alle Zyklen; bei
+Rush-Spenden zeigt es je Person sowohl die Kristallmenge als auch die
+eingesparte Zeit. Beträge werden mit Punkten als Tausendertrennzeichen
+dargestellt (zum Beispiel `1.000.000`).
+
+Du kannst `/donation setup` in mehreren Kanälen ausführen, um getrennte
+Spenden-Systeme einzurichten. `/donation reset` startet den aktuellen Zyklus
+neu; bei Rush-Spenden legst du dabei den neuen Start fest. Frühere Einträge
+bleiben im All-Time-Ranking enthalten. `/donation remove` und
+`/donation delete` entfernen nach Bestätigung Einrichtung, Bot-Nachrichten und
+alle Spenden des aktuellen Kanals unwiderruflich. Damit das Ranking
+vergleichbar bleibt, kann die Einheit nach dem ersten Spenden-Eintrag nicht
+mehr geändert werden.
 
 ## Installation und Start
 
@@ -164,12 +248,8 @@ Die Befehle in `/registration setup` setzen für den ausführenden Benutzer **Ma
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/registration setup configure role:<Rolle> [permanent:<true\|false>]` | Richtet den Kanal, in dem der Befehl aufgerufen wird, für die Registrierungsübersicht ein und fügt die Registrierungsrolle hinzu. `permanent` ist standardmäßig `false`. |
+| `/registration setup config` | Öffnet im aktuellen Kanal ein privates Dialogmenü zum Bearbeiten von Titel und Text, Hinzufügen permanenter oder nicht permanenter Rollen sowie zum Festlegen oder Deaktivieren des guildweiten JSON-Exportkanals. |
 | `/registration setup remove` | Entfernt nach Bestätigung die Anmeldung im aktuellen Kanal einschließlich Teilnahmen, vergebener Rollen, Übersichten und zugehöriger Konfiguration. |
-| `/registration setup roles-add role:<Rolle> [permanent:<true/false>]` | Fügt eine Registrierungsrolle hinzu. Standard für `permanent` ist `false`; maximal vier Rollen sind vorgesehen. |
-| `/registration setup roles-delete role:<Rolle>` | Löscht eine konfigurierte Registrierungsrolle, die zugehörigen gespeicherten Registrierungen und die Rolle von betroffenen Servermitgliedern. Die letzte konfigurierte Rolle kann nicht gelöscht werden. |
-| `/registration setup message [title:<Text>] [message:<Text>] [message_upload:<TXT-Datei>]` | Ändert Titel und/oder Beschreibung der Übersicht. Für die Beschreibung kann Text oder eine UTF-8-codierte `.txt`-Datei verwendet werden, nicht beides gleichzeitig. Die Datei `assets/DiscordMessageExample.txt` dient als Beispiel. |
-| `/registration setup event-log [channel:<Textkanal>]` | Legt guildweit den JSON-Zielkanal für WZ- und QS-Registrierungen fest. Anmeldung, Wechsel, Abmeldung und Sync senden einen Snapshot mit Anmeldungskanal und Mitgliedern; ohne `channel` wird der Versand deaktiviert. |
 | `/wz channel add` | Fügt im WZ-Anmeldungskanal Bereinigungskanäle hinzu. Diese Konfiguration wird von anderen WZ-Befehlen wie `clean-channels` verwendet. |
 | `/wz channel remove` | Entfernt im WZ-Anmeldungskanal konfigurierte Bereinigungskanäle. |
 | `/wz role add [permanent:<true\|false>]` | Fügt der WZ-Anmeldung im aktuellen Kanal Rollen hinzu. Andere WZ-Befehle verwenden diese Rollen für Anmeldungen. |

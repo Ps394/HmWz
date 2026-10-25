@@ -2,7 +2,7 @@ from discord.app_commands import Group, checks, default_permissions, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import configure, event_log, message, remove, role
+from . import config_command, remove
 
 __all__ = ["RegistrationSetupGroup"]
 
@@ -21,9 +21,5 @@ class RegistrationSetupGroup(Group):
                 key="wz.registration.setup.group.description",
             ),
         )
-        self.add_command(configure.configure)
+        self.add_command(config_command.config)
         self.add_command(remove.remove)
-        self.add_command(message.message)
-        self.add_command(event_log.event_log)
-        self.add_command(role.add.add)
-        self.add_command(role.remove.remove)

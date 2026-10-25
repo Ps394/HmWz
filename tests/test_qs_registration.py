@@ -81,12 +81,8 @@ def test_registration_command_group_uses_requested_hierarchy() -> None:
     setup = next(command for command in group.commands if command.name == "setup")
     assert isinstance(setup, discord.app_commands.Group)
     assert {command.name for command in setup.commands} == {
-        "configure",
-        "event-log",
-        "message",
+        "config",
         "remove",
-        "roles-add",
-        "roles-delete",
     }
 
 

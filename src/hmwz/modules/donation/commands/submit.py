@@ -8,8 +8,8 @@ from hmwz.modules.donation.module import DonationModule
 
 
 @app_commands.command(
-    name="eintragen",
-    description="Eine Spende in diesem Kanal eintragen",
+    name="record",
+    description="Record a donation in this channel",
 )
 async def submit(interaction: discord.Interaction) -> None:
     """Open the donation type selector in the current configured channel."""
@@ -23,9 +23,4 @@ async def submit(interaction: discord.Interaction) -> None:
         return
 
     module: DonationModule = await manager.get_module(guild, DonationModule)
-    if channel_id not in await module.donations.get_channels(guild=guild):
-        await interaction.response.send_message(
-            t(interaction, "donation.error.not_configured"), ephemeral=True
-        )
-        return
-    await module.show_donation_type_selection(interaction, channel_id)
+    await module.start_donation(interaction, channel_id)

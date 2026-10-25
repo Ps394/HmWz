@@ -10,6 +10,7 @@ from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
 
+
 @app_commands.checks.bot_has_permissions(attach_files=True)
 @app_commands.command(
     name="csv",

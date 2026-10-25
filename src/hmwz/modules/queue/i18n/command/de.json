@@ -1,11 +1,7 @@
 {
   "group.description.queue": "Verwaltet kanalbezogene Warteschlangen und Runs",
   "group.description.queue.setup": "Richtet Warteschlangen ein",
-  "command.description.queue.setup.configure": "Richtet eine Queue im aktuellen Kanal ein oder aktualisiert sie.",
+  "command.description.queue.setup.config": "Richtet eine Queue über einen interaktiven Dialog ein.",
   "command.description.queue.setup.remove": "Entfernt die Queue im aktuellen Kanal.",
-  "parameter.description.queue.name": "Name der Queue",
-  "parameter.description.queue.max_players": "Teilnehmende pro Run (1-100)",
-  "parameter.description.queue.min_players": "0 oder gleich der maximalen Run-Größe",
-  "parameter.description.queue.confirmation_delay_minutes": "Minuten nach Run-Start bis zur Bestätigung",
-  "parameter.description.queue.reminder_interval_minutes": "Minuten zwischen Erinnerungen im Thread"
+  "command.description.queue.setup.reset": "Setzt eine Staffelqueue samt Teilnahmen, Zählern und Nachrichten zurück."
 }

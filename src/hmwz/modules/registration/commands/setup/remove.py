@@ -100,14 +100,6 @@ class RegistrationRemoveConfirmation(discord.ui.View):
             message_ids = {record.message for record in list_messages or ()}
             if registration.message is not None:
                 message_ids.add(registration.message)
-            bot_user = interaction.client.user
-            message_removal_failed = await self._remove_messages(
-                message_ids, bot_id=bot_user.id if bot_user is not None else None
-            )
-
-            for message_id in message_ids:
-                module._overview_for(self.channel_id).forget_message(message_id)
-
             operations = (
                 module.registrations.remove(
                     guild=self.guild, channel_id=self.channel_id
@@ -125,6 +117,14 @@ class RegistrationRemoveConfirmation(discord.ui.View):
                 if not await operation:
                     await self._finish(interaction, "error")
                     return
+
+            bot_user = interaction.client.user
+            message_removal_failed = await self._remove_messages(
+                message_ids, bot_id=bot_user.id if bot_user is not None else None
+            )
+
+            for message_id in message_ids:
+                module._overview_for(self.channel_id).forget_message(message_id)
 
             await self._finish(
                 interaction,

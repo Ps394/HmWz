@@ -1,6 +1,6 @@
 from discord.app_commands import Group, checks, locale_str
 
-from . import setup, submit
+from . import manage, reset, setup, submit
 
 __all__ = ["DonationGroup"]
 
@@ -16,8 +16,13 @@ class DonationGroup(Group):
 
     def __init__(self) -> None:
         super().__init__(
-            name="spenden",
-            description=locale_str("Spendenübersicht und Spenden erfassen"),
+            name="donation",
+            description=locale_str(
+                "Configure donations, record donations, and manage donation data"
+            ),
         )
-        self.add_command(setup.DonationSetupGroup())
+        self.add_command(setup.setup)
+        self.add_command(manage.remove)
+        self.add_command(manage.delete)
+        self.add_command(reset.reset)
         self.add_command(submit.submit)

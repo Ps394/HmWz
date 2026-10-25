@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import discord
 
 from hmwz.i18n import t
 
-from .repository import DonationType
+from .overview import DonationOverview
+from .repository import DEFAULT_DONATION_CHOICES, DonationType
+from .rush_pricing import RUSH_DURATIONS_HOURS
+from .validation import parse_amount
 
 if TYPE_CHECKING:
     from .module import DonationModule
 
 
 class DonationRecordButton(discord.ui.Button):
-    """Button that opens the donation type selector."""
+    """Button that starts the donation flow for its channel."""
 
     def __init__(self, module: DonationModule, channel_id: int) -> None:
         super().__init__(
@@ -25,152 +30,404 @@ class DonationRecordButton(discord.ui.Button):
         self.channel_id = channel_id
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await self.module.show_donation_type_selection(interaction, self.channel_id)
+        await self.module.start_donation(interaction, self.channel_id)
 
 
-class DonationOverviewView(discord.ui.View):
-    """Persistent entry button attached to a channel's donation overview."""
-
-    def __init__(self, module: DonationModule, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.add_item(DonationRecordButton(module, channel_id))
-
-
-class DonationTypeSelect(discord.ui.Select):
-    """Select one configured donation type and display its entry modal."""
-
-    def __init__(
-        self,
-        module: DonationModule,
-        channel_id: int,
-        donation_types: tuple[DonationType, ...],
-    ) -> None:
-        super().__init__(
-            placeholder=t(module.guild, "donation.ui.select_placeholder"),
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(
-                    label=donation_type.name,
-                    value=donation_type.name,
-                    description=(
-                        f"{t(module.guild, 'donation.overview.second_field')}: "
-                        f"{donation_type.extra_field[:100]}"
-                        if donation_type.extra_field
-                        else None
-                    ),
-                )
-                for donation_type in donation_types
-            ],
-        )
-        self.module = module
-        self.channel_id = channel_id
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        donation_type = await self.module.donations.get_type(
-            guild=self.module.guild, name=self.values[0]
-        )
-        if donation_type is None:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_type"), ephemeral=True
-            )
-            return
-        await interaction.response.send_modal(
-            DonationModal(self.module, self.channel_id, donation_type)
-        )
-
-
-class DonationTypeSelectView(discord.ui.View):
-    """Ephemeral donation type selector shown before the donation modal."""
-
-    def __init__(
-        self,
-        module: DonationModule,
-        channel_id: int,
-        donation_types: tuple[DonationType, ...],
-    ) -> None:
-        super().__init__(timeout=180)
-        self.module = module
-        self.channel_id = channel_id
-        self.add_item(DonationTypeSelect(module, channel_id, donation_types[:25]))
-
-
-class DonationModal(discord.ui.Modal):
-    """Collect one donation's value and optional additional value."""
+class DonationAmountOptionButton(discord.ui.Button):
+    """Record a simple donation using one configured fixed amount."""
 
     def __init__(
         self,
         module: DonationModule,
         channel_id: int,
         donation_type: DonationType,
+        amount: Decimal,
+        index: int,
     ) -> None:
         super().__init__(
-            title=t(module.guild, "donation.modal.title", name=donation_type.name)[:45]
+            label=(f"{DonationOverview._format_amount(amount)} {donation_type.unit}")[
+                :80
+            ],
+            style=discord.ButtonStyle.primary,
+            custom_id=f"donation:amount:{channel_id}:{index}",
+            row=index // 5,
         )
         self.module = module
         self.channel_id = channel_id
         self.donation_type = donation_type
-        self.amount_input: discord.ui.TextInput = discord.ui.TextInput(
+        self.amount = amount
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        saved, messages_updated = await self.module.record_donation(
+            interaction,
+            self.channel_id,
+            self.donation_type,
+            self.amount,
+            time_reduction=None,
+        )
+        result_key = (
+            "donation.error.save"
+            if not saved
+            else (
+                "donation.success.saved"
+                if messages_updated
+                else "donation.success.saved_overview_failed"
+            )
+        )
+        await interaction.followup.send(t(interaction, result_key), ephemeral=True)
+
+
+class DonationAmountChoiceView(discord.ui.View):
+    """Present fixed donation amounts as directly selectable buttons."""
+
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        donation_type: DonationType,
+        *,
+        timeout: float | None = 180,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        choices = donation_type.choices or DEFAULT_DONATION_CHOICES
+        for index, choice in enumerate(choices):
+            self.add_item(
+                DonationAmountOptionButton(
+                    module,
+                    channel_id,
+                    donation_type,
+                    Decimal(choice),
+                    index,
+                )
+            )
+
+
+class DonationTimeReductionButton(discord.ui.Button):
+    """Select a configured Rush duration before recording a donation."""
+
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        time_reduction: str,
+    ) -> None:
+        super().__init__(
             label=t(
                 module.guild,
-                "donation.modal.amount",
-                name=donation_type.name,
-            )[:45],
-            placeholder=t(module.guild, "donation.modal.amount_placeholder")[:100],
-            max_length=100,
+                "donation.ui.time_reduction_button",
+                reduction=time_reduction,
+            )[:80],
+            style=discord.ButtonStyle.primary,
+            custom_id=f"donation:time:{channel_id}:{time_reduction.removesuffix('h')}",
         )
-        self.add_item(self.amount_input)
-        self.extra_input: discord.ui.TextInput | None = None
-        if donation_type.extra_field:
-            self.extra_input = discord.ui.TextInput(
-                label=donation_type.extra_field[:45],
-                placeholder=t(module.guild, "donation.modal.extra_placeholder")[:100],
-                max_length=100,
+        self.module = module
+        self.channel_id = channel_id
+        self.time_reduction = time_reduction
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await self.module.start_donation(
+            interaction, self.channel_id, time_reduction=self.time_reduction
+        )
+
+
+class DonationOverviewView(discord.ui.View):
+    """Persistent donation controls attached to a channel overview."""
+
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        donation_type: DonationType,
+        *,
+        rush_open: bool = True,
+        rush_zone_index: int | None = None,
+    ) -> None:
+        super().__init__(timeout=None)
+        self.donation_type = donation_type
+        self.rush_open = rush_open
+        self.rush_zone_index = rush_zone_index
+        if donation_type.kind == "time_reduction":
+            for reduction in (
+                (f"{hours}h" for hours in RUSH_DURATIONS_HOURS) if rush_open else ()
+            ):
+                self.add_item(
+                    DonationTimeReductionButton(module, channel_id, reduction)
+                )
+        elif donation_type.input_mode == "choice" and donation_type.choices:
+            for index, choice in enumerate(donation_type.choices):
+                self.add_item(
+                    DonationAmountOptionButton(
+                        module,
+                        channel_id,
+                        donation_type,
+                        Decimal(choice),
+                        index,
+                    )
+                )
+        else:
+            self.add_item(DonationRecordButton(module, channel_id))
+
+
+class DonationTimeReductionView(discord.ui.View):
+    """Offer configured Rush durations when recording via slash command."""
+
+    def __init__(
+        self, module: DonationModule, channel_id: int, donation_type: DonationType
+    ) -> None:
+        super().__init__(timeout=180)
+        for reduction in (f"{hours}h" for hours in RUSH_DURATIONS_HOURS):
+            self.add_item(DonationTimeReductionButton(module, channel_id, reduction))
+
+
+class DonationRushConfirmationView(discord.ui.View):
+    """Confirm a fixed-price Rush option before recording the donation."""
+
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        donation_type: DonationType,
+        duration_hours: int,
+        amount: Decimal,
+        expected_cycle: int,
+        expected_start_at: datetime,
+        quoted_at: datetime,
+        owner_id: int,
+    ) -> None:
+        super().__init__(timeout=180)
+        self.module = module
+        self.channel_id = channel_id
+        self.donation_type = donation_type
+        self.duration_hours = duration_hours
+        self.amount = amount
+        self.expected_cycle = expected_cycle
+        self.expected_start_at = expected_start_at
+        self.quoted_at = quoted_at
+        self.owner_id = owner_id
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.label = t(
+                    module.guild,
+                    "donation.rush.confirm_button"
+                    if item.custom_id == "donation_rush_confirm"
+                    else "donation.delete.cancel",
+                )
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message(
+            t(interaction, "donation.setup.owner_only"), ephemeral=True
+        )
+        return False
+
+    @discord.ui.button(
+        label="Confirm donation",
+        style=discord.ButtonStyle.success,
+        custom_id="donation_rush_confirm",
+    )
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        saved, messages_updated = await self.module.record_rush_donation(
+            interaction,
+            self.channel_id,
+            self.donation_type,
+            self.duration_hours,
+            self.amount,
+            self.expected_cycle,
+            self.expected_start_at,
+            self.quoted_at,
+        )
+        result_key = (
+            "donation.error.save"
+            if not saved
+            else (
+                "donation.success.saved"
+                if messages_updated
+                else "donation.success.saved_overview_failed"
             )
-            self.add_item(self.extra_input)
+        )
+        self.stop()
+        await interaction.followup.send(t(interaction, result_key), ephemeral=True)
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.secondary,
+        custom_id="donation_rush_cancel",
+    )
+    async def cancel(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.stop()
+        await interaction.response.edit_message(
+            content=t(interaction, "donation.rush.cancelled"), view=None
+        )
+
+
+class DonationDeleteConfirmationView(discord.ui.View):
+    """Require explicit confirmation before deleting donation history."""
+
+    def __init__(
+        self,
+        *,
+        module: DonationModule,
+        channel_id: int,
+        owner_id: int,
+        context: discord.Interaction,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.module = module
+        self.channel_id = channel_id
+        self.owner_id = owner_id
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.label = t(
+                    context,
+                    "donation.delete.confirm"
+                    if item.custom_id == "donation_delete_confirm"
+                    else "donation.delete.cancel",
+                )
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message(
+            t(interaction, "donation.delete.owner_only"), ephemeral=True
+        )
+        return False
+
+    @discord.ui.button(
+        label="Delete permanently",
+        style=discord.ButtonStyle.danger,
+        custom_id="donation_delete_confirm",
+    )
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.defer()
+        removed = await self.module.delete_channel(self.channel_id)
+        self.stop()
+        await interaction.edit_original_response(
+            content=t(
+                interaction,
+                "donation.delete.complete" if removed else "donation.error.delete",
+            ),
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.secondary,
+        custom_id="donation_delete_cancel",
+    )
+    async def cancel(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.stop()
+        await interaction.response.edit_message(
+            content=t(interaction, "donation.delete.cancelled"), view=None
+        )
+
+
+class DonationAmountModal(discord.ui.Modal):
+    """Collect and validate the amount for a configured donation."""
+
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        donation_type: DonationType,
+        time_reduction: str | None = None,
+    ) -> None:
+        super().__init__(title=t(module.guild, "donation.modal.title")[:45])
+        self.module = module
+        self.channel_id = channel_id
+        self.donation_type = donation_type
+        self.time_reduction = time_reduction
+        self.amount_input = self._create_amount_input(module, donation_type)
+        self.add_item(self.amount_input)
+
+    @staticmethod
+    def _create_amount_input(
+        module: DonationModule, donation_type: DonationType
+    ) -> discord.ui.TextInput:
+        placeholder = t(module.guild, "donation.modal.amount_placeholder")
+        if donation_type.choices:
+            placeholder = t(
+                module.guild,
+                "donation.modal.amount_choices",
+                choices=", ".join(donation_type.choices),
+            )
+        return discord.ui.TextInput(
+            label=t(module.guild, "donation.modal.amount", unit=donation_type.unit)[
+                :45
+            ],
+            placeholder=placeholder[:100],
+            max_length=32,
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        member = interaction.user
-        if interaction.guild is None or not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                t(interaction, "donation.error.guild_only"), ephemeral=True
-            )
+        amount = await self._parse_amount(interaction)
+        if amount is None:
             return
+        if not await self._is_valid_time_reduction(interaction):
+            return
+        if not await self._is_valid_choice(interaction, amount):
+            return
+        await self._record(interaction, amount)
 
-        amount = self.amount_input.value.strip()
-        extra_value = (
-            self.extra_input.value.strip() if self.extra_input is not None else None
+    async def _parse_amount(self, interaction: discord.Interaction) -> Decimal | None:
+        try:
+            return parse_amount(self.amount_input.value)
+        except ValueError:
+            await interaction.response.send_message(
+                t(interaction, "donation.error.invalid_amount"), ephemeral=True
+            )
+            return None
+
+    async def _is_valid_time_reduction(self, interaction: discord.Interaction) -> bool:
+        if self.donation_type.kind != "time_reduction":
+            return True
+        if self.time_reduction in self.donation_type.time_reductions:
+            return True
+        await interaction.response.send_message(
+            t(interaction, "donation.error.invalid_time_choice"), ephemeral=True
         )
-        if not amount or (self.extra_input is not None and not extra_value):
-            await interaction.response.send_message(
-                t(interaction, "donation.error.required_value"), ephemeral=True
-            )
-            return
+        return False
 
+    async def _is_valid_choice(
+        self, interaction: discord.Interaction, amount: Decimal
+    ) -> bool:
+        if self.donation_type.input_mode != "choice" or amount in {
+            Decimal(choice) for choice in self.donation_type.choices
+        }:
+            return True
+        await interaction.response.send_message(
+            t(interaction, "donation.error.invalid_amount_choice"), ephemeral=True
+        )
+        return False
+
+    async def _record(self, interaction: discord.Interaction, amount: Decimal) -> None:
         await interaction.response.defer(ephemeral=True)
-        saved = await self.module.donations.add_donation(
-            guild=interaction.guild,
-            channel_id=self.channel_id,
-            member=member,
-            donation_type=self.donation_type,
-            amount=amount,
-            extra_value=extra_value,
+        saved, messages_updated = await self.module.record_donation(
+            interaction,
+            self.channel_id,
+            self.donation_type,
+            amount,
+            time_reduction=self.time_reduction,
         )
-        if not saved:
-            await interaction.followup.send(
-                t(interaction, "donation.error.save"), ephemeral=True
-            )
-            return
-
-        updated = await self.module.compose_overview(self.channel_id)
         await interaction.followup.send(
-            t(
-                interaction,
-                (
-                    "donation.success.saved"
-                    if updated
-                    else "donation.success.saved_overview_failed"
-                ),
-            ),
+            t(interaction, self._result_key(saved, messages_updated)),
             ephemeral=True,
         )
+
+    @staticmethod
+    def _result_key(saved: bool, messages_updated: bool) -> str:
+        if not saved:
+            return "donation.error.save"
+        if messages_updated:
+            return "donation.success.saved"
+        return "donation.success.saved_overview_failed"

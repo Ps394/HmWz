@@ -48,6 +48,7 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
     monkeypatch: pytest.MonkeyPatch,
     shared_elsewhere: bool,
 ) -> None:
+    removal_operations: list[str] = []
     guild = cast(
         discord.Guild,
         SimpleNamespace(
@@ -69,7 +70,9 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
                 ),
             ]
         ),
-        remove=AsyncMock(return_value=True),
+        remove=AsyncMock(
+            side_effect=lambda **_: removal_operations.append("registrations") or True
+        ),
     )
     messages = (
         SimpleNamespace(message=502),
@@ -77,13 +80,25 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
     )
     list_repository = SimpleNamespace(
         get=AsyncMock(return_value=messages),
-        remove=AsyncMock(return_value=True),
+        remove=AsyncMock(
+            side_effect=lambda **_: removal_operations.append("list") or True
+        ),
     )
-    role_repository = SimpleNamespace(remove=AsyncMock(return_value=True))
-    purge_channels = SimpleNamespace(remove=AsyncMock(return_value=True))
+    role_repository = SimpleNamespace(
+        remove=AsyncMock(
+            side_effect=lambda **_: removal_operations.append("roles") or True
+        )
+    )
+    purge_channels = SimpleNamespace(
+        remove=AsyncMock(
+            side_effect=lambda **_: removal_operations.append("purge") or True
+        )
+    )
     settings = SimpleNamespace(
         get=AsyncMock(return_value=registration_record),
-        remove=AsyncMock(return_value=True),
+        remove=AsyncMock(
+            side_effect=lambda **_: removal_operations.append("settings") or True
+        ),
     )
     overview = SimpleNamespace(forget_message=Mock())
     module = SimpleNamespace(
@@ -119,7 +134,10 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
                 SimpleNamespace(
                     id=message_id,
                     delete=AsyncMock(
-                        side_effect=lambda: deleted_ids.append(message_id)
+                        side_effect=lambda: (
+                            removal_operations.append("message"),
+                            deleted_ids.append(message_id),
+                        )
                     ),
                 ),
             )
@@ -140,7 +158,8 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
                         author=SimpleNamespace(id=author_id),
                         delete=AsyncMock(
                             side_effect=lambda message_id=message_id: (
-                                deleted_ids.append(message_id)
+                                removal_operations.append("message"),
+                                deleted_ids.append(message_id),
                             )
                         ),
                     ),
@@ -169,6 +188,11 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
         set() if shared_elsewhere else {(30, 99)}
     )
     assert set(deleted_ids) == {501, 502, 503, 504}
+    first_message_removal = removal_operations.index("message")
+    assert all(
+        removal_operations.index(operation) < first_message_removal
+        for operation in ("registrations", "roles", "list", "purge", "settings")
+    )
     assert {call.args[0] for call in overview.forget_message.call_args_list} == {
         501,
         502,

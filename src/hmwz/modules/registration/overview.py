@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from hmwz import emojis, utils
+from hmwz import utils
 from hmwz.configuration import registration_defaults
 from hmwz.hm_models.botembed import BotEmbed
 from hmwz.i18n import t
 
 from . import models
+from .list_overview import RegistrationListOverview
 
 if TYPE_CHECKING:
     from . import repositories
@@ -71,11 +72,17 @@ class RegistrationOverview:
         self._compose_min_interval_seconds = 1.5
         self._overview_message: discord.Message | None = None
         self._overview_signature: tuple[object, ...] | None = None
-        self._list_messages: dict[int, discord.Message] = {}
+        self._list_overview = RegistrationListOverview(
+            guild=guild,
+            registrations=registrations,
+            lists=lists,
+            module_key=module_key,
+            max_players=max_players,
+        )
 
     def forget_message(self, message_id: int) -> None:
         """Drop cached message state after Discord reports its deletion."""
-        self._list_messages.pop(message_id, None)
+        self._list_overview.forget_message(message_id)
         if (
             self._overview_message is not None
             and self._overview_message.id == message_id
@@ -190,156 +197,6 @@ class RegistrationOverview:
             )
             row += 1
         return view
-
-    async def _load_list_messages(
-        self, channel: discord.TextChannel
-    ) -> list[discord.Message]:
-        records = await self.lists.get(guild=self.guild, channel=channel.id)
-        if not records:
-            return []
-
-        messages: list[discord.Message] = []
-        stale_ids: list[int] = []
-        for record in records:
-            message = self._list_messages.get(record.message)
-            if message is not None and message.channel.id != channel.id:
-                message = None
-            if message is None:
-                message = await utils.fetch_message(channel, record.message)
-            if message is None:
-                stale_ids.append(record.message)
-            else:
-                self._list_messages[record.message] = message
-                messages.append(message)
-
-        for stale_id in stale_ids:
-            self._list_messages.pop(stale_id, None)
-            await self.lists.remove(
-                guild=self.guild, message=stale_id, channel=channel.id
-            )
-        return messages
-
-    async def _create_list_embeds(
-        self, registrations: models.Registration
-    ) -> list[discord.Embed]:
-        if not registrations.registrations:
-            return []
-
-        entries: list[tuple[str, bool, str]] = []
-        for registration in registrations.registrations:
-            role = self.guild.get_role(registration.role.role_id)
-            member = await utils.fetch_member(self.guild, registration.member_id)
-            if role is not None and member is not None:
-                entries.append(
-                    (
-                        role.name,
-                        registration.role.permanent,
-                        (
-                            f"{registration.account} ({member.display_name})"
-                            if registration.account
-                            else member.display_name
-                        ),
-                    )
-                )
-
-        if not entries:
-            return []
-
-        entries.sort(
-            key=lambda entry: (not entry[1], entry[0].lower(), entry[2].lower())
-        )
-        total = len(entries)
-        permanent = sum(1 for entry in entries if entry[1])
-        non_permanent = total - permanent
-
-        rows: list[str] = []
-        last_group = ""
-        for index, (role_name, is_permanent, display_name) in enumerate(entries, 1):
-            marker = (
-                emojis.PERMA_REGISTRATION
-                if is_permanent
-                else emojis.NORMAL_REGISTRATION
-            )
-            group = f"{role_name} {marker}"
-            if group != last_group:
-                rows.append(f"**{group}**")
-                last_group = group
-            rows.append(f"{index}. {display_name}")
-
-        def make_embed(page: int, content: str) -> discord.Embed:
-            return BotEmbed(
-                title=self._translate(
-                    f"{self.module_key}.overview.list.title",
-                    page=page,
-                    total=total,
-                    max_players=self.max_players or total,
-                    perma_emoji=emojis.PERMA_REGISTRATION,
-                    permanent_count=permanent,
-                    normal_emoji=emojis.NORMAL_REGISTRATION,
-                    non_permanent_count=non_permanent,
-                ),
-                description=content,
-                color=self._client_color,
-                client_avatar=self._client_avatar,
-            )
-
-        embeds: list[discord.Embed] = []
-        chunk: list[str] = []
-        chunk_chars = 0
-        page = 1
-        for row in rows:
-            line = f"{row}\n"
-            if chunk and chunk_chars + len(line) > 3800:
-                embeds.append(make_embed(page, "".join(chunk)))
-                page += 1
-                chunk = []
-                chunk_chars = 0
-            chunk.append(line)
-            chunk_chars += len(line)
-
-        if chunk:
-            embeds.append(make_embed(page, "".join(chunk)))
-        return embeds
-
-    async def _sync_list_messages(
-        self,
-        channel: discord.TextChannel,
-        embeds: list[discord.Embed],
-    ) -> None:
-        existing_messages = await self._load_list_messages(channel)
-
-        for index in range(max(len(existing_messages), len(embeds))):
-            if index < len(embeds) and index < len(existing_messages):
-                message = existing_messages[index]
-                embed = embeds[index]
-                if not message.embeds or message.embeds[0].to_dict() != embed.to_dict():
-                    message = await message.edit(embed=embed)
-                    self._list_messages[message.id] = message
-                    await self.lists.add(
-                        guild=self.guild,
-                        channel=channel.id,
-                        message=message.id,
-                        title=embed.title or "",
-                        text=embed.description or "",
-                    )
-            elif index < len(embeds):
-                embed = embeds[index]
-                message = await channel.send(embed=embed)
-                self._list_messages[message.id] = message
-                await self.lists.add(
-                    guild=self.guild,
-                    channel=channel.id,
-                    message=message.id,
-                    title=embed.title or "",
-                    text=embed.description or "",
-                )
-            else:
-                message = existing_messages[index]
-                try:
-                    await message.delete()
-                finally:
-                    self._list_messages.pop(message.id, None)
-                    await self.lists.remove(guild=self.guild, message=message.id)
 
     async def _compose(self) -> bool:
         configuration = await self._load_configuration()
@@ -460,8 +317,12 @@ class RegistrationOverview:
             title=title,
             description=description,
         )
-        list_embeds = await self._create_list_embeds(registrations)
-        await self._sync_list_messages(channel, list_embeds)
+        list_embeds = await self._list_overview.create_embeds(
+            registrations,
+            get_color=lambda: self._client_color,
+            get_client_avatar=lambda: self._client_avatar,
+        )
+        await self._list_overview.sync_messages(channel, list_embeds)
         _logger.info(
             "%s (%s) - %s registration overview message %s in %s(%s).",
             self.guild.name,
