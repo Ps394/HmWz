@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.app_commands import locale_str
 
-from hmwz.i18n import t
+from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.donation.module import DonationModule
 from hmwz.modules.donation.setup_views import (
     DonationSetupKindSelect,
@@ -14,9 +14,24 @@ from hmwz.modules.donation.setup_views import (
 )
 
 
+async def _send_temporary_response(
+    interaction: discord.Interaction, message: str
+) -> None:
+    """Send an ephemeral response and remove it after a short interval."""
+    await interaction.response.send_message(message, ephemeral=True)
+    response = await interaction.original_response()
+    await response.delete(delay=5)
+
+
 @app_commands.command(
     name="setup",
-    description=locale_str("Configure donations and their overview in this channel"),
+    description=locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "command.description.donation.setup",
+            "Configure donations and their overview in this channel",
+        ),
+        key="donation.setup.description",
+    ),
 )
 @app_commands.checks.has_permissions(manage_channels=True)
 @app_commands.checks.bot_has_permissions(
@@ -31,16 +46,15 @@ async def setup(interaction: discord.Interaction) -> None:
     channel = interaction.channel
     manager = getattr(interaction.client, "module_manager", None)
     if guild is None or manager is None or not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message(
-            t(interaction, "donation.error.text_channel_only"),
-            ephemeral=True,
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.text_channel_only")
         )
         return
 
     module: DonationModule = await manager.get_module(guild, DonationModule)
     if not await module.sync():
-        await interaction.response.send_message(
-            t(interaction, "donation.error.setup_save"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.setup_save")
         )
         return
 

@@ -6,6 +6,7 @@ from hmwz.configuration import wz_registration_config
 from hmwz.i18n import t
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
+from ...responses import send_temporary_followup
 from .configuration_message import configuration_message
 from .view import RegistrationSetupView
 
@@ -126,6 +127,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.export_channel_invalid"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         bot_member = self.export_view.guild.me
@@ -133,6 +135,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.export_channel_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         permissions = channel.permissions_for(bot_member)
@@ -140,6 +143,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.export_channel_missing_permissions"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         if not await self.export_view.module.registration_event_channel.set(
@@ -149,6 +153,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.export_channel_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         await interaction.response.edit_message(
@@ -202,6 +207,7 @@ class RegistrationExportChannelView(RegistrationSetupView):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.export_channel_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         await interaction.response.edit_message(
@@ -258,6 +264,7 @@ class RegistrationTitleModal(discord.ui.Modal):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.owner_only"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         if not await self.module.registration.upsert(
@@ -268,6 +275,7 @@ class RegistrationTitleModal(discord.ui.Modal):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.save_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         roles = await self.module.roles.get(
@@ -279,11 +287,13 @@ class RegistrationTitleModal(discord.ui.Modal):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.saved_refresh_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         await interaction.response.send_message(
             t(interaction, "wz.setup.config.title_saved"),
             ephemeral=True,
+            delete_after=5,
         )
 
 
@@ -320,6 +330,7 @@ class RegistrationTextModal(discord.ui.Modal):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.owner_only"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         if not await self.module.registration.upsert(
@@ -330,6 +341,7 @@ class RegistrationTextModal(discord.ui.Modal):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.save_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         roles = await self.module.roles.get(
@@ -341,11 +353,13 @@ class RegistrationTextModal(discord.ui.Modal):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.saved_refresh_error"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         await interaction.response.send_message(
             t(interaction, "wz.setup.config.text_saved"),
             ephemeral=True,
+            delete_after=5,
         )
 
 
@@ -407,6 +421,7 @@ class RegistrationRoleView(RegistrationSetupView):
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.role_select"),
                 ephemeral=True,
+                delete_after=5,
             )
             return
         self.selected_role = select.values[0]
@@ -424,7 +439,8 @@ class RegistrationRoleView(RegistrationSetupView):
         await interaction.response.defer()
         role = self.selected_role
         if role is None:
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.setup.config.role_select"),
                 ephemeral=True,
             )
@@ -434,7 +450,8 @@ class RegistrationRoleView(RegistrationSetupView):
             or role.managed
             or (self.guild.me is not None and role >= self.guild.me.top_role)
         ):
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.setup.config.role_hierarchy_error"),
                 ephemeral=True,
             )
@@ -446,7 +463,8 @@ class RegistrationRoleView(RegistrationSetupView):
         configured_ids = {configured.role for configured in configured_roles or ()}
         max_roles = int(wz_registration_config().get("max_registration_roles", 4))
         if role.id not in configured_ids and len(configured_ids) >= max_roles:
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(
                     interaction,
                     "wz.setup.config.max_roles",
@@ -462,7 +480,8 @@ class RegistrationRoleView(RegistrationSetupView):
             score=1,
             channel_id=self.channel_id,
         ):
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.setup.config.save_error"),
                 ephemeral=True,
             )
@@ -470,7 +489,8 @@ class RegistrationRoleView(RegistrationSetupView):
         if not await self.module.compose_registration_overview(
             force=True, channel_id=self.channel_id
         ):
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.setup.config.role_saved_refresh_error"),
                 ephemeral=True,
             )

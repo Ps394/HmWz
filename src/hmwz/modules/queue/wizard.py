@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import discord
 
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 
 from .repository import QueueConfiguration, QueueMode
 from .rules import season_start_timestamp, valid_run_range
@@ -209,10 +210,14 @@ class QueueSetupModeSelect(discord.ui.Select):
             self.config_view.draft.configuration is not None
             and selected_mode != self.config_view.draft.configuration.mode
         ):
+            confirmation_view = QueueModeChangeConfirmationView(
+                self.config_view, selected_mode
+            )
             await interaction.response.edit_message(
                 content=t(interaction, "queue.wizard.mode_change_confirm"),
-                view=QueueModeChangeConfirmationView(self.config_view, selected_mode),
+                view=confirmation_view,
             )
+            confirmation_view.message = interaction.message
             return
         draft = await _create_switched_draft(self.config_view.draft, selected_mode)
         draft.title = self.config_view.draft.title
@@ -249,7 +254,7 @@ async def _create_switched_draft(
     return draft
 
 
-class QueueModeChangeConfirmationView(discord.ui.View):
+class QueueModeChangeConfirmationView(EphemeralView):
     def __init__(self, config_view: QueueConfigView, selected_mode: QueueMode) -> None:
         super().__init__(timeout=180)
         self.config_view = config_view

@@ -2,8 +2,8 @@ from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import reset
-from .setup import QsSetupGroup
+from . import reset_roles
+from .setup.menu import setup
 
 
 @checks.bot_has_permissions(
@@ -24,8 +24,9 @@ class QsGroup(Group):
                 key="qs.group.description",
             ),
         )
-        self.add_command(QsSetupGroup())
-        self.add_command(reset.reset)
+        self.add_command(setup)
+        self.add_command(reset_roles.reset_wz_roles)
+        self.add_command(reset_roles.reset_qs_roles)
 
 
 __all__ = ["QsGroup"]

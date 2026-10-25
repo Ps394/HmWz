@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 
 if TYPE_CHECKING:
     from .selection import SetupRoleSelection
@@ -65,7 +66,7 @@ class _ReviewButton(discord.ui.Button):
         await self.selection.review(interaction)
 
 
-class SetupRoleConfirmation(discord.ui.View):
+class SetupRoleConfirmation(EphemeralView):
     def __init__(
         self,
         *,
@@ -90,8 +91,8 @@ class SetupRoleConfirmation(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "wz.setup.role.selection_owner"), ephemeral=True
+        await self.send_temporary_response(
+            interaction, t(interaction, "wz.setup.role.selection_owner")
         )
         return False
 
@@ -116,7 +117,4 @@ class SetupRoleConfirmation(discord.ui.View):
     ) -> None:
         self.stop()
         self.selection.stop()
-        self.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "wz.setup.role.cancelled"), view=None
-        )
+        await self.finish(interaction, t(interaction, "wz.setup.role.cancelled"))

@@ -1,0 +1,6 @@
+{
+  "group.description.donation.group": "Spenden und Spendenzyklen verwalten",
+  "command.description.donation.setup": "Richtet das Spendensystem und die Übersicht in diesem Kanal ein.",
+  "command.description.donation.remove": "Entfernt alle Spenden und die Einrichtung aus diesem Kanal.",
+  "command.description.donation.reset": "Startet einen neuen Spendenzyklus in diesem Kanal."
+}

@@ -5,6 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import discord
 import pytest
@@ -17,6 +18,7 @@ from hmwz.modules.donation.repository import (
 )
 from hmwz.modules.donation.rush_pricing import (
     RUSH_DONATION_CUTOFF,
+    RUSH_PERIOD_DURATION,
     rush_donation_cost,
 )
 from hmwz.modules.donation.validation import (
@@ -49,6 +51,9 @@ async def test_donation_types_channels_and_entries_are_persisted(
         description="Support the guild",
         goal_hours=216,
         rush_start_at=rush_start,
+        timezone_name="America/New_York",
+        show_donations=False,
+        export_channel_id=321,
     )
     crystal_type = DonationType(
         name="Rush donation",
@@ -84,6 +89,9 @@ async def test_donation_types_channels_and_entries_are_persisted(
     assert await donations.set_message(
         guild=guild, channel_id=789, message_id=12346, ranking=True
     )
+    assert await donations.set_message(
+        guild=guild, channel_id=789, message_id=12347, history=True
+    )
     channel = await donations.get_channel(guild=guild, channel_id=789)
     assert channel is not None
     assert channel.title == "Donations"
@@ -91,6 +99,11 @@ async def test_donation_types_channels_and_entries_are_persisted(
     assert channel.goal_hours == 216
     assert channel.overview_message_id == 12345
     assert channel.ranking_message_id == 12346
+    assert channel.history_message_id == 12347
+    assert channel.timezone_name == "America/New_York"
+    assert not channel.show_donations
+    assert channel.donations_enabled
+    assert channel.export_channel_id == 321
 
     assert await donations.add_donation(
         guild=guild,
@@ -105,6 +118,15 @@ async def test_donation_types_channels_and_entries_are_persisted(
         time_reduction="24h",
         rush_quoted_at=rush_start + timedelta(hours=60),
     )
+    assert not await donations.add_donation(
+        guild=guild,
+        channel_id=789,
+        member=member,
+        donation_type=crystal_type,
+        amount=Decimal(260),
+        time_reduction="8h",
+        rush_quoted_at=rush_start + timedelta(hours=68),
+    )
     assert await donations.add_donation(
         guild=guild,
         channel_id=789,
@@ -114,6 +136,7 @@ async def test_donation_types_channels_and_entries_are_persisted(
             started_at=rush_start,
             now=rush_start + timedelta(hours=68),
             duration_hours=8,
+            accelerated_hours=24,
         ),
         time_reduction="8h",
         rush_quoted_at=rush_start + timedelta(hours=68),
@@ -128,37 +151,129 @@ async def test_donation_types_channels_and_entries_are_persisted(
     )
     records = await donations.get_donations(guild=guild, channel_id=789)
     assert len(records) == 2
+    exported_records = await donations.get_donations_for_export(
+        guild=guild, channel_id=789, cycle=1
+    )
+    assert exported_records == records
     assert records[0].member_id == 456
     assert records[0].member_name == "Donor One"
-    assert records[0].amount == Decimal(260)
+    assert records[0].amount == Decimal(445)
     assert records[0].unit == "crystals"
     assert records[0].time_reduction == "8h"
     summary = await donations.get_summary(guild=guild, channel_id=789)
     assert summary == DonationSummary(donation_count=2, time_reduction_hours=32)
     ranking = await donations.get_ranking(guild=guild, channel_id=789, unit="crystals")
     assert len(ranking) == 1
-    assert ranking[0].amount == Decimal(1261)
+    assert ranking[0].amount == Decimal(1446)
     assert ranking[0].donation_count == 2
     assert ranking[0].time_reduction_hours == 32
     overview = DonationOverview.create_embed(
-        guild, channel, crystal_type, records, summary, now
+        guild,
+        channel,
+        rush_start_at=rush_start,
+        timezone_name=channel.timezone_name,
+        accelerated_hours=summary.time_reduction_hours,
+        donations_enabled=channel.donations_enabled,
     )
-    assert len(overview.fields) == 6
-    assert "type" not in " ".join(field.name.lower() for field in overview.fields)
-    assert "8h" in overview.fields[0].value
-    assert overview.fields[1].value == "2"
-    assert "→" in overview.fields[2].value
-    assert "28" in overview.fields[3].value
-    zone_lines = overview.fields[3].value.splitlines()
-    assert zone_lines[0].startswith("**")
-    assert not zone_lines[1].startswith("**")
-    assert overview.fields[4].value == "1d 08:00"
-    assert overview.fields[5].value == "9d 00:00 → 7d 16:00"
+    assert overview.title == channel.title
+    assert overview.description == channel.description
+    assert [field.name for field in overview.fields] == [
+        "Startzeit",
+        "Dauer",
+        "Endzeit",
+        "Zeitzone",
+        "Spendenstatus",
+    ]
+    assert overview.fields[0].value == rush_start.astimezone(
+        ZoneInfo(channel.timezone_name)
+    ).strftime("%d.%m.%Y %H:%M")
+    assert "UTC" not in overview.fields[0].value
+    assert overview.fields[1].value == "9 Tage (216 Stunden)"
+    expected_adjusted_end = (
+        rush_start
+        + RUSH_PERIOD_DURATION
+        - timedelta(hours=summary.time_reduction_hours)
+    )
+    assert overview.fields[2].value == expected_adjusted_end.astimezone(
+        ZoneInfo("America/New_York")
+    ).strftime("%d.%m.%Y %H:%M")
+    assert overview.fields[3].value == "New York (USA)"
+    assert overview.fields[4].value == "aktiviert"
     ranking_embed = DonationOverview.create_ranking_embed(guild, crystal_type, ranking)
-    assert "1.261 Kristalle" in ranking_embed.description
+    assert "1.446 Kristalle" in ranking_embed.description
     assert "32h eingespart" in ranking_embed.description
+    history_embed = DonationOverview.create_history_embed(
+        guild,
+        crystal_type,
+        records,
+        summary,
+    )
+    assert history_embed.title == "2 Spenden | 1d 08:00 beschleunigt"
+    assert "Donor One" in history_embed.description
+    assert "445 Kristalle" in history_embed.description
+    assert not history_embed.fields
 
     assert await donations.get_donations(guild=guild, channel_id=789) == records
+    assert await donations.configure_channel(
+        guild=guild,
+        channel_id=789,
+        title="Donations",
+        description="Support the guild",
+        goal_hours=216,
+        rush_start_at=rush_start,
+        donations_enabled=False,
+    )
+    assert not await donations.add_donation(
+        guild=guild,
+        channel_id=789,
+        member=member,
+        donation_type=crystal_type,
+        amount=Decimal(28),
+        time_reduction="1h",
+        rush_quoted_at=datetime.now(timezone.utc),
+    )
+    assert await donations.reset_cycle(
+        guild=guild, channel_id=789, rush_start_at=rush_start
+    )
+    channel = await donations.get_channel(guild=guild, channel_id=789)
+    assert channel is not None and channel.donations_enabled
+    for index in range(21):
+        assert await database.execute(
+            """
+            INSERT INTO Donations (
+                Guild, Channel, Member, MemberName, TypeName, Amount,
+                Unit, TimeReduction, Cycle
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                guild.id,
+                789,
+                1000 + index,
+                f"Donor {index}",
+                crystal_type.name,
+                "28",
+                "crystals",
+                "1h",
+                1,
+            ),
+        )
+    assert len(await donations.get_donations(guild=guild, channel_id=789)) == 20
+    assert (
+        len(await donations.get_donations(guild=guild, channel_id=789, limit=None))
+        == 23
+    )
+    all_records = await donations.get_donations(guild=guild, channel_id=789, limit=None)
+    all_summary = await donations.get_summary(guild=guild, channel_id=789)
+    assert all_summary is not None
+    all_history_embed = DonationOverview.create_history_embed(
+        guild,
+        crystal_type,
+        all_records,
+        all_summary,
+    )
+    assert all_summary.donation_count == 23
+    assert all_history_embed.title == "23 Spenden | 2d 05:00 beschleunigt"
+    assert "Donor 20" in all_history_embed.description
     assert await donations.get_history_units(guild=guild, channel_id=789) == (
         "crystals",
     )
@@ -211,6 +326,10 @@ async def test_donation_schema_migrates_legacy_overview_and_entry_tables(
         """
     )
     assert await database.execute(
+        "INSERT INTO Donation_Channels (Guild, Channel, Message) VALUES (?, ?, ?)",
+        (123, 789, 987),
+    )
+    assert await database.execute(
         """
         CREATE TABLE Donations (
             Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -242,6 +361,12 @@ async def test_donation_schema_migrates_legacy_overview_and_entry_tables(
     ) == ("Crystals",)
     columns = await database.fetch_all('PRAGMA table_info("Donation_Channels")')
     assert "RankingMessage" in {column["name"] for column in columns}
+    assert "SummaryMessage" in {column["name"] for column in columns}
+    assert {
+        "Timezone",
+        "ShowDonations",
+        "DonationsEnabled",
+    }.issubset({column["name"] for column in columns})
     assert "GoalHours" in {column["name"] for column in columns}
     assert {
         "RecentLimit",
@@ -258,6 +383,15 @@ async def test_donation_schema_migrates_legacy_overview_and_entry_tables(
     assert len(records) == 1
     assert records[0].unit == "Crystals"
     assert records[0].amount == Decimal(500)
+    channel = await repository.get_channel(
+        guild=cast(discord.Guild, SimpleNamespace(id=123, name="test guild")),
+        channel_id=789,
+    )
+    assert channel is not None
+    assert channel.history_message_id is None
+    assert channel.timezone_name == "UTC"
+    assert channel.show_donations
+    assert channel.donations_enabled
 
 
 @pytest.mark.asyncio
@@ -314,7 +448,9 @@ async def test_reset_starts_new_current_cycle_and_keeps_all_time_ranking(
     assert channel.current_cycle == 2
     assert channel.recent_limit == 7
     assert not channel.show_ranking
+    assert channel.rush_start_at is not None
     assert channel.rush_start_at == start + timedelta(days=10)
+    assert channel.rush_start_at + RUSH_PERIOD_DURATION == start + timedelta(days=19)
     assert (
         await repository.get_donations(
             guild=guild, channel_id=789, cycle=channel.current_cycle
@@ -373,6 +509,59 @@ async def test_repository_rejects_rush_donations_after_the_cutoff(
         rush_quoted_at=quote_time,
     )
     assert await repository.get_donations(guild=guild, channel_id=789) == ()
+
+
+@pytest.mark.asyncio
+async def test_repository_allows_only_durations_that_fit_before_rush_cutoff(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="donation-last-hours.db")
+    guild = cast(discord.Guild, SimpleNamespace(id=123, name="test guild"))
+    member = cast(
+        discord.Member,
+        SimpleNamespace(id=456, display_name="Donor One"),
+    )
+    repository = DonationRepository(database)
+    donation_type = DonationType(
+        name="Rush donation",
+        kind="time_reduction",
+        unit="crystals",
+        input_mode="free",
+        choices=(),
+        time_reductions=("1h", "8h", "24h"),
+    )
+    quote_time = datetime.now(timezone.utc)
+    start = quote_time - timedelta(hours=190)
+
+    assert await repository.ensure_schema()
+    assert await repository.configure_channel(
+        guild=guild,
+        channel_id=789,
+        title="Rush",
+        description="",
+        rush_start_at=start,
+    )
+    assert await repository.configure_type(
+        guild=guild, channel_id=789, donation_type=donation_type
+    )
+    assert not await repository.add_donation(
+        guild=guild,
+        channel_id=789,
+        member=member,
+        donation_type=donation_type,
+        amount=Decimal(667),
+        time_reduction="8h",
+        rush_quoted_at=quote_time,
+    )
+    assert await repository.add_donation(
+        guild=guild,
+        channel_id=789,
+        member=member,
+        donation_type=donation_type,
+        amount=Decimal(84),
+        time_reduction="1h",
+        rush_quoted_at=quote_time,
+    )
 
 
 def test_donation_input_parsing_rejects_invalid_amounts_and_choices() -> None:

@@ -7,7 +7,7 @@ import pytest
 
 from hmwz import emojis
 from hmwz.i18n import RuntimeLocalizations, t
-from hmwz.modules.registration.commands.setup import RegistrationSetupGroup
+from hmwz.modules.registration.commands import RegistrationGroup
 from hmwz.modules.registration.commands.setup.config import (
     RegistrationConfigView,
     RegistrationExportChannelSelect,
@@ -42,10 +42,10 @@ async def test_registration_settings_create_is_unique_per_guild_and_channel(
     assert await repository.create(guild=guild, channel_id=21)
 
 
-def test_registration_setup_includes_guided_config_command() -> None:
-    group = RegistrationSetupGroup()
+def test_registration_setup_is_a_root_command() -> None:
+    group = RegistrationGroup()
 
-    assert {command.name for command in group.commands} == {"config", "remove"}
+    assert {"setup", "remove"}.issubset({command.name for command in group.commands})
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,8 @@ from hmwz.i18n import CommandLocalizations, t
 
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
+from ..responses import send_temporary_followup
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,15 +34,15 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
     await interaction.response.defer(ephemeral=ephemeral)
     try:
         if not interaction.guild:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.csv.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.registration.csv.error"), ephemeral=True
             )
             return
 
         manager = getattr(interaction.client, "module_manager", None)
         if manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.csv.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.registration.csv.error"), ephemeral=True
             )
             return
 
@@ -49,16 +51,18 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
         )
         channel_id = interaction.channel_id
         if channel_id is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.csv.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.registration.csv.error"), ephemeral=True
             )
             return
         registrations = await module.registrations.get(
             guild=interaction.guild, channel_id=channel_id
         )
         if not registrations:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.csv.no_registrations"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.csv.no_registrations"),
+                ephemeral=True,
             )
             return
 
@@ -97,7 +101,8 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
                 fp=bio,
                 filename=f"wz_registrations_{interaction.guild.id}_{channel_id}.csv",
             )
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 content=t(interaction, "wz.registration.csv.success"),
                 file=csv_file,
                 ephemeral=ephemeral,
@@ -108,6 +113,6 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
         logger.exception(
             "%s WZ registration csv failed: %s", utils.log_interaction(interaction), e
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.csv.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.registration.csv.error"), ephemeral=True
         )

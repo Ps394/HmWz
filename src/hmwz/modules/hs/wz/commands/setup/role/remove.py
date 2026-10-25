@@ -66,20 +66,22 @@ async def remove(interaction: discord.Interaction) -> None:
             return
 
         roles.sort(key=lambda role: (role.name.casefold(), role.id))
-        await interaction.followup.send(
+        view = SetupRoleSelection(
+            guild=guild,
+            module=module,
+            owner_id=interaction.user.id,
+            action="remove",
+            channel_id=channel_id,
+            roles=roles,
+            max_selected=max_selected,
+            permanent=False,
+            context=interaction,
+        )
+        view.message = await interaction.followup.send(
             t(interaction, "wz.setup.role.select.remove"),
-            view=SetupRoleSelection(
-                guild=guild,
-                module=module,
-                owner_id=interaction.user.id,
-                action="remove",
-                channel_id=channel_id,
-                roles=roles,
-                max_selected=max_selected,
-                permanent=False,
-                context=interaction,
-            ),
+            view=view,
             ephemeral=True,
+            wait=True,
         )
     except Exception as error:
         logger.exception(

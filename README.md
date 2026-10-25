@@ -60,11 +60,9 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 5. Setze den Bot in der Rollenliste über die Rollen, die er vergeben oder entfernen soll. Discord erlaubt dem Bot keine Verwaltung gleichrangiger oder höherer Rollen.
 6. Starte den Bot. Beim Start werden die Slash-Commands global synchronisiert; bis sie in Discord erscheinen, kann es kurz dauern.
 
-Die Befehle unter `/wz` prüfen die nötigen Bot-Berechtigungen für Rollen, Kanäle, Nachrichten, Dateianhänge und den Nachrichtenverlauf. Registrierungsverwaltungsbefehle beziehen sich auf den WZ-Anmeldungskanal, in dem sie aufgerufen werden. `/registration setup config` öffnet dort ein privates Dialogmenü zum Bearbeiten von Titel und Text, Hinzufügen permanenter oder nicht permanenter Anmelde-Rollen sowie zum Festlegen oder Deaktivieren des guildweiten JSON-Exportkanals. Zusätzliche Bereinigungskanäle werden ebenfalls je WZ-Anmeldung verwaltet und dürfen weder zwischen Anmeldungen noch als anderer Anmeldungskanal wiederverwendet werden. Die Account-Befehle liegen unabhängig davon unter `/account`.
+Registrierungen und deren Einrichtung werden über die gemeinsamen Befehle unter `/registration` verwaltet. Verknüpfte Ingame-Accounts liegen unabhängig davon unter `/account`.
 
-QS-Anmeldungen werden kanalbezogen unter `/qs setup` eingerichtet. Pro Anmeldung sind höchstens vier Rollen erlaubt; diese Rollen sind nie permanent. Die Übersicht zählt pro Discord-Mitglied höchstens eine Anmeldung. `/qs reset` setzt nur nach Bestätigung die Anmeldungen im aktuellen QS-Kanal zurück. Sorge dafür, dass der Bot Nachrichten in den Registrierungs- und Bereinigungskanälen sehen und verwalten kann.
-
-Queues werden pro Textkanal mit `/queue setup config` eingerichtet und können
+Queues werden pro Textkanal mit `/queue setup` eingerichtet und können
 auch bei Teilnehmenden oder laufenden Runs neu konfiguriert werden. Das
 Auswahlmenü für den Queue-Typ bleibt während des gesamten Setups verfügbar.
 Gemeinsam konfigurierbar sind Titel, Übersichtstext und der optionale Ping beim
@@ -98,10 +96,10 @@ Wird ein neuer Staffelstart (Datum, Zeitzone oder Staffelstunden) gespeichert,
 werden Teilnahmen, Bestätigungen und Thread-Inhalte bereinigt und die Zähler
 zurückgesetzt.
 In stufenlosen Queues schaltet dieselbe An-/Abmelde-Schaltfläche die Teilnahme
-um. `/queue setup reset` setzt nach
+um. `/queue reset` setzt nach
 Bestätigung alle Staffel-Zähler zurück, löscht Teilnahmen und Ziele und
 bereinigt Bot-Nachrichten im Queue-Kanal und in den Staffel-Threads. Die
-Staffel-Threads selbst bleiben erhalten. `/queue setup remove` entfernt die
+Staffel-Threads selbst bleiben erhalten. `/queue remove` entfernt die
 Queue im aktuellen Kanal einschließlich wartender Teilnahmen und des
 gespeicherten Queue-Verlaufs; aktive Runs müssen vorher abgeschlossen sein. Der
 Bot benötigt das Erstellen privater Threads, das Verwalten von Threads und das
@@ -113,7 +111,8 @@ Berechtigung **Manage Messages**, um die Staffel-Thread-Inhalte zu leeren.
 Mit `/donation setup` öffnest du im aktuellen Textkanal das interaktive
 Setup-Menü. Zuerst wählst du **Einfache Spende** oder **Rush-Spende**. Im Menü
 konfigurierst du Titel und Beschreibung, die Anzahl der letzten Einträge
-(1–20, Standard 20) und ob das kanalbezogene All-Time-Ranking angezeigt wird.
+(1–20, Standard 20), ob das kanalbezogene All-Time-Spendenranking (Charts)
+angezeigt wird und optional einen JSON-Exportkanal.
 Bei einfachen Spenden sind Einheit und optionale feste Betragsauswahl einstellbar;
 neu eingerichtete einfache Spenden verwenden standardmäßig vier Credit-Buttons:
 `10.000`, `100.000`, `1.000.000` und `8.000.000` Credits. Die festen Werte
@@ -148,9 +147,15 @@ eingesparte Zeit. Beträge werden mit Punkten als Tausendertrennzeichen
 dargestellt (zum Beispiel `1.000.000`).
 
 Du kannst `/donation setup` in mehreren Kanälen ausführen, um getrennte
-Spenden-Systeme einzurichten. `/donation reset` startet den aktuellen Zyklus
-neu; bei Rush-Spenden legst du dabei den neuen Start fest. Frühere Einträge
-bleiben im All-Time-Ranking enthalten. `/donation remove` und
+Spenden-Systeme einzurichten. Bei aktiviertem JSON-Export wird `/donation reset`
+vor dem Zykluswechsel eine Datei mit allen Spenden des aktuellen Zyklus in den
+konfigurierten Kanal senden. Das kurze JSON enthält Systemname, Quellkanal,
+Zyklus sowie je Spende Mitglied, Betrag, Einheit und Zeitpunkt; Rush-Spenden
+enthalten zusätzlich die Zeitersparnis. Scheitert der Export, wird der Reset
+abgebrochen. Ohne Exportkanal wird der Reset wie gewohnt ausgeführt.
+`/donation reset` startet den aktuellen Zyklus neu; bei Rush-Spenden legst du
+dabei den neuen Start fest. Frühere Einträge bleiben im All-Time-Ranking
+enthalten. `/donation remove` und
 `/donation delete` entfernen nach Bestätigung Einrichtung, Bot-Nachrichten und
 alle Spenden des aktuellen Kanals unwiderruflich. Damit das Ranking
 vergleichbar bleibt, kann die Einheit nach dem ersten Spenden-Eintrag nicht
@@ -215,14 +220,13 @@ Der Token darf nicht in Git eingecheckt oder öffentlich geteilt werden. Bei ver
 
 ## Commands
 
-Alle Bot-Befehle sind Discord-Slash-Commands. Registrierungen werden unter `/registration` verwaltet; Einrichtung und Konfiguration liegen unter `/registration setup`. WZ-Kanalbereinigung wird unter `/wz setup` konfiguriert. QS-Anmeldungen werden unter `/qs` verwaltet. Verknüpfte Ingame-Accounts werden guildweit unter `/account` verwaltet.
+Alle Bot-Befehle sind Discord-Slash-Commands. Registrierungen werden unter `/registration` verwaltet; Einrichtung und Konfiguration liegen unter `/registration setup`. Verknüpfte Ingame-Accounts werden guildweit unter `/account` verwaltet.
 
 ### Übersicht und allgemeine Moderation
 
 | Befehl | Beschreibung |
 | --- | --- |
 | `/about-bot` | Zeigt Informationen über den Bot an. Die Antwort ist standardmäßig privat. |
-| `/wz about-bot` | Zeigt Informationen über den Bot an. Die Antwort ist standardmäßig privat. |
 | `/purge` | Bereinigt Nachrichten im aktuellen Textkanal oder Thread. `limit` ist standardmäßig `500`; `ignore_bots` und `ignore_pinned` sind standardmäßig aktiviert. |
 
 ### Registrierung
@@ -236,32 +240,32 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Registrierungen werden unter `/reg
 | `/registration deregister account:<Account>` | Meldet den Account von seiner aktuellen Anmeldungsrolle ab. Die Rolle wird automatisch aus der Registrierung ermittelt und nur entfernt, wenn kein weiterer Account dieses Mitglieds dafür registriert ist. |
 | `/registration csv` | Erstellt einen CSV-Export der Registrierungen und hängt ihn an die Antwort an. Die Datei enthält Discord-Name, Anzeigename, Ingame-Account, Rolle, Zeitstempel und Rollenscore. |
 | `/registration reset` | Setzt die nicht permanenten Registrierungen im aktuellen Anmeldungskanal zurück. |
-| `/qs reset` | Zeigt eine Bestätigung an und setzt nach Bestätigung alle Anmeldungen im aktuellen QS-Kanal zurück. Zugehörige QS-Rollen werden ebenfalls entfernt. |
 
 `/registration reset` wirkt destruktiv. Prüfe den aktuellen Anmeldungskanal und sichere benötigte Informationen, bevor du den Befehl ausführst.
+
+### WZ- und QS-Module
+
+| Befehl | Beschreibung |
+| --- | --- |
+| `/wz setup` | Öffnet das private WZ-Menü zum Hinzufügen und Entfernen von WZ-Rollen und Bereinigungskanälen sowie zur Anzeige der aktuellen Konfiguration. |
+| `/wz reset-channels` | Bereinigt nach Bestätigung die konfigurierten WZ-Kanäle. |
+| `/wz reset-roles` | Entfernt nach Bestätigung konfigurierte WZ-Rollen von Servermitgliedern; ausgewählte Ausnahmen bleiben erhalten. |
+| `/qs setup` | Öffnet das private QS-Menü zum Einrichten des aktuellen Kanals, Definieren von Rollen und Bearbeiten des Übersichtstexts. |
+| `/qs reset-wz-roles` | Startet den WZ-Rollen-Reset aus der QS-Modulgruppe. |
+| `/qs reset-qs-roles` | Entfernt nach Bestätigung die im aktuellen QS-Kanal konfigurierten Rollen von Servermitgliedern. |
 
 Verknüpfe Accounts mit `account-add`, bevor du sie anmeldest. Registrierungen über die Übersichtsschaltflächen bleiben Discord-Mitglied-bezogen; die Commands `register` und `deregister` verwalten gezielt den angegebenen Ingame-Account. Vorhandene Registrierungen bleiben beim Datenbank-Upgrade erhalten.
 
 ### Einrichtung
 
-Die Befehle in `/registration setup` setzen für den ausführenden Benutzer **Manage Roles**, **Manage Messages** und **Manage Channels** voraus.
+Die Einrichtungs- und Entfernen-Befehle setzen für den ausführenden Benutzer **Manage Roles**, **Manage Messages** und **Manage Channels** voraus.
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/registration setup config` | Öffnet im aktuellen Kanal ein privates Dialogmenü zum Bearbeiten von Titel und Text, Hinzufügen permanenter oder nicht permanenter Rollen sowie zum Festlegen oder Deaktivieren des guildweiten JSON-Exportkanals. |
-| `/registration setup remove` | Entfernt nach Bestätigung die Anmeldung im aktuellen Kanal einschließlich Teilnahmen, vergebener Rollen, Übersichten und zugehöriger Konfiguration. |
-| `/wz channel add` | Fügt im WZ-Anmeldungskanal Bereinigungskanäle hinzu. Diese Konfiguration wird von anderen WZ-Befehlen wie `clean-channels` verwendet. |
-| `/wz channel remove` | Entfernt im WZ-Anmeldungskanal konfigurierte Bereinigungskanäle. |
-| `/wz role add [permanent:<true\|false>]` | Fügt der WZ-Anmeldung im aktuellen Kanal Rollen hinzu. Andere WZ-Befehle verwenden diese Rollen für Anmeldungen. |
-| `/wz role remove` | Entfernt Rollen aus der WZ-Anmeldung im aktuellen Kanal. Mindestens eine Rolle muss konfiguriert bleiben. |
-| `/wz clean-channels` | Zeigt vor dem Löschen alle konfigurierten Kanäle an und verlangt eine Bestätigung. Angepinnte Nachrichten sind standardmäßig ausgenommen; diese Ausnahme lässt sich vor der Bestätigung umschalten. |
-| `/wz reset-roles` | Zeigt vor dem Reset alle konfigurierten WZ-Rollen an und verlangt eine Bestätigung. Einzelne Rollen können für diesen Lauf ausgewählt und vom Entfernen ausgenommen werden. |
-| `/qs setup role-add role:<Rolle>` | Fügt dem aktuellen Kanal eine nicht permanente QS-Anmeldungsrolle hinzu. Höchstens vier Rollen je Anmeldung. |
-| `/qs setup configure role:<Rolle>` | Richtet den aktuellen Kanal als QS-Anmeldung ein und fügt die erste nicht permanente Rolle hinzu. |
-| `/qs setup role-remove role:<Rolle>` | Entfernt eine QS-Anmeldungsrolle, deren gespeicherte Registrierungen und die Rolle von betroffenen Servermitgliedern. |
-| `/qs setup message [title:<Text>] [description:<Text>]` | Ändert Titel und/oder Beschreibung der QS-Übersicht im aktuellen Kanal. |
+| `/registration setup` | Öffnet im aktuellen Kanal ein privates Dialogmenü zum Bearbeiten von Titel und Text, Hinzufügen permanenter oder nicht permanenter Rollen sowie zum Festlegen oder Deaktivieren des guildweiten JSON-Exportkanals. |
+| `/registration remove` | Entfernt nach Bestätigung die Anmeldung im aktuellen Kanal einschließlich Teilnahmen, vergebener Rollen, Übersichten und zugehöriger Konfiguration. |
 
-Antworten auf die Setup-Befehle und die Kanalauswahl sind privat. Änderungen an Rollen, Nachrichten und Kanälen sind dauerhaft beziehungsweise können Servermitgliedern und Nachrichten betreffen.
+Antworten auf Setup-Befehle und Auswahlen sind privat. Bestätigungsdialoge verschwinden nach Abschluss oder spätestens nach drei Minuten; kurzlebige Ergebnisnachrichten werden nach zehn Sekunden entfernt.
 
 ## Konfiguration
 

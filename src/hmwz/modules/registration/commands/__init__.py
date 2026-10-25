@@ -3,7 +3,8 @@ from discord.app_commands import Group, checks, locale_str
 from hmwz.i18n import CommandLocalizations
 
 from . import csv, deregister, register, reset
-from .setup import RegistrationSetupGroup
+from .setup import remove as registration_remove
+from .setup import setup as registration_setup
 
 __all__ = ["RegistrationGroup"]
 
@@ -35,4 +36,5 @@ class RegistrationGroup(Group):
         self.add_command(register.register)
         self.add_command(deregister.deregister)
         self.add_command(reset.reset)
-        self.add_command(RegistrationSetupGroup())
+        self.add_command(registration_setup)
+        self.add_command(registration_remove)

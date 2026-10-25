@@ -14,6 +14,7 @@ from .autocomplete import (
     registration_roles,
 )
 from hmwz.modules.hs.wz.module import WzRegistrationModule
+from ..responses import send_temporary_followup
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,10 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
         member = interaction.user
         manager = getattr(interaction.client, "module_manager", None)
         if guild is None or not isinstance(member, discord.Member) or manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
 
@@ -71,7 +74,8 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
                 guild=guild, member=member.id, account=account
             )
             if not linked_accounts:
-                await interaction.followup.send(
+                await send_temporary_followup(
+                    interaction,
                     t(interaction, "wz.registration.account.not_linked"),
                     ephemeral=True,
                 )
@@ -80,8 +84,10 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             account_label = canonical_account
         channel_id = interaction.channel_id
         if channel_id is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
         configured_roles = await module.roles.get(guild=guild, channel_id=channel_id)
@@ -92,14 +98,16 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
         if not configured_roles or role_id not in {
             configured.role for configured in configured_roles
         }:
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.registration.account.invalid_role"),
                 ephemeral=True,
             )
             return
         selected_role = guild.get_role(role_id)
         if selected_role is None:
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.registration.account.invalid_role"),
                 ephemeral=True,
             )
@@ -129,7 +137,8 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
                     selected_role, reason="WZ game account registration"
                 )
                 await module.compose_registration_overview(force=True)
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(
                     interaction,
                     (
@@ -155,8 +164,10 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             member_display_name=member.display_name,
             role_name=selected_role.name,
         ):
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
 
@@ -184,7 +195,8 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             await member.add_roles(selected_role, reason="WZ game account registration")
 
         await module.compose_registration_overview(force=True, channel_id=channel_id)
-        await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(
                 interaction,
                 "wz.registration.account.registered",
@@ -200,8 +212,8 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             role_id,
             account,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )
     except Exception:
         logger.exception(
@@ -210,6 +222,6 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             account,
             role_id,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )

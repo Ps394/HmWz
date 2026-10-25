@@ -1,11 +1,10 @@
 {
   "group.description.registration.group": "Befehle für Registrierungen",
-  "group.description.wz.registration.setup.group": "Setup-Befehle für Registrierungen",
   "command.description.wz.registration.csv": "Gibt die Registrierungen als CSV-Datei aus",
   "command.description.wz.registration.register": "Für ein WZ-Event anmelden",
   "command.description.wz.registration.deregister": "Einen Ingame-Account von einem WZ-Event abmelden",
   "command.description.wz.registration.reset": "Setzt Registrierungen zurück und bereinigt Registrierungs- und Zusatzkanäle (Standard).",
   "command.description.wz.registration.purge": "Bestätige die Kanäle, bevor bis zu 500 Nachrichten je Kanal gelöscht werden.",
-  "command.description.wz.setup.config": "Konfiguriere die Anmeldung in diesem Kanal über Dialoge.",
+  "command.description.wz.registration.setup": "Konfiguriere die Anmeldung in diesem Kanal über Dialoge.",
   "command.description.wz.setup.registration.remove": "Entfernt die Anmeldung in diesem Kanal samt Teilnahmen und vergebenen Rollen."
 }

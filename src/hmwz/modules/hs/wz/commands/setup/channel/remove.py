@@ -55,18 +55,20 @@ async def remove(interaction: Interaction) -> None:
             )
             return
 
-        await interaction.followup.send(
+        view = PurgeChannelSelection(
+            guild=guild,
+            module=module,
+            owner_id=interaction.user.id,
+            action="remove",
+            channels=channels,
+            max_values=min(len(channels), PurgeChannel.MAX_PER_REGISTRATION),
+            registration_channel_id=channel_id,
+        )
+        view.message = await interaction.followup.send(
             t(interaction, "wz.setup.channel.select.remove"),
-            view=PurgeChannelSelection(
-                guild=guild,
-                module=module,
-                owner_id=interaction.user.id,
-                action="remove",
-                channels=channels,
-                max_values=min(len(channels), PurgeChannel.MAX_PER_REGISTRATION),
-                registration_channel_id=channel_id,
-            ),
+            view=view,
             ephemeral=True,
+            wait=True,
         )
     except Exception as error:
         logger.exception(

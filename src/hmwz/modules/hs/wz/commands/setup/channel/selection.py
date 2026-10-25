@@ -6,6 +6,7 @@ import discord
 
 from hmwz import utils
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 
 from ....module import WzRegistrationModule
 from .channels import PurgeAction, get_selectable_channels
@@ -20,7 +21,7 @@ from .operations import add_channels, remove_channels
 logger = logging.getLogger(__name__)
 
 
-class PurgeChannelSelection(discord.ui.View):
+class PurgeChannelSelection(EphemeralView):
     """Ephemere Mehrfachauswahl für Bereinigungskanäle."""
 
     def __init__(
@@ -93,8 +94,8 @@ class PurgeChannelSelection(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "wz.setup.channel.selection_owner"), ephemeral=True
+        await self.send_temporary_response(
+            interaction, t(interaction, "wz.setup.channel.selection_owner")
         )
         return False
 
@@ -115,24 +116,25 @@ class PurgeChannelSelection(discord.ui.View):
                 if channel_id in selectable_by_id
             ]
             if not selected:
-                await interaction.response.edit_message(
-                    content=t(interaction, "wz.setup.channel.selection_no_changes"),
-                    view=None,
+                await self.finish(
+                    interaction, t(interaction, "wz.setup.channel.selection_no_changes")
                 )
-                self.stop()
                 return
+            confirmation = PurgeChannelConfirmation(
+                selection=self,
+                owner_id=self.owner_id,
+                selected_channel_ids=[channel.id for channel in selected],
+                context=interaction,
+            )
+            confirmation.message = interaction.message
+            self.stop()
             await interaction.response.edit_message(
                 content=t(
                     interaction,
                     f"wz.setup.channel.confirmation.{self.action}",
                     channel_names="\n".join(channel.mention for channel in selected),
                 ),
-                view=PurgeChannelConfirmation(
-                    selection=self,
-                    owner_id=self.owner_id,
-                    selected_channel_ids=[channel.id for channel in selected],
-                    context=interaction,
-                ),
+                view=confirmation,
             )
         except Exception:
             logger.exception(
@@ -140,11 +142,7 @@ class PurgeChannelSelection(discord.ui.View):
                 utils.log_interaction(interaction),
                 self.action,
             )
-            message = t(interaction, "wz.setup.channel.error")
-            if interaction.response.is_done():
-                await interaction.followup.send(message, ephemeral=True)
-            else:
-                await interaction.response.send_message(message, ephemeral=True)
+            await self.finish(interaction, t(interaction, "wz.setup.channel.error"))
 
     async def select_channels(
         self, interaction: discord.Interaction, selected_ids: list[int]
@@ -239,4 +237,4 @@ class PurgeChannelSelection(discord.ui.View):
             )
             content = t(interaction, "wz.setup.channel.error")
         self.stop()
-        await interaction.edit_original_response(content=content, view=None)
+        await self.finish(interaction, content)

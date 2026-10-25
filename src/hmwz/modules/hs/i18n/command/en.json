@@ -1,6 +1,6 @@
 {
   "group.description.account.group": "Account commands",
-  "group.description.wz.group": "HmWz - All commands related to WZ registration",
+  "group.description.wz.group": "WZ module commands",
   "parameter.description.wz.registration.account": "In-game account name",
   "parameter.description.wz.registration.register.role": "Registration role",
   "command.description.wz.registration.account_add": "Link an in-game account to your Discord member",
@@ -13,11 +13,12 @@
   "command.description.wz.role.add": "Add WZ registration roles",
   "parameter.description.wz.role.add.permanent": "Whether the selected roles are permanent",
   "command.description.wz.role.remove": "Remove WZ registration roles",
-  "command.description.wz.clean_channels": "Delete all messages in every configured WZ channel",
+  "command.description.wz.setup": "Open the WZ menu to define channels and roles",
+  "command.description.wz.reset_channels": "Clean all configured WZ channels",
   "command.description.wz.reset_roles": "Remove all configured WZ roles from all server members",
   "parameter.description.wz.registration.reset.ephemeral": "Whether the response should be private (default: false)",
   "parameter.description.wz.registration.reset.purge": "Whether configured channels are purged during reset (default: false)",
-  "group.description.qs.group": "QS registration commands",
+  "group.description.qs.group": "QS module commands",
   "group.description.qs.setup.group": "Configure QS registration",
   "command.description.qs.setup.configure": "Configure QS registration in this channel with a registration role.",
   "parameter.description.qs.setup.configure.role": "Non-permanent QS registration role",
@@ -28,5 +29,7 @@
   "command.description.qs.setup.message": "Set the QS overview title or description.",
   "parameter.description.qs.setup.message.title": "QS overview title",
   "parameter.description.qs.setup.message.description": "QS overview description",
-  "command.description.qs.registration.reset": "Reset registrations after an explicit confirmation."
+  "command.description.qs.setup": "Open the QS menu to define channels and roles",
+  "command.description.qs.reset_wz_roles": "Remove all configured WZ roles from server members",
+  "command.description.qs.reset_qs_roles": "Remove this channel's QS roles from server members"
 }

@@ -7,16 +7,16 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Literal
-
 import discord
 
 from hmwz import sqlite_db
 
 from .rush_pricing import (
     RUSH_DURATIONS_HOURS,
-    is_rush_donation_open,
+    available_rush_durations,
     rush_donation_cost,
 )
+from .validation import donation_timezone
 
 _logger = logging.getLogger(__name__)
 DonationKind = Literal["simple", "time_reduction"]
@@ -50,6 +50,11 @@ class DonationChannel:
     show_ranking: bool = True
     rush_start_at: datetime | None = None
     current_cycle: int = 1
+    history_message_id: int | None = None
+    timezone_name: str = "UTC"
+    show_donations: bool = True
+    donations_enabled: bool = True
+    export_channel_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +105,7 @@ class DonationRepository(sqlite_db.Base):
                 Channel INTEGER NOT NULL,
                 Message INTEGER,
                 RankingMessage INTEGER,
+                SummaryMessage INTEGER,
                 Title TEXT NOT NULL DEFAULT 'Donations',
                 Description TEXT NOT NULL DEFAULT '',
                 GoalHours INTEGER,
@@ -107,6 +113,10 @@ class DonationRepository(sqlite_db.Base):
                 ShowRanking INTEGER NOT NULL DEFAULT 1,
                 RushStartAt TEXT,
                 CurrentCycle INTEGER NOT NULL DEFAULT 1,
+                Timezone TEXT NOT NULL DEFAULT 'UTC',
+                ShowDonations INTEGER NOT NULL DEFAULT 1,
+                DonationsEnabled INTEGER NOT NULL DEFAULT 1,
+                ExportChannel INTEGER,
                 PRIMARY KEY (Guild, Channel)
             ) WITHOUT ROWID
             """,
@@ -163,6 +173,7 @@ class DonationRepository(sqlite_db.Base):
                 self.channel_table_name,
                 (
                     ("RankingMessage", "INTEGER"),
+                    ("SummaryMessage", "INTEGER"),
                     ("Title", "TEXT NOT NULL DEFAULT 'Donations'"),
                     ("Description", "TEXT NOT NULL DEFAULT ''"),
                     ("GoalHours", "INTEGER"),
@@ -170,6 +181,10 @@ class DonationRepository(sqlite_db.Base):
                     ("ShowRanking", "INTEGER NOT NULL DEFAULT 1"),
                     ("RushStartAt", "TEXT"),
                     ("CurrentCycle", "INTEGER NOT NULL DEFAULT 1"),
+                    ("Timezone", "TEXT NOT NULL DEFAULT 'UTC'"),
+                    ("ShowDonations", "INTEGER NOT NULL DEFAULT 1"),
+                    ("DonationsEnabled", "INTEGER NOT NULL DEFAULT 1"),
+                    ("ExportChannel", "INTEGER"),
                 ),
             )
             and await self.ensure_columns_for(
@@ -220,6 +235,10 @@ class DonationRepository(sqlite_db.Base):
         recent_limit: int = 20,
         show_ranking: bool = True,
         rush_start_at: datetime | None = None,
+        timezone_name: str = "UTC",
+        show_donations: bool = True,
+        donations_enabled: bool = True,
+        export_channel_id: int | None = None,
     ) -> bool:
         """Create or update the channel's donation-system settings."""
         if not 1 <= recent_limit <= 20:
@@ -227,6 +246,11 @@ class DonationRepository(sqlite_db.Base):
             return False
         if rush_start_at is not None and rush_start_at.utcoffset() is None:
             _logger.error("Rush start time must be timezone-aware.")
+            return False
+        try:
+            donation_timezone(timezone_name)
+        except ValueError:
+            _logger.error("Unknown donation timezone %s.", timezone_name)
             return False
         stored_start = (
             rush_start_at.astimezone(timezone.utc).isoformat()
@@ -239,16 +263,21 @@ class DonationRepository(sqlite_db.Base):
                 INSERT INTO {self.channel_table_name}
                     (
                         Guild, Channel, Title, Description, GoalHours, RecentLimit,
-                        ShowRanking, RushStartAt
+                        ShowRanking, RushStartAt, Timezone, ShowDonations,
+                        DonationsEnabled, ExportChannel
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (Guild, Channel) DO UPDATE SET
                     Title = excluded.Title,
                     Description = excluded.Description,
                     GoalHours = excluded.GoalHours,
                     RecentLimit = excluded.RecentLimit,
                     ShowRanking = excluded.ShowRanking,
-                    RushStartAt = excluded.RushStartAt
+                    RushStartAt = excluded.RushStartAt,
+                    Timezone = excluded.Timezone,
+                    ShowDonations = excluded.ShowDonations,
+                    DonationsEnabled = excluded.DonationsEnabled,
+                    ExportChannel = excluded.ExportChannel
                 """,
                 (
                     guild.id,
@@ -259,6 +288,10 @@ class DonationRepository(sqlite_db.Base):
                     recent_limit,
                     int(show_ranking),
                     stored_start,
+                    timezone_name,
+                    int(show_donations),
+                    int(donations_enabled),
+                    export_channel_id,
                 ),
             )
         except Exception:
@@ -339,8 +372,10 @@ class DonationRepository(sqlite_db.Base):
             row = await self.database.fetch_one(
                 f"""
                 SELECT
-                    Channel, Message, RankingMessage, Title, Description, GoalHours,
-                    RecentLimit, ShowRanking, RushStartAt, CurrentCycle
+                    Channel, Message, RankingMessage, SummaryMessage, Title,
+                    Description, GoalHours, RecentLimit, ShowRanking, RushStartAt,
+                    CurrentCycle, Timezone, ShowDonations, DonationsEnabled,
+                    ExportChannel
                 FROM {self.channel_table_name}
                 WHERE Guild = ? AND Channel = ?
                 """,
@@ -352,6 +387,7 @@ class DonationRepository(sqlite_db.Base):
                 channel_id=row["Channel"],
                 overview_message_id=row["Message"],
                 ranking_message_id=row["RankingMessage"],
+                history_message_id=row["SummaryMessage"],
                 title=row["Title"],
                 description=row["Description"],
                 goal_hours=row["GoalHours"],
@@ -363,6 +399,10 @@ class DonationRepository(sqlite_db.Base):
                     else None
                 ),
                 current_cycle=row["CurrentCycle"],
+                timezone_name=row["Timezone"],
+                show_donations=bool(row["ShowDonations"]),
+                donations_enabled=bool(row["DonationsEnabled"]),
+                export_channel_id=row["ExportChannel"],
             )
         except Exception:
             _logger.exception(
@@ -379,9 +419,14 @@ class DonationRepository(sqlite_db.Base):
         channel_id: int,
         message_id: int | None,
         ranking: bool = False,
+        history: bool = False,
     ) -> bool:
-        """Save or clear one of the channel's two overview message IDs."""
-        column = "RankingMessage" if ranking else "Message"
+        """Save or clear one of the channel's public message IDs."""
+        if ranking and history:
+            raise ValueError("A donation message cannot be both ranking and history.")
+        column = (
+            "RankingMessage" if ranking else "SummaryMessage" if history else "Message"
+        )
         try:
             return await self.database.execute(
                 f"""
@@ -446,7 +491,11 @@ class DonationRepository(sqlite_db.Base):
         if not amount.is_finite() or amount <= 0 or cycle < 1:
             return False
         configuration = await self.get_channel(guild=guild, channel_id=channel_id)
-        if configuration is None or configuration.current_cycle != cycle:
+        if (
+            configuration is None
+            or configuration.current_cycle != cycle
+            or not configuration.donations_enabled
+        ):
             return False
         if donation_type.kind == "time_reduction":
             if (
@@ -454,19 +503,33 @@ class DonationRepository(sqlite_db.Base):
                 or rush_quoted_at is None
                 or rush_quoted_at.utcoffset() is None
                 or configuration.rush_start_at is None
-                or not is_rush_donation_open(
-                    configuration.rush_start_at, rush_quoted_at
-                )
-                or not is_rush_donation_open(
-                    configuration.rush_start_at, datetime.now(timezone.utc)
-                )
             ):
                 return False
             duration_hours = int(time_reduction.removesuffix("h"))
+            summary = await self.get_summary(
+                guild=guild, channel_id=channel_id, cycle=cycle
+            )
+            if (
+                summary is None
+                or duration_hours
+                not in available_rush_durations(
+                    started_at=configuration.rush_start_at,
+                    now=rush_quoted_at,
+                    accelerated_hours=summary.time_reduction_hours,
+                )
+                or duration_hours
+                not in available_rush_durations(
+                    started_at=configuration.rush_start_at,
+                    now=datetime.now(timezone.utc),
+                    accelerated_hours=summary.time_reduction_hours,
+                )
+            ):
+                return False
             if amount != rush_donation_cost(
                 started_at=configuration.rush_start_at,
                 now=rush_quoted_at,
                 duration_hours=duration_hours,
+                accelerated_hours=summary.time_reduction_hours,
             ):
                 return False
         elif time_reduction is not None or rush_quoted_at is not None:
@@ -507,22 +570,54 @@ class DonationRepository(sqlite_db.Base):
         *,
         guild: discord.Guild,
         channel_id: int,
-        limit: int = 20,
+        limit: int | None = 20,
         cycle: int | None = None,
     ) -> tuple[DonationRecord, ...]:
-        """Return the most recent donations in a channel."""
+        """Return donations in a channel, optionally limiting the result count."""
+        records = await self._get_donations(
+            guild=guild,
+            channel_id=channel_id,
+            limit=limit,
+            cycle=cycle,
+        )
+        return records or ()
+
+    async def get_donations_for_export(
+        self,
+        *,
+        guild: discord.Guild,
+        channel_id: int,
+        cycle: int,
+    ) -> tuple[DonationRecord, ...] | None:
+        """Return every donation in a cycle, preserving query failures as None."""
+        return await self._get_donations(
+            guild=guild,
+            channel_id=channel_id,
+            limit=None,
+            cycle=cycle,
+        )
+
+    async def _get_donations(
+        self,
+        *,
+        guild: discord.Guild,
+        channel_id: int,
+        limit: int | None,
+        cycle: int | None,
+    ) -> tuple[DonationRecord, ...] | None:
         try:
-            rows = await self.database.fetch_all(
-                f"""
+            query = f"""
                 SELECT Member, MemberName, Amount, Unit, TimeReduction, CreatedAt
                 FROM {self.entry_table_name}
                 WHERE Guild = ? AND Channel = ?
                     AND (? IS NULL OR Cycle = ?)
                 ORDER BY Id DESC
-                LIMIT ?
-                """,
-                (guild.id, channel_id, cycle, cycle, limit),
-            )
+            """
+            parameters: tuple[object, ...] = (guild.id, channel_id, cycle, cycle)
+            if limit is not None:
+                query += " LIMIT ?"
+                parameters += (limit,)
+            rows = await self.database.fetch_all(query, parameters)
             records: list[DonationRecord] = []
             for row in rows:
                 try:
@@ -558,7 +653,7 @@ class DonationRepository(sqlite_db.Base):
                 self.log_prefix(guild),
                 channel_id,
             )
-            return ()
+            return None
 
     async def get_summary(
         self,
@@ -717,7 +812,8 @@ class DonationRepository(sqlite_db.Base):
             return await self.database.execute(
                 f"""
                 UPDATE {self.channel_table_name}
-                SET CurrentCycle = CurrentCycle + 1, RushStartAt = ?
+                SET CurrentCycle = CurrentCycle + 1, RushStartAt = ?,
+                    DonationsEnabled = 1
                 WHERE Guild = ? AND Channel = ?
                 """,
                 (stored_start, guild.id, channel_id),

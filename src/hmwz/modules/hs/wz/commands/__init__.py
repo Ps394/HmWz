@@ -2,7 +2,8 @@ from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import channel, clean_channels, reset_roles, role
+from . import clean_channels, reset_roles
+from .setup.menu import setup
 
 __all__ = ["WzGroup"]
 
@@ -29,7 +30,6 @@ class WzGroup(Group):
             ),
         )
         self.bot = bot
-        self.add_command(channel.ChannelGroup())
-        self.add_command(role.RoleGroup())
+        self.add_command(setup)
         self.add_command(clean_channels.clean_channels)
         self.add_command(reset_roles.reset_roles)

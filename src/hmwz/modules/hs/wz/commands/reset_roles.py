@@ -7,6 +7,7 @@ from discord import app_commands
 
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ def _role_names(
     return "\n".join(visible_names)
 
 
-class ResetRolesConfirmation(discord.ui.View):
+class ResetRolesConfirmation(EphemeralView):
     def __init__(
         self,
         *,
@@ -125,8 +126,8 @@ class ResetRolesConfirmation(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "wz.reset_roles.confirmation_owner"), ephemeral=True
+        await self.send_temporary_response(
+            interaction, t(interaction, "wz.reset_roles.confirmation_owner")
         )
         return False
 
@@ -261,7 +262,7 @@ class ResetRolesConfirmation(discord.ui.View):
                 utils.log_interaction(interaction),
             )
             content = t(interaction, "wz.reset_roles.error")
-        await interaction.edit_original_response(content=content, view=None)
+        await self.finish(interaction, content)
 
     @discord.ui.button(
         label="Cancel",
@@ -273,9 +274,7 @@ class ResetRolesConfirmation(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "wz.reset_roles.cancelled"), view=None
-        )
+        await self.finish(interaction, t(interaction, "wz.reset_roles.cancelled"))
 
 
 class _RoleExceptionSelect(discord.ui.Select):
@@ -356,11 +355,13 @@ async def reset_roles(interaction: discord.Interaction) -> None:
             role_ids=role_ids,
             context=interaction,
         )
-        await interaction.followup.send(
+        message = await interaction.followup.send(
             view.confirmation_content(interaction),
             view=view,
             ephemeral=True,
+            wait=True,
         )
+        view.message = message
     except Exception as error:
         logger.exception(
             "%s WZ reset-roles preparation failed: %s",

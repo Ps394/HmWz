@@ -9,6 +9,7 @@ from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
+from ...responses import send_temporary_followup
 from .config import RegistrationConfigView
 from .configuration_message import configuration_message
 
@@ -16,16 +17,22 @@ logger = logging.getLogger(__name__)
 
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
+@app_commands.checks.has_permissions(
+    manage_roles=True, manage_messages=True, manage_channels=True
+)
+@app_commands.default_permissions(
+    manage_roles=True, manage_messages=True, manage_channels=True
+)
 @app_commands.command(
-    name="config",
+    name="setup",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
-            "command.description.wz.setup.config", "-"
+            "command.description.wz.registration.setup", "-"
         ),
-        key="wz.setup.config.description",
+        key="wz.registration.setup.description",
     ),
 )
-async def config(interaction: discord.Interaction) -> None:
+async def setup(interaction: discord.Interaction) -> None:
     """Open the guided setup panel for the current channel."""
     guild = interaction.guild
     channel_id = interaction.channel_id
@@ -34,6 +41,7 @@ async def config(interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
             t(interaction, "wz.setup.config.error"),
             ephemeral=True,
+            delete_after=5,
         )
         return
 
@@ -51,6 +59,7 @@ async def config(interaction: discord.Interaction) -> None:
                     await interaction.response.send_message(
                         t(interaction, "wz.setup.config.error"),
                         ephemeral=True,
+                        delete_after=5,
                     )
                     return
             elif not await module.purge_channels.remove(
@@ -60,6 +69,7 @@ async def config(interaction: discord.Interaction) -> None:
                 await interaction.response.send_message(
                     t(interaction, "wz.setup.config.error"),
                     ephemeral=True,
+                    delete_after=5,
                 )
                 return
 
@@ -76,9 +86,11 @@ async def config(interaction: discord.Interaction) -> None:
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.error"),
                 ephemeral=True,
+                delete_after=5,
             )
         else:
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(interaction, "wz.setup.config.error"),
                 ephemeral=True,
             )

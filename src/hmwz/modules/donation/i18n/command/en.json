@@ -1,0 +1,6 @@
+{
+  "group.description.donation.group": "Configure donations and manage donation data",
+  "command.description.donation.setup": "Configure donations and their overview in this channel",
+  "command.description.donation.remove": "Permanently remove all donations and setup from this channel",
+  "command.description.donation.reset": "Start a new donation cycle in this channel"
+}

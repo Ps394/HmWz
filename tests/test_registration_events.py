@@ -4,14 +4,19 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from typing import cast
+from unittest.mock import AsyncMock, Mock
 
+import discord
 import pytest
 
 from hmwz.modules.registration.repositories import RegistrationEventChannelRepository
 from hmwz.modules.snapshots import Snapshot, SnapshotExporter
 from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
 from hmwz.modules.snapshots.registration import RegistrationSnapshotExporter
+from hmwz.modules.registration.repositories import (
+    RegistrationSnapshotMessageRepository,
+)
 from hmwz.sqlite_db import Database
 
 
@@ -61,6 +66,7 @@ async def test_registration_event_sends_required_registration_data(
     )
     snapshot_exporter: SnapshotExporter = DiscordJsonSnapshotExporter(guild)
     registration_exporter = RegistrationSnapshotExporter(
+        client=discord.Client(intents=discord.Intents.none()),
         guild=guild,
         module_key="wz",
         event_channel=SimpleNamespace(get=AsyncMock(return_value=321)),
@@ -103,7 +109,7 @@ async def test_registration_event_sends_required_registration_data(
 
 
 @pytest.mark.asyncio
-async def test_registration_sync_events_are_sent_once_per_channel() -> None:
+async def test_startup_sync_exports_once_when_wz_and_qs_share_registrations() -> None:
     registration = SimpleNamespace(
         get_all=AsyncMock(
             return_value=[
@@ -114,28 +120,140 @@ async def test_registration_sync_events_are_sent_once_per_channel() -> None:
         get=AsyncMock(return_value=SimpleNamespace(title="Event")),
     )
     export = AsyncMock(return_value=True)
-    exporter = RegistrationSnapshotExporter(
-        guild=SimpleNamespace(
-            id=123,
-            name="test guild",
-            get_channel_or_thread=lambda channel_id: SimpleNamespace(name="Event"),
-        ),
-        module_key="wz",
-        event_channel=SimpleNamespace(get=AsyncMock(return_value=321)),
-        registration=registration,
-        registrations=SimpleNamespace(get=AsyncMock(return_value=())),
-        exporter=SimpleNamespace(export=export),
+
+    class UnweakrefableGuild:
+        __slots__ = ("id", "name")
+
+        def __init__(self) -> None:
+            self.id = 123
+            self.name = "test guild"
+
+        def get_channel_or_thread(self, channel_id: int) -> SimpleNamespace:
+            return SimpleNamespace(name=f"Event {channel_id}")
+
+    guild = cast(
+        discord.Guild,
+        UnweakrefableGuild(),
     )
+    client = discord.Client(intents=discord.Intents.none())
+    event_channel = SimpleNamespace(get=AsyncMock(return_value=321))
+    registrations = SimpleNamespace(get=AsyncMock(return_value=()))
+    exporters = [
+        RegistrationSnapshotExporter(
+            client=client,
+            guild=guild,
+            module_key=module_key,
+            event_channel=event_channel,
+            registration=registration,
+            registrations=registrations,
+            exporter=SimpleNamespace(export=export),
+        )
+        for module_key in ("wz", "qs")
+    ]
 
     await asyncio.gather(
-        exporter.export_startup_snapshots(),
-        exporter.export_startup_snapshots(),
+        *(exporter.export_startup_snapshots() for exporter in exporters)
+    )
+    await asyncio.gather(
+        *(exporter.export_startup_snapshots() for exporter in exporters)
     )
 
     snapshots = [call.args[0] for call in export.await_args_list]
-    assert [snapshot.destination_channel_id for snapshot in snapshots] == [321, 321]
-    assert [snapshot.filename for snapshot in snapshots] == [
-        "wz-654-sync.json",
-        "wz-987-sync.json",
-    ]
+    assert len(snapshots) == 2
+    assert {snapshot.destination_channel_id for snapshot in snapshots} == {321}
+    assert {snapshot.payload["channel-id"] for snapshot in snapshots} == {654, 987}
+    assert all(snapshot.filename.endswith("-sync.json") for snapshot in snapshots)
     assert all(isinstance(snapshot, Snapshot) for snapshot in snapshots)
+
+
+@pytest.mark.asyncio
+async def test_startup_sync_updates_persisted_message_instead_of_sending_duplicate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="snapshot-messages.db")
+    repository = RegistrationSnapshotMessageRepository(database)
+    assert await database.execute(repository.table)
+
+    message = SimpleNamespace(id=789, edit=AsyncMock())
+    message.edit.return_value = message
+    channel = Mock(spec=discord.TextChannel)
+    channel.id = 321
+    channel.send = AsyncMock(return_value=message)
+    channel.fetch_message = AsyncMock(return_value=message)
+    guild = SimpleNamespace(id=123, name="test guild", me=None)
+    monkeypatch.setattr(
+        "hmwz.modules.snapshots.json_discord.utils.fetch_channel",
+        AsyncMock(return_value=channel),
+    )
+    snapshot = Snapshot(
+        destination_channel_id=321,
+        filename="wz-654-sync.json",
+        payload={"type": "sync", "channel-id": 654},
+    )
+
+    first_exporter = DiscordJsonSnapshotExporter(guild, repository)
+    second_exporter = DiscordJsonSnapshotExporter(guild, repository)
+    assert await first_exporter.export(snapshot)
+    assert await second_exporter.export(snapshot)
+
+    channel.send.assert_awaited_once()
+    channel.fetch_message.assert_awaited_once_with(789)
+    message.edit.assert_awaited_once()
+    assert await repository.get(
+        guild=guild,
+        source_channel_id=654,
+        destination_channel_id=321,
+    ) == repository._Data(message_id=789)
+
+
+@pytest.mark.asyncio
+async def test_startup_sync_reuses_legacy_snapshot_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="legacy-snapshot-message.db")
+    repository = RegistrationSnapshotMessageRepository(database)
+    assert await database.execute(repository.table)
+
+    legacy_message = SimpleNamespace(
+        id=789,
+        author=SimpleNamespace(id=999),
+        attachments=[SimpleNamespace(filename="qs-654-sync.json")],
+        edit=AsyncMock(),
+    )
+    legacy_message.edit.return_value = legacy_message
+
+    async def history(*, limit: int):
+        assert limit == 100
+        yield legacy_message
+
+    channel = Mock(spec=discord.TextChannel)
+    channel.id = 321
+    channel.history = history
+    channel.send = AsyncMock()
+    guild = SimpleNamespace(
+        id=123,
+        name="test guild",
+        me=SimpleNamespace(id=999),
+    )
+    monkeypatch.setattr(
+        "hmwz.modules.snapshots.json_discord.utils.fetch_channel",
+        AsyncMock(return_value=channel),
+    )
+    exporter = DiscordJsonSnapshotExporter(guild, repository)
+    snapshot = Snapshot(
+        destination_channel_id=321,
+        filename="wz-654-sync.json",
+        payload={"type": "sync", "channel-id": 654},
+    )
+
+    assert await exporter.export(snapshot)
+
+    channel.send.assert_not_awaited()
+    legacy_message.edit.assert_awaited_once()
+    assert await repository.get(
+        guild=guild,
+        source_channel_id=654,
+        destination_channel_id=321,
+    ) == repository._Data(message_id=789)

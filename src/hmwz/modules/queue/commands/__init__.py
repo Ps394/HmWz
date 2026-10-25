@@ -1,6 +1,6 @@
 from discord.app_commands import Group, checks, locale_str
 
-from .setup import QueueSetupGroup
+from . import setup as queue_setup
 
 
 @checks.bot_has_permissions(
@@ -21,7 +21,9 @@ class QueueGroup(Group):
                 key="queue.group.description.queue",
             ),
         )
-        self.add_command(QueueSetupGroup())
+        self.add_command(queue_setup.setup)
+        self.add_command(queue_setup.remove)
+        self.add_command(queue_setup.reset)
 
 
 __all__ = ["QueueGroup"]

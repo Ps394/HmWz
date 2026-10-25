@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
-from zoneinfo import ZoneInfo
 
 import discord
 
@@ -15,13 +14,32 @@ from .repository import (
     DonationKind,
     DonationType,
 )
-from .rush_pricing import RUSH_DURATIONS_HOURS
-from .validation import parse_amount, parse_choices, parse_rush_start
+from .rush_pricing import RUSH_DURATIONS_HOURS, RUSH_PERIOD_DURATION
+from .validation import (
+    COMMON_DONATION_TIMEZONES,
+    COMMON_DONATION_TIMEZONE_NAMES,
+    donation_timezone,
+    donation_timezone_translation_key,
+    normalize_donation_timezone,
+    parse_amount,
+    parse_choices,
+    parse_rush_start,
+)
 
 if TYPE_CHECKING:
     from .module import DonationModule
 
-DonationSetupAction = Literal["content", "values", "recent", "ranking", "start", "save"]
+DonationSetupAction = Literal[
+    "content",
+    "values",
+    "ranking",
+    "start",
+    "visibility",
+    "donations",
+    "export",
+    "save",
+]
+DONATION_TIMEZONES = COMMON_DONATION_TIMEZONE_NAMES
 
 
 @dataclass(slots=True)
@@ -41,6 +59,10 @@ class DonationSetupDraft:
     recent_limit: int
     show_ranking: bool
     rush_start_at: datetime | None
+    timezone_name: str = "UTC"
+    show_donations: bool = True
+    donations_enabled: bool = True
+    export_channel_id: int | None = None
 
 
 def donation_setup_panel(
@@ -75,7 +97,6 @@ def donation_setup_panel(
             if draft.goal_hours is not None
             else t(interaction, "donation.setup.not_configured")
         ),
-        recent_limit=draft.recent_limit,
         ranking=t(
             interaction,
             "donation.setup.enabled"
@@ -83,12 +104,39 @@ def donation_setup_panel(
             else "donation.setup.disabled",
         ),
         rush_start=(
-            draft.rush_start_at.astimezone(ZoneInfo("Europe/Berlin")).strftime(
-                "%d.%m.%Y %H:%M"
-            )
+            draft.rush_start_at.astimezone(
+                donation_timezone(draft.timezone_name)
+            ).strftime("%d.%m.%Y %H:%M %Z (%z)")
             if draft.rush_start_at is not None
             else t(interaction, "donation.setup.not_configured")
         ),
+        rush_stop=(
+            (draft.rush_start_at.astimezone(UTC) + RUSH_PERIOD_DURATION)
+            .astimezone(donation_timezone(draft.timezone_name))
+            .strftime("%d.%m.%Y %H:%M %Z (%z)")
+            if draft.rush_start_at is not None
+            else t(interaction, "donation.setup.not_configured")
+        ),
+        rush_duration=t(
+            interaction,
+            "donation.setup.rush_duration",
+            days=RUSH_PERIOD_DURATION.days,
+            hours=int(RUSH_PERIOD_DURATION.total_seconds() // 3600),
+        ),
+        timezone=t(interaction, donation_timezone_translation_key(draft.timezone_name)),
+        donations=t(
+            interaction,
+            "donation.setup.enabled"
+            if draft.donations_enabled
+            else "donation.setup.disabled",
+        ),
+        show_donations=t(
+            interaction,
+            "donation.setup.enabled"
+            if draft.show_donations
+            else "donation.setup.disabled",
+        ),
+        export_channel=_export_channel_status(draft, interaction),
     )
 
 
@@ -99,6 +147,30 @@ def _status(interaction: discord.Interaction, is_configured: bool) -> str:
         else "donation.setup.not_configured"
     )
     return t(interaction, key)
+
+
+def _export_channel_status(
+    draft: DonationSetupDraft, interaction: discord.Interaction
+) -> str:
+    if draft.export_channel_id is None:
+        return t(interaction, "donation.setup.disabled")
+    channel = draft.module.guild.get_channel(draft.export_channel_id)
+    if isinstance(channel, discord.TextChannel):
+        return channel.mention
+    return t(
+        interaction,
+        "donation.setup.export_channel_unavailable",
+        channel_id=draft.export_channel_id,
+    )
+
+
+async def _send_temporary_response(
+    interaction: discord.Interaction, message: str
+) -> None:
+    """Send an ephemeral response and remove it after a short interval."""
+    await interaction.response.send_message(message, ephemeral=True)
+    response = await interaction.original_response()
+    await response.delete(delay=5)
 
 
 class DonationSetupKindSelect(discord.ui.Select):
@@ -144,8 +216,8 @@ class DonationSetupKindSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction) -> None:
         kind = self._selected_kind()
         if kind is None:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_type"), ephemeral=True
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_type")
             )
             return
         draft = self.create_draft(kind, interaction)
@@ -175,7 +247,7 @@ class DonationSetupKindSelect(discord.ui.Select):
             else None
         )
         if kind == "time_reduction" and rush_start_at is None:
-            rush_start_at = datetime.now(ZoneInfo("Europe/Berlin"))
+            rush_start_at = datetime.now(UTC)
         return DonationSetupDraft(
             module=self.module,
             channel_id=self.channel_id,
@@ -216,6 +288,20 @@ class DonationSetupKindSelect(discord.ui.Select):
                 configuration.show_ranking if configuration is not None else True
             ),
             rush_start_at=rush_start_at,
+            timezone_name=(
+                normalize_donation_timezone(configuration.timezone_name)
+                if configuration is not None
+                else "UTC"
+            ),
+            show_donations=(
+                configuration.show_donations if configuration is not None else True
+            ),
+            donations_enabled=(
+                configuration.donations_enabled if configuration is not None else True
+            ),
+            export_channel_id=(
+                configuration.export_channel_id if configuration is not None else None
+            ),
         )
 
 
@@ -229,8 +315,8 @@ class DonationSetupOwnerView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "donation.setup.owner_only"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.setup.owner_only")
         )
         return False
 
@@ -264,9 +350,11 @@ class DonationSetupButton(discord.ui.Button):
     LABELS: dict[DonationSetupAction, str] = {
         "content": "donation.setup.edit_content",
         "values": "donation.setup.edit_values",
-        "recent": "donation.setup.edit_recent",
         "ranking": "donation.setup.toggle_ranking",
         "start": "donation.setup.edit_start",
+        "visibility": "donation.setup.toggle_visibility",
+        "donations": "donation.setup.toggle_donations",
+        "export": "donation.setup.export_channel",
         "save": "donation.setup.save",
     }
 
@@ -274,7 +362,20 @@ class DonationSetupButton(discord.ui.Button):
         self, setup_view: DonationSetupView, action: DonationSetupAction, row: int
     ) -> None:
         super().__init__(
-            label=t(setup_view.draft.module.guild, self.LABELS[action]),
+            label=t(
+                setup_view.draft.module.guild,
+                (
+                    "donation.setup.stop_donations"
+                    if action == "donations" and setup_view.draft.donations_enabled
+                    else "donation.setup.start_donations"
+                    if action == "donations"
+                    else "donation.setup.hide_donations"
+                    if action == "visibility" and setup_view.draft.show_donations
+                    else "donation.setup.show_donations"
+                    if action == "visibility"
+                    else self.LABELS[action]
+                ),
+            ),
             style=(
                 discord.ButtonStyle.success
                 if action == "save"
@@ -290,6 +391,133 @@ class DonationSetupButton(discord.ui.Button):
         await self.setup_view.handle_action(interaction, self.action)
 
 
+class DonationTimezoneSelect(discord.ui.Select):
+    """Choose a common IANA timezone used for Rush timestamps."""
+
+    def __init__(self, setup_view: DonationSetupView) -> None:
+        timezone_name = setup_view.draft.timezone_name
+        options = list(COMMON_DONATION_TIMEZONES)
+        if timezone_name not in DONATION_TIMEZONES:
+            options.append((timezone_name, "donation.timezone.custom"))
+        super().__init__(
+            placeholder=t(setup_view.draft.module.guild, "donation.setup.timezone"),
+            options=[
+                discord.SelectOption(
+                    label=t(setup_view.draft.module.guild, label_key)[:100],
+                    value=name,
+                    description=name,
+                    default=name == timezone_name,
+                )
+                for name, label_key in options
+            ],
+            min_values=1,
+            max_values=1,
+            row=1,
+        )
+        self.setup_view = setup_view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        timezone_name = self.values[0]
+        try:
+            donation_timezone(timezone_name)
+        except ValueError:
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_timezone")
+            )
+            return
+        self.setup_view.draft.timezone_name = timezone_name
+        await self.setup_view.refresh(interaction)
+
+
+class DonationExportChannelSelect(discord.ui.ChannelSelect):
+    """Select a text channel where completed donation cycles are exported."""
+
+    def __init__(self, setup_view: DonationSetupView) -> None:
+        super().__init__(
+            channel_types=[discord.ChannelType.text],
+            placeholder=t(
+                setup_view.draft.module.guild,
+                "donation.setup.export_channel_select",
+            ),
+            min_values=1,
+            max_values=1,
+        )
+        self.setup_view = setup_view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        selected = self.values[0]
+        guild = self.setup_view.draft.module.guild
+        channel = guild.get_channel(selected.id)
+        if not isinstance(channel, discord.TextChannel):
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.export_channel_invalid")
+            )
+            return
+        bot_member = guild.me
+        if bot_member is None:
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.export_channel_save")
+            )
+            return
+        permissions = channel.permissions_for(bot_member)
+        if not permissions.send_messages or not permissions.attach_files:
+            await _send_temporary_response(
+                interaction,
+                t(interaction, "donation.error.export_channel_permissions"),
+            )
+            return
+        self.setup_view.draft.export_channel_id = channel.id
+        await interaction.response.edit_message(
+            content=donation_setup_panel(self.setup_view.draft, interaction),
+            view=self.setup_view,
+        )
+
+
+class DonationExportChannelView(DonationSetupOwnerView):
+    """Choose or disable the channel used for cycle JSON exports."""
+
+    def __init__(self, setup_view: DonationSetupView) -> None:
+        super().__init__(setup_view.draft.owner_id, timeout=180)
+        self.setup_view = setup_view
+        self.add_item(DonationExportChannelSelect(setup_view))
+        labels = {
+            "donation:setup:export-disable": "donation.setup.export_disable",
+            "donation:setup:export-back": "donation.setup.export_back",
+        }
+        for item in self.children:
+            if isinstance(item, discord.ui.Button) and item.custom_id in labels:
+                item.label = t(setup_view.draft.module.guild, labels[item.custom_id])
+
+    @discord.ui.button(
+        label="Disable export",
+        style=discord.ButtonStyle.danger,
+        custom_id="donation:setup:export-disable",
+        row=1,
+    )
+    async def disable_export(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.setup_view.draft.export_channel_id = None
+        await interaction.response.edit_message(
+            content=donation_setup_panel(self.setup_view.draft, interaction),
+            view=self.setup_view,
+        )
+
+    @discord.ui.button(
+        label="Back",
+        style=discord.ButtonStyle.secondary,
+        custom_id="donation:setup:export-back",
+        row=1,
+    )
+    async def back(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.edit_message(
+            content=donation_setup_panel(self.setup_view.draft, interaction),
+            view=self.setup_view,
+        )
+
+
 class DonationSetupView(DonationSetupOwnerView):
     """Menu for editing each section of a donation setup."""
 
@@ -301,9 +529,12 @@ class DonationSetupView(DonationSetupOwnerView):
             self.add_item(DonationSetupButton(self, "values", row=0))
         if draft.kind == "time_reduction":
             self.add_item(DonationSetupButton(self, "start", row=0))
-        self.add_item(DonationSetupButton(self, "recent", row=1))
-        self.add_item(DonationSetupButton(self, "ranking", row=1))
-        self.add_item(DonationSetupButton(self, "save", row=2))
+            self.add_item(DonationTimezoneSelect(self))
+        self.add_item(DonationSetupButton(self, "ranking", row=2))
+        self.add_item(DonationSetupButton(self, "visibility", row=2))
+        self.add_item(DonationSetupButton(self, "donations", row=2))
+        self.add_item(DonationSetupButton(self, "export", row=2))
+        self.add_item(DonationSetupButton(self, "save", row=3))
 
     async def handle_action(
         self, interaction: discord.Interaction, action: DonationSetupAction
@@ -313,16 +544,23 @@ class DonationSetupView(DonationSetupOwnerView):
                 await interaction.response.send_modal(DonationContentModal(self.draft))
             case "values":
                 await interaction.response.send_modal(DonationValuesModal(self.draft))
-            case "recent":
-                await interaction.response.send_modal(
-                    DonationRecentLimitModal(self.draft)
-                )
             case "ranking":
                 self.draft.show_ranking = not self.draft.show_ranking
+                await self.refresh(interaction)
+            case "visibility":
+                self.draft.show_donations = not self.draft.show_donations
+                await self.refresh(interaction)
+            case "donations":
+                self.draft.donations_enabled = not self.draft.donations_enabled
                 await self.refresh(interaction)
             case "start":
                 await interaction.response.send_modal(
                     DonationRushStartModal(self.draft)
+                )
+            case "export":
+                await interaction.response.edit_message(
+                    content=t(interaction, "donation.setup.export_channel_prompt"),
+                    view=DonationExportChannelView(self),
                 )
             case "save":
                 await self.save(interaction)
@@ -334,28 +572,29 @@ class DonationSetupView(DonationSetupOwnerView):
 
     async def save(self, interaction: discord.Interaction) -> None:
         if self.draft.kind == "simple" and not self.draft.unit:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.unit_required"), ephemeral=True
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.unit_required")
             )
             return
         if not 1 <= self.draft.recent_limit <= 20:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_recent_limit"), ephemeral=True
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_recent_limit")
             )
             return
         if self.draft.kind == "time_reduction" and self.draft.rush_start_at is None:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_setup_values"),
-                ephemeral=True,
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_setup_values")
             )
             return
         await interaction.response.defer(ephemeral=True)
         if not await _save_setup(self.draft, interaction):
             return
         self.stop()
-        await interaction.edit_original_response(
-            content=t(interaction, "donation.setup.complete"), view=None
+        await interaction.delete_original_response()
+        confirmation = await interaction.followup.send(
+            t(interaction, "donation.setup.complete"), ephemeral=True, wait=True
         )
+        await confirmation.delete(delay=5)
 
 
 async def _save_setup(
@@ -398,6 +637,10 @@ async def _save_setup(
         recent_limit=draft.recent_limit,
         show_ranking=draft.show_ranking,
         rush_start_at=(draft.rush_start_at if draft.kind == "time_reduction" else None),
+        timezone_name=draft.timezone_name,
+        show_donations=draft.show_donations,
+        donations_enabled=draft.donations_enabled,
+        export_channel_id=draft.export_channel_id,
     )
     if not saved:
         await _send_setup_followup_error(interaction, "donation.error.setup_save")
@@ -408,7 +651,10 @@ async def _save_setup(
 async def _send_setup_followup_error(
     interaction: discord.Interaction, translation_key: str
 ) -> None:
-    await interaction.followup.send(t(interaction, translation_key), ephemeral=True)
+    message = await interaction.followup.send(
+        t(interaction, translation_key), ephemeral=True, wait=True
+    )
+    await message.delete(delay=5)
 
 
 class DonationContentModal(discord.ui.Modal):
@@ -470,16 +716,15 @@ class DonationValuesModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         unit = self.unit_input.value.strip()
         if not unit:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.unit_required"), ephemeral=True
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.unit_required")
             )
             return
         try:
             choices = _parse_donation_choices(self.choices_input.value)
         except ValueError:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_setup_values"),
-                ephemeral=True,
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_setup_values")
             )
             return
         self.draft.unit = unit
@@ -497,59 +742,42 @@ def _parse_donation_choices(raw: str) -> tuple[str, ...]:
     return choices
 
 
-class DonationRecentLimitModal(discord.ui.Modal):
-    """Set how many current-cycle donations appear in the overview."""
-
-    def __init__(self, draft: DonationSetupDraft) -> None:
-        super().__init__(
-            title=t(draft.module.guild, "donation.setup.recent_title")[:45]
-        )
-        self.draft = draft
-        self.setup_view = DonationSetupView(draft)
-        self.limit_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "donation.setup.recent_limit")[:45],
-            default=str(draft.recent_limit),
-            max_length=2,
-        )
-        self.add_item(self.limit_input)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        try:
-            limit = int(self.limit_input.value)
-        except ValueError:
-            limit = 0
-        if not 1 <= limit <= 20:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_recent_limit"),
-                ephemeral=True,
-            )
-            return
-        self.draft.recent_limit = limit
-        await self.setup_view.refresh(interaction)
-
-
 class DonationRushStartModal(discord.ui.Modal):
-    """Set the start date and local time of the nine-day Rush period."""
+    """Set the start date and time in the selected timezone."""
 
     def __init__(self, draft: DonationSetupDraft) -> None:
         super().__init__(title=t(draft.module.guild, "donation.setup.start_title")[:45])
         self.draft = draft
         self.setup_view = DonationSetupView(draft)
-        local_start = (
-            draft.rush_start_at.astimezone(ZoneInfo("Europe/Berlin"))
+        selected_start = (
+            draft.rush_start_at.astimezone(donation_timezone(draft.timezone_name))
             if draft.rush_start_at is not None
-            else datetime.now(ZoneInfo("Europe/Berlin"))
+            else datetime.now(donation_timezone(draft.timezone_name))
         )
         self.date_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "donation.setup.start_date")[:45],
+            label=t(
+                draft.module.guild,
+                "donation.setup.start_date",
+                timezone=t(
+                    draft.module.guild,
+                    donation_timezone_translation_key(draft.timezone_name),
+                ),
+            )[:45],
             placeholder="YYYY-MM-DD",
-            default=local_start.strftime("%Y-%m-%d"),
+            default=selected_start.strftime("%Y-%m-%d"),
             max_length=10,
         )
         self.time_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "donation.setup.start_time")[:45],
+            label=t(
+                draft.module.guild,
+                "donation.setup.start_time",
+                timezone=t(
+                    draft.module.guild,
+                    donation_timezone_translation_key(draft.timezone_name),
+                ),
+            )[:45],
             placeholder="HH:MM",
-            default=local_start.strftime("%H:%M"),
+            default=selected_start.strftime("%H:%M"),
             max_length=5,
         )
         self.add_item(self.date_input)
@@ -558,12 +786,13 @@ class DonationRushStartModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
             self.draft.rush_start_at = parse_rush_start(
-                self.date_input.value, self.time_input.value
+                self.date_input.value,
+                self.time_input.value,
+                self.draft.timezone_name,
             )
         except ValueError:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_rush_start"),
-                ephemeral=True,
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_rush_start")
             )
             return
         await self.setup_view.refresh(interaction)

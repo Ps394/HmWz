@@ -14,8 +14,12 @@ from hmwz.modules.snapshots.registration import (
     RegistrationSnapshotExporter,
 )
 
+from .responses import send_temporary_followup
 from .overview import RegistrationOverview
-from .repositories import RegistrationEventChannelRepository
+from .repositories import (
+    RegistrationEventChannelRepository,
+    RegistrationSnapshotMessageRepository,
+)
 
 if TYPE_CHECKING:
     from .repositories import (
@@ -39,6 +43,7 @@ class RegistrationModuleBase(BasicModule):
     registrations: MemberRegistrationRepository
     list: RegistrationMessageRepository
     registration_event_channel: RegistrationEventChannelRepository
+    registration_snapshot_messages: RegistrationSnapshotMessageRepository
 
     def _initialize_registration(
         self,
@@ -56,12 +61,17 @@ class RegistrationModuleBase(BasicModule):
         self.registrations = registrations
         self.list = lists
         self.registration_event_channel = RegistrationEventChannelRepository(database)
+        self.registration_snapshot_messages = RegistrationSnapshotMessageRepository(
+            database
+        )
         self._registration_snapshot_exporter = RegistrationSnapshotExporter(
+            client=self.client,
             guild=self.guild,
             module_key=self.module_key,
             event_channel=self.registration_event_channel,
             registration=self.registration,
             registrations=self.registrations,
+            snapshot_messages=self.registration_snapshot_messages,
         )
         self._overviews: dict[int, RegistrationOverview] = {}
         self._registration_locks: dict[int, asyncio.Lock] = {}
@@ -151,7 +161,8 @@ class RegistrationModuleBase(BasicModule):
             await member.remove_roles(
                 role, reason=f"{self.module_key.upper()} deregistration"
             )
-        await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(
                 interaction,
                 f"{self.module_key}.overview.registration.remove_registration",
@@ -173,7 +184,8 @@ class RegistrationModuleBase(BasicModule):
         if current is None and self.max_players is not None:
             count = await self.registrations.count(guild=guild, channel_id=channel_id)
             if count >= self.max_players:
-                await interaction.followup.send(
+                await send_temporary_followup(
+                    interaction,
                     t(
                         interaction,
                         f"{self.module_key}.overview.registration.full",
@@ -205,7 +217,8 @@ class RegistrationModuleBase(BasicModule):
             await self._remove_previous_role(guild, member, current.role, channel_id)
         await member.add_roles(role, reason=f"{self.module_key.upper()} registration")
         response_key = "update_registration" if is_update else "new_registration"
-        await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(
                 interaction,
                 f"{self.module_key}.overview.registration.{response_key}",
@@ -245,7 +258,8 @@ class RegistrationModuleBase(BasicModule):
         await self._registration_snapshot_exporter.export_startup_snapshots()
 
     async def _send_registration_error(self, interaction: discord.Interaction) -> None:
-        await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(
                 interaction,
                 f"{self.module_key}.overview.registration.error_registration",
@@ -426,6 +440,7 @@ class RegistrationModuleBase(BasicModule):
         for repository in (
             self.registration,
             self.registration_event_channel,
+            self.registration_snapshot_messages,
             self.roles,
             self.registrations,
             self.list,

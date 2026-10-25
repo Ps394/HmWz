@@ -63,18 +63,20 @@ async def add(interaction: Interaction) -> None:
             )
             return
 
-        await interaction.followup.send(
+        view = PurgeChannelSelection(
+            guild=guild,
+            module=module,
+            owner_id=interaction.user.id,
+            action="add",
+            channels=channels,
+            max_values=max_values,
+            registration_channel_id=channel_id,
+        )
+        view.message = await interaction.followup.send(
             t(interaction, "wz.setup.channel.select.add"),
-            view=PurgeChannelSelection(
-                guild=guild,
-                module=module,
-                owner_id=interaction.user.id,
-                action="add",
-                channels=channels,
-                max_values=max_values,
-                registration_channel_id=channel_id,
-            ),
+            view=view,
             ephemeral=True,
+            wait=True,
         )
     except Exception as error:
         logger.exception(

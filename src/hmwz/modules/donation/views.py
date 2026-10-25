@@ -7,14 +7,24 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 
 from .overview import DonationOverview
 from .repository import DEFAULT_DONATION_CHOICES, DonationType
-from .rush_pricing import RUSH_DURATIONS_HOURS
+from .rush_pricing import RUSH_BUTTON_DURATIONS_HOURS
 from .validation import parse_amount
 
 if TYPE_CHECKING:
     from .module import DonationModule
+
+
+async def _send_temporary_response(
+    interaction: discord.Interaction, message: str
+) -> None:
+    """Send an ephemeral response and remove it after a short interval."""
+    await interaction.response.send_message(message, ephemeral=True)
+    response = await interaction.original_response()
+    await response.delete(delay=5)
 
 
 class DonationRecordButton(discord.ui.Button):
@@ -43,6 +53,8 @@ class DonationAmountOptionButton(discord.ui.Button):
         donation_type: DonationType,
         amount: Decimal,
         index: int,
+        *,
+        dismiss_prompt: bool = False,
     ) -> None:
         super().__init__(
             label=(f"{DonationOverview._format_amount(amount)} {donation_type.unit}")[
@@ -56,6 +68,7 @@ class DonationAmountOptionButton(discord.ui.Button):
         self.channel_id = channel_id
         self.donation_type = donation_type
         self.amount = amount
+        self.dismiss_prompt = dismiss_prompt
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -66,6 +79,8 @@ class DonationAmountOptionButton(discord.ui.Button):
             self.amount,
             time_reduction=None,
         )
+        if self.dismiss_prompt:
+            await interaction.delete_original_response()
         result_key = (
             "donation.error.save"
             if not saved
@@ -75,7 +90,10 @@ class DonationAmountOptionButton(discord.ui.Button):
                 else "donation.success.saved_overview_failed"
             )
         )
-        await interaction.followup.send(t(interaction, result_key), ephemeral=True)
+        result = await interaction.followup.send(
+            t(interaction, result_key), ephemeral=True, wait=True
+        )
+        await result.delete(delay=5)
 
 
 class DonationAmountChoiceView(discord.ui.View):
@@ -99,6 +117,7 @@ class DonationAmountChoiceView(discord.ui.View):
                     donation_type,
                     Decimal(choice),
                     index,
+                    dismiss_prompt=True,
                 )
             )
 
@@ -111,12 +130,17 @@ class DonationTimeReductionButton(discord.ui.Button):
         module: DonationModule,
         channel_id: int,
         time_reduction: str,
+        price: Decimal,
+        *,
+        replace_prompt: bool = False,
     ) -> None:
         super().__init__(
             label=t(
                 module.guild,
                 "donation.ui.time_reduction_button",
                 reduction=time_reduction,
+                cost=DonationOverview._format_amount(price),
+                unit=t(module.guild, "donation.setup.crystals_unit"),
             )[:80],
             style=discord.ButtonStyle.primary,
             custom_id=f"donation:time:{channel_id}:{time_reduction.removesuffix('h')}",
@@ -124,11 +148,20 @@ class DonationTimeReductionButton(discord.ui.Button):
         self.module = module
         self.channel_id = channel_id
         self.time_reduction = time_reduction
+        self.replace_prompt = replace_prompt
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await self.module.start_donation(
-            interaction, self.channel_id, time_reduction=self.time_reduction
-        )
+        if self.replace_prompt:
+            await self.module.start_donation(
+                interaction,
+                self.channel_id,
+                time_reduction=self.time_reduction,
+                replace_prompt=True,
+            )
+        else:
+            await self.module.start_donation(
+                interaction, self.channel_id, time_reduction=self.time_reduction
+            )
 
 
 class DonationOverviewView(discord.ui.View):
@@ -141,18 +174,28 @@ class DonationOverviewView(discord.ui.View):
         donation_type: DonationType,
         *,
         rush_open: bool = True,
-        rush_zone_index: int | None = None,
+        rush_prices: dict[int, Decimal] | None = None,
+        donations_enabled: bool = True,
     ) -> None:
         super().__init__(timeout=None)
         self.donation_type = donation_type
         self.rush_open = rush_open
-        self.rush_zone_index = rush_zone_index
+        self.rush_prices = rush_prices or {}
+        self.donations_enabled = donations_enabled
+        if not donations_enabled:
+            return
         if donation_type.kind == "time_reduction":
-            for reduction in (
-                (f"{hours}h" for hours in RUSH_DURATIONS_HOURS) if rush_open else ()
-            ):
+            for hours in RUSH_BUTTON_DURATIONS_HOURS:
+                if not rush_open or hours not in self.rush_prices:
+                    continue
+                reduction = f"{hours}h"
                 self.add_item(
-                    DonationTimeReductionButton(module, channel_id, reduction)
+                    DonationTimeReductionButton(
+                        module,
+                        channel_id,
+                        reduction,
+                        self.rush_prices[int(reduction.removesuffix("h"))],
+                    )
                 )
         elif donation_type.input_mode == "choice" and donation_type.choices:
             for index, choice in enumerate(donation_type.choices):
@@ -173,14 +216,28 @@ class DonationTimeReductionView(discord.ui.View):
     """Offer configured Rush durations when recording via slash command."""
 
     def __init__(
-        self, module: DonationModule, channel_id: int, donation_type: DonationType
+        self,
+        module: DonationModule,
+        channel_id: int,
+        donation_type: DonationType,
+        rush_prices: dict[int, Decimal],
     ) -> None:
         super().__init__(timeout=180)
-        for reduction in (f"{hours}h" for hours in RUSH_DURATIONS_HOURS):
-            self.add_item(DonationTimeReductionButton(module, channel_id, reduction))
+        for hours in RUSH_BUTTON_DURATIONS_HOURS:
+            if hours not in rush_prices:
+                continue
+            self.add_item(
+                DonationTimeReductionButton(
+                    module,
+                    channel_id,
+                    f"{hours}h",
+                    rush_prices[hours],
+                    replace_prompt=True,
+                )
+            )
 
 
-class DonationRushConfirmationView(discord.ui.View):
+class DonationRushConfirmationView(EphemeralView):
     """Confirm a fixed-price Rush option before recording the donation."""
 
     def __init__(
@@ -217,8 +274,8 @@ class DonationRushConfirmationView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "donation.setup.owner_only"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.setup.owner_only")
         )
         return False
 
@@ -251,7 +308,11 @@ class DonationRushConfirmationView(discord.ui.View):
             )
         )
         self.stop()
-        await interaction.followup.send(t(interaction, result_key), ephemeral=True)
+        await interaction.delete_original_response()
+        result_message = await interaction.followup.send(
+            t(interaction, result_key), ephemeral=True, wait=True
+        )
+        await result_message.delete(delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -262,12 +323,11 @@ class DonationRushConfirmationView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "donation.rush.cancelled"), view=None
-        )
+        await interaction.response.defer()
+        await interaction.delete_original_response()
 
 
-class DonationDeleteConfirmationView(discord.ui.View):
+class DonationDeleteConfirmationView(EphemeralView):
     """Require explicit confirmation before deleting donation history."""
 
     def __init__(
@@ -294,8 +354,8 @@ class DonationDeleteConfirmationView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "donation.delete.owner_only"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.delete.owner_only")
         )
         return False
 
@@ -310,13 +370,16 @@ class DonationDeleteConfirmationView(discord.ui.View):
         await interaction.response.defer()
         removed = await self.module.delete_channel(self.channel_id)
         self.stop()
-        await interaction.edit_original_response(
-            content=t(
+        await interaction.delete_original_response()
+        result = await interaction.followup.send(
+            t(
                 interaction,
                 "donation.delete.complete" if removed else "donation.error.delete",
             ),
-            view=None,
+            ephemeral=True,
+            wait=True,
         )
+        await result.delete(delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -327,9 +390,8 @@ class DonationDeleteConfirmationView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "donation.delete.cancelled"), view=None
-        )
+        await interaction.response.defer(ephemeral=True)
+        await interaction.delete_original_response()
 
 
 class DonationAmountModal(discord.ui.Modal):
@@ -383,8 +445,8 @@ class DonationAmountModal(discord.ui.Modal):
         try:
             return parse_amount(self.amount_input.value)
         except ValueError:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_amount"), ephemeral=True
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_amount")
             )
             return None
 
@@ -393,8 +455,8 @@ class DonationAmountModal(discord.ui.Modal):
             return True
         if self.time_reduction in self.donation_type.time_reductions:
             return True
-        await interaction.response.send_message(
-            t(interaction, "donation.error.invalid_time_choice"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.invalid_time_choice")
         )
         return False
 
@@ -405,8 +467,8 @@ class DonationAmountModal(discord.ui.Modal):
             Decimal(choice) for choice in self.donation_type.choices
         }:
             return True
-        await interaction.response.send_message(
-            t(interaction, "donation.error.invalid_amount_choice"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.invalid_amount_choice")
         )
         return False
 
@@ -419,10 +481,12 @@ class DonationAmountModal(discord.ui.Modal):
             amount,
             time_reduction=self.time_reduction,
         )
-        await interaction.followup.send(
+        result = await interaction.followup.send(
             t(interaction, self._result_key(saved, messages_updated)),
             ephemeral=True,
+            wait=True,
         )
+        await result.delete(delay=5)
 
     @staticmethod
     def _result_key(saved: bool, messages_updated: bool) -> str:

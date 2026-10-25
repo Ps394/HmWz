@@ -18,5 +18,6 @@ class RegistrationSetupView(discord.ui.View):
         await interaction.response.send_message(
             t(interaction, "wz.setup.config.owner_only"),
             ephemeral=True,
+            delete_after=5,
         )
         return False

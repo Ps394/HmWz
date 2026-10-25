@@ -10,6 +10,7 @@ from hmwz.i18n import CommandLocalizations, t
 
 from .autocomplete import DISPLAY_NAME_ACCOUNT_VALUE, registered_accounts
 from hmwz.modules.hs.wz.module import WzRegistrationModule
+from ..responses import send_temporary_followup
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,10 @@ async def deregister(interaction: Interaction, account: str) -> None:
         member = interaction.user
         manager = getattr(interaction.client, "module_manager", None)
         if guild is None or not isinstance(member, discord.Member) or manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
 
@@ -52,8 +55,10 @@ async def deregister(interaction: Interaction, account: str) -> None:
         )
         channel_id = interaction.channel_id
         if channel_id is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
         is_display_name = account == DISPLAY_NAME_ACCOUNT_VALUE
@@ -65,7 +70,8 @@ async def deregister(interaction: Interaction, account: str) -> None:
                 guild=guild, member=member.id, account=account
             )
             if not linked_accounts:
-                await interaction.followup.send(
+                await send_temporary_followup(
+                    interaction,
                     t(interaction, "wz.registration.account.not_linked"),
                     ephemeral=True,
                 )
@@ -80,7 +86,8 @@ async def deregister(interaction: Interaction, account: str) -> None:
         )
         current = registrations[0] if registrations else None
         if current is None or current.role is None:
-            await interaction.followup.send(
+            await send_temporary_followup(
+                interaction,
                 t(
                     interaction,
                     "wz.registration.account.not_registered",
@@ -107,14 +114,17 @@ async def deregister(interaction: Interaction, account: str) -> None:
             account=canonical_account,
             channel_id=channel_id,
         ):
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
 
         await module.export_registration_snapshot(channel_id, "deregistration")
         await module.compose_registration_overview(force=True, channel_id=channel_id)
-        await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(
                 interaction,
                 "wz.registration.account.deregistered",
@@ -129,8 +139,8 @@ async def deregister(interaction: Interaction, account: str) -> None:
             utils.log_interaction(interaction),
             account,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )
     except Exception:
         logger.exception(
@@ -138,6 +148,6 @@ async def deregister(interaction: Interaction, account: str) -> None:
             utils.log_interaction(interaction),
             account,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )

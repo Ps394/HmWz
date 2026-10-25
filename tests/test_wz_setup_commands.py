@@ -15,38 +15,27 @@ from hmwz.modules.hs.wz.commands.reset_roles import (
 )
 
 
-def test_wz_channel_and_role_commands_are_valid_subcommand_groups() -> None:
+def test_wz_setup_exposes_only_module_commands() -> None:
     wz = WzGroup(None)
-    groups = {command.name: command for command in wz.commands}
-    assert isinstance(groups["channel"], discord.app_commands.Group)
-    assert isinstance(groups["role"], discord.app_commands.Group)
-    assert {command.name for command in groups["channel"].commands} == {"add", "remove"}
-    assert {command.name for command in groups["role"].commands} == {"add", "remove"}
+    command_names = {command.name for command in wz.commands}
+    assert command_names == {"setup", "reset-channels", "reset-roles"}
 
     client = discord.Client(intents=discord.Intents.none())
     tree = discord.app_commands.CommandTree(client)
     tree.add_command(wz)
     payload = wz.to_dict(tree)
-    channel_payload = next(
-        option for option in payload["options"] if option["name"] == "channel"
-    )
-    role_payload = next(
-        option for option in payload["options"] if option["name"] == "role"
-    )
-
-    assert channel_payload["type"] == role_payload["type"] == 2
-    assert {option["type"] for option in channel_payload["options"]} == {1}
-    assert {option["type"] for option in role_payload["options"]} == {1}
+    assert all(option["type"] == 1 for option in payload["options"])
 
 
 def test_wz_maintenance_commands_and_defaults() -> None:
     wz = WzGroup(None)
     command_names = {command.name for command in wz.commands}
 
-    assert {"channel", "role"} <= command_names
-    assert "clean-channels" in command_names
+    assert "setup" in command_names
+    assert "reset-channels" in command_names
     assert "reset-roles" in command_names
     assert not clean_channels.parameters
+    assert clean_channels.name == "reset-channels"
     assert reset_roles.name == "reset-roles"
 
 
@@ -124,7 +113,8 @@ async def test_clean_channels_confirmation_applies_pinned_message_exception() ->
         user=SimpleNamespace(id=1, __str__=lambda _self: "moderator"),
         locale=discord.Locale.german,
         response=SimpleNamespace(defer=AsyncMock()),
-        edit_original_response=AsyncMock(),
+        message=SimpleNamespace(delete=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock()),
     )
     view = CleanChannelsConfirmation(
         guild=guild,
@@ -148,6 +138,8 @@ async def test_clean_channels_confirmation_applies_pinned_message_exception() ->
     check = channel.purge.await_args.kwargs["check"]
     assert check(SimpleNamespace(pinned=False)) is True
     assert check(SimpleNamespace(pinned=True)) is False
+    interaction.message.delete.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -227,7 +219,8 @@ async def test_reset_roles_confirmation_keeps_selected_exceptions() -> None:
         locale=discord.Locale.german,
         client=SimpleNamespace(module_manager=manager),
         response=SimpleNamespace(defer=AsyncMock()),
-        edit_original_response=AsyncMock(),
+        message=SimpleNamespace(delete=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock()),
     )
     view = ResetRolesConfirmation(
         guild=guild,
@@ -244,3 +237,5 @@ async def test_reset_roles_confirmation_keeps_selected_exceptions() -> None:
 
     member.remove_roles.assert_awaited_once_with(roles[20], reason="WZ Reset Roles")
     assert roles[21] not in member.remove_roles.await_args.args
+    context.message.delete.assert_awaited_once()
+    context.followup.send.assert_awaited_once()

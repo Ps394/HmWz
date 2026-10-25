@@ -5,6 +5,7 @@ from discord import app_commands
 
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ def _channel_names(channel_ids: list[int], context: discord.Interaction) -> str:
     )
 
 
-class CleanChannelsConfirmation(discord.ui.View):
+class CleanChannelsConfirmation(EphemeralView):
     def __init__(
         self,
         *,
@@ -75,8 +76,8 @@ class CleanChannelsConfirmation(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "wz.clean_channels.confirmation_owner"), ephemeral=True
+        await self.send_temporary_response(
+            interaction, t(interaction, "wz.clean_channels.confirmation_owner")
         )
         return False
 
@@ -173,7 +174,7 @@ class CleanChannelsConfirmation(discord.ui.View):
                 utils.log_interaction(interaction),
             )
             content = t(interaction, "wz.clean_channels.error")
-        await interaction.edit_original_response(content=content, view=None)
+        await self.finish(interaction, content)
 
     @discord.ui.button(
         label="Cancel",
@@ -184,19 +185,17 @@ class CleanChannelsConfirmation(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "wz.clean_channels.cancelled"), view=None
-        )
+        await self.finish(interaction, t(interaction, "wz.clean_channels.cancelled"))
 
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
-    name="clean-channels",
+    name="reset-channels",
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
-            "command.description.wz.clean_channels", "-"
+            "command.description.wz.reset_channels", "Reset configured WZ channels"
         ),
-        key="wz.clean_channels.description",
+        key="wz.reset_channels.description",
     ),
 )
 @app_commands.checks.bot_has_permissions(manage_messages=True)
@@ -228,11 +227,13 @@ async def clean_channels(interaction: discord.Interaction) -> None:
             channel_ids=channel_ids,
             context=interaction,
         )
-        await interaction.followup.send(
+        message = await interaction.followup.send(
             view.confirmation_content(interaction),
             view=view,
             ephemeral=True,
+            wait=True,
         )
+        view.message = message
     except Exception as error:
         logger.exception(
             "%s WZ clean-channels preparation failed: %s",

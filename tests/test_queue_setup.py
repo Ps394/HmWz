@@ -9,6 +9,7 @@ import pytest
 
 from hmwz.modules.queue.module import QueueModule
 from hmwz.modules.queue import module as queue_module
+from hmwz.modules.queue.commands import QueueGroup
 from hmwz.modules.queue.commands import setup as queue_setup
 from hmwz.modules.queue.modes import create_queue_modes
 from hmwz.modules.queue.modes.protocol import QueueModeSetup, QueuePool
@@ -21,6 +22,12 @@ from hmwz.modules.queue.wizard import (
     QueueSetupDraft,
     QueueSeasonHoursSelect,
 )
+
+
+def test_queue_setup_is_a_root_command() -> None:
+    group = QueueGroup()
+
+    assert {command.name for command in group.commands} == {"setup", "remove", "reset"}
 
 
 @pytest.mark.asyncio
@@ -127,7 +134,11 @@ async def test_existing_queue_type_change_requires_confirmation(monkeypatch) -> 
     setup_view = QueueConfigView(draft)
     selector = cast(QueueSetupModeSelect, setup_view.children[0])
     selector._values = ["stages"]
-    interaction = SimpleNamespace(response=SimpleNamespace(edit_message=AsyncMock()))
+    confirmation_message = SimpleNamespace(delete=AsyncMock())
+    interaction = SimpleNamespace(
+        message=confirmation_message,
+        response=SimpleNamespace(edit_message=AsyncMock()),
+    )
     monkeypatch.setattr("hmwz.modules.queue.wizard.t", Mock(return_value="confirm"))
 
     await selector.callback(cast(discord.Interaction, interaction))
@@ -135,6 +146,7 @@ async def test_existing_queue_type_change_requires_confirmation(monkeypatch) -> 
     confirmation = interaction.response.edit_message.await_args.kwargs["view"]
     assert isinstance(confirmation, QueueModeChangeConfirmationView)
     assert confirmation.selected_mode == "stages"
+    assert confirmation.message is confirmation_message
 
 
 @pytest.mark.asyncio
@@ -367,7 +379,9 @@ async def test_reset_skips_system_messages(
 
 
 @pytest.mark.asyncio
-async def test_reset_confirmation_falls_back_when_message_is_gone(monkeypatch) -> None:
+async def test_reset_confirmation_deletes_prompt_and_sends_temporary_result(
+    monkeypatch,
+) -> None:
     module = SimpleNamespace(
         guild=SimpleNamespace(name="test guild", locale="de"),
         reset_season_queue=AsyncMock(return_value=True),
@@ -376,17 +390,10 @@ async def test_reset_confirmation_falls_back_when_message_is_gone(monkeypatch) -
         cast(QueueModule, module), channel_id=456, owner_id=789
     )
     button = cast(queue_setup.QueueSeasonResetButton, reset_view.children[0])
-    message = SimpleNamespace(
-        edit=AsyncMock(
-            side_effect=discord.NotFound(
-                SimpleNamespace(status=404, reason="Not Found"),
-                {"message": "Unknown Message", "code": 10008},
-            )
-        )
-    )
+    message = SimpleNamespace(delete=AsyncMock())
     interaction = SimpleNamespace(
         response=SimpleNamespace(defer=AsyncMock()),
-        followup=SimpleNamespace(send=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock(return_value=object())),
         message=message,
     )
     monkeypatch.setattr(queue_setup, "t", Mock(return_value="Queue reset"))
@@ -394,8 +401,35 @@ async def test_reset_confirmation_falls_back_when_message_is_gone(monkeypatch) -
     await button.callback(cast(discord.Interaction, interaction))
 
     module.reset_season_queue.assert_awaited_once_with(456)
-    message.edit.assert_awaited_once_with(content="Queue reset", view=None)
-    interaction.followup.send.assert_awaited_once_with("Queue reset", ephemeral=True)
+    message.delete.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once_with(
+        "Queue reset", ephemeral=True, wait=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_reset_cancellation_deletes_prompt_and_sends_temporary_result(
+    monkeypatch,
+) -> None:
+    module = SimpleNamespace(guild=SimpleNamespace(name="test guild", locale="de"))
+    reset_view = queue_setup.QueueSeasonResetConfirmation(
+        cast(QueueModule, module), channel_id=456, owner_id=789
+    )
+    button = cast(queue_setup.QueueSeasonResetCancelButton, reset_view.children[1])
+    message = SimpleNamespace(delete=AsyncMock())
+    interaction = SimpleNamespace(
+        response=SimpleNamespace(defer=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock(return_value=object())),
+        message=message,
+    )
+    monkeypatch.setattr(queue_setup, "t", Mock(return_value="Queue reset cancelled"))
+
+    await button.callback(cast(discord.Interaction, interaction))
+
+    message.delete.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once_with(
+        "Queue reset cancelled", ephemeral=True, wait=True
+    )
 
 
 @pytest.mark.asyncio

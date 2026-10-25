@@ -9,6 +9,8 @@ from hmwz.i18n import CommandLocalizations, t
 
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
+from ..responses import send_temporary_followup
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,15 +95,19 @@ async def reset(
     try:
         guild = interaction.guild
         if guild is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.reset.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.reset.error"),
+                ephemeral=True,
             )
             return
 
         manager = getattr(interaction.client, "module_manager", None)
         if manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.reset.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.reset.error"),
+                ephemeral=True,
             )
             return
 
@@ -110,8 +116,10 @@ async def reset(
         )
         channel_id = interaction.channel_id
         if channel_id is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.reset.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.reset.error"),
+                ephemeral=True,
             )
             return
         registration_config = await module.registration.get(
@@ -124,8 +132,10 @@ async def reset(
             or not registration_config.channel
             or not configured_roles
         ):
-            await interaction.followup.send(
-                t(interaction, "wz.registration.error.not_configured"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.error.not_configured"),
+                ephemeral=True,
             )
             return
 
@@ -135,8 +145,10 @@ async def reset(
             guild=guild, channel_id=channel_id
         )
         if not registrations:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.csv.no_registrations"), ephemeral=True
+            await send_temporary_followup(
+                interaction,
+                t(interaction, "wz.registration.csv.no_registrations"),
+                ephemeral=True,
             )
             return
 
@@ -165,8 +177,10 @@ async def reset(
                 channel_id=channel_id,
             )
             if not success:
-                await interaction.followup.send(
-                    t(interaction, "wz.registration.reset.error"), ephemeral=True
+                await send_temporary_followup(
+                    interaction,
+                    t(interaction, "wz.registration.reset.error"),
+                    ephemeral=True,
                 )
                 return
             await module.export_registration_snapshot(channel_id, "sync")
@@ -184,7 +198,8 @@ async def reset(
 
         await module.compose_registration_overview(force=True, channel_id=channel_id)
         timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")
-        await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(interaction, "wz.registration.reset.success", timestamp=timestamp),
             ephemeral=ephemeral,
         )
@@ -194,6 +209,6 @@ async def reset(
             utils.log_interaction(interaction),
             e,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.reset.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.registration.reset.error"), ephemeral=True
         )

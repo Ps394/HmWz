@@ -4,9 +4,10 @@ import logging
 
 import discord
 from discord import app_commands
-from discord.app_commands import Group, checks, locale_str
+from discord.app_commands import checks, locale_str
 
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 from hmwz.modules.queue.module import QueueModule
 from hmwz.modules.queue.wizard import (
     QueueConfigView,
@@ -17,7 +18,7 @@ from hmwz.modules.queue.wizard import (
 _logger = logging.getLogger(__name__)
 
 
-class QueueSeasonResetConfirmation(discord.ui.View):
+class QueueSeasonResetConfirmation(EphemeralView):
     def __init__(self, module: QueueModule, channel_id: int, owner_id: int) -> None:
         super().__init__(timeout=180)
         self.module = module
@@ -30,7 +31,9 @@ class QueueSeasonResetConfirmation(discord.ui.View):
         if interaction.user.id == self.owner_id:
             return True
         await interaction.response.send_message(
-            t(interaction, "queue.wizard.owner_only"), ephemeral=True
+            t(interaction, "queue.wizard.owner_only"),
+            ephemeral=True,
+            delete_after=5,
         )
         return False
 
@@ -45,28 +48,22 @@ class QueueSeasonResetButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
-        succeeded = await self.reset_view.module.reset_season_queue(
-            self.reset_view.channel_id
-        )
+        try:
+            succeeded = await self.reset_view.module.reset_season_queue(
+                self.reset_view.channel_id
+            )
+        except Exception:
+            _logger.exception(
+                "%s Failed to reset the queue season.",
+                self.reset_view.module.guild.name,
+            )
+            succeeded = False
         self.reset_view.stop()
         response_text = t(
             interaction,
             "queue.season.reset" if succeeded else "queue.error.reset_failed",
         )
-        message = interaction.message
-        if message is None:
-            await interaction.followup.send(response_text, ephemeral=True)
-            return
-        try:
-            await message.edit(content=response_text, view=None)
-        except discord.NotFound:
-            await interaction.followup.send(response_text, ephemeral=True)
-        except discord.HTTPException:
-            _logger.exception(
-                "%s Failed to update the season reset confirmation message.",
-                self.reset_view.module.guild.name,
-            )
-            await interaction.followup.send(response_text, ephemeral=True)
+        await self.reset_view.finish(interaction, response_text)
 
 
 class QueueSeasonResetCancelButton(discord.ui.Button):
@@ -79,35 +76,21 @@ class QueueSeasonResetCancelButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         self.reset_view.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "queue.season.reset_cancelled"),
-            view=None,
+        await interaction.response.defer()
+        await self.reset_view.finish(
+            interaction, t(interaction, "queue.season.reset_cancelled")
         )
 
 
 @checks.has_permissions(manage_channels=True)
-class QueueSetupGroup(Group):
-    def __init__(self) -> None:
-        super().__init__(
-            name="setup",
-            description=locale_str(
-                "Configure queues",
-                key="queue.group.description.queue.setup",
-            ),
-        )
-        self.add_command(config)
-        self.add_command(remove)
-        self.add_command(reset)
-
-
 @app_commands.command(
-    name="config",
+    name="setup",
     description=locale_str(
         "Configure a queue with an interactive dialog",
-        key="queue.command.description.queue.setup.config",
+        key="queue.command.description.queue.setup",
     ),
 )
-async def config(interaction: discord.Interaction) -> None:
+async def setup(interaction: discord.Interaction) -> None:
     guild = interaction.guild
     channel = interaction.channel
     manager = getattr(interaction.client, "module_manager", None)
@@ -138,11 +121,12 @@ async def config(interaction: discord.Interaction) -> None:
     )
 
 
+@checks.has_permissions(manage_channels=True)
 @app_commands.command(
     name="remove",
     description=locale_str(
         "Remove the queue configured in this channel",
-        key="queue.command.description.queue.setup.remove",
+        key="queue.command.description.queue.remove",
     ),
 )
 async def remove(interaction: discord.Interaction) -> None:
@@ -175,11 +159,12 @@ async def remove(interaction: discord.Interaction) -> None:
     )
 
 
+@checks.has_permissions(manage_channels=True)
 @app_commands.command(
     name="reset",
     description=locale_str(
         "Reset season participation, goals, and queue messages",
-        key="queue.command.description.queue.setup.reset",
+        key="queue.command.description.queue.reset",
     ),
 )
 async def reset(interaction: discord.Interaction) -> None:
@@ -198,8 +183,10 @@ async def reset(interaction: discord.Interaction) -> None:
             t(interaction, "queue.error.seasons_only"), ephemeral=True
         )
         return
+    view = QueueSeasonResetConfirmation(module, channel_id, interaction.user.id)
     await interaction.response.send_message(
         t(interaction, "queue.season.reset_prompt"),
-        view=QueueSeasonResetConfirmation(module, channel_id, interaction.user.id),
+        view=view,
         ephemeral=True,
     )
+    view.message = await interaction.original_response()

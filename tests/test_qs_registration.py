@@ -1,16 +1,16 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import discord
 import pytest
 
+from hmwz.hm_client import Client
+from hmwz.i18n.loader import load_translations
 from hmwz.modules.hs.qs.module import QsRegistrationModule
-from hmwz.modules.hs.qs.commands import QsGroup
-from hmwz.modules.hs.qs.commands.setup import QsSetupGroup
-from hmwz.modules.hs.qs.commands.setup.configure import configure
-from hmwz.modules.registration.commands import RegistrationGroup
+from hmwz.modules.hs.qs.commands.reset_roles import QsRolesResetConfirmation
 from hmwz.modules.hs.qs.repositories import (
     QSMemberRegistrationRepository,
     QSRegistrationMessageRepository,
@@ -23,7 +23,7 @@ from hmwz.modules.hs.wz.repositories import (
     RegistrationRoleRepository,
     RegistrationSettingsRepository,
 )
-from hmwz.i18n.loader import load_translations
+from hmwz.modules.registration.commands import RegistrationGroup
 from hmwz.sqlite_db import Database
 
 
@@ -46,26 +46,44 @@ def test_qs_translations_are_owned_by_hs_catalog() -> None:
         )
         for catalogs in registration_catalogs
     )
-    assert "group.description.qs.group" in hs_catalogs[0]["de"]
-    assert "qs.registration.error.not_configured" in hs_catalogs[1]["de"]
+    assert "qs.overview.registration.new_registration" in hs_catalogs[1]["de"]
 
 
-def test_qs_setup_group_registers_configure_command() -> None:
-    group = QsSetupGroup()
+def test_hs_command_registration_includes_separate_wz_and_qs_groups() -> None:
+    client = Client.__new__(Client)
+    client.CommandTree = discord.app_commands.CommandTree(
+        discord.Client(intents=discord.Intents.none())
+    )
+    client.registered_commands = 0
 
-    assert {command.name for command in group.commands} == {
-        "configure",
-        "message",
-        "role-add",
-        "role-remove",
+    asyncio.run(Client.register_commands(client))
+
+    assert {command.name for command in client.CommandTree.get_commands()} == {
+        "about-bot",
+        "purge",
+        "account",
+        "wz",
+        "qs",
+        "registration",
+        "donation",
+        "queue",
     }
-    assert [parameter.name for parameter in configure.parameters] == ["role"]
-
-
-def test_qs_commands_remain_registered_in_hs_module() -> None:
-    group = QsGroup()
-
-    assert {command.name for command in group.commands} == {"reset", "setup"}
+    wz = next(
+        command for command in client.CommandTree.get_commands() if command.name == "wz"
+    )
+    qs = next(
+        command for command in client.CommandTree.get_commands() if command.name == "qs"
+    )
+    assert {command.name for command in wz.commands} == {
+        "setup",
+        "reset-channels",
+        "reset-roles",
+    }
+    assert {command.name for command in qs.commands} == {
+        "setup",
+        "reset-wz-roles",
+        "reset-qs-roles",
+    }
 
 
 def test_registration_command_group_uses_requested_hierarchy() -> None:
@@ -77,13 +95,11 @@ def test_registration_command_group_uses_requested_hierarchy() -> None:
         "register",
         "reset",
         "setup",
-    }
-    setup = next(command for command in group.commands if command.name == "setup")
-    assert isinstance(setup, discord.app_commands.Group)
-    assert {command.name for command in setup.commands} == {
-        "config",
         "remove",
     }
+    setup = next(command for command in group.commands if command.name == "setup")
+    assert isinstance(setup, discord.app_commands.Command)
+    assert not setup.parameters
 
 
 @pytest.mark.asyncio
@@ -168,3 +184,96 @@ async def test_qs_registration_has_no_player_limit(tmp_path: Path) -> None:
     module.registrations.add.assert_awaited_once()
     member.add_roles.assert_awaited_once()
     followup.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_qs_role_reset_removes_only_qs_configured_roles() -> None:
+    wz_role = Mock(spec=discord.Role)
+    wz_role.id = 20
+    wz_role.is_default.return_value = False
+    wz_role.managed = False
+    qs_role = Mock(spec=discord.Role)
+    qs_role.id = 21
+    qs_role.is_default.return_value = False
+    qs_role.managed = False
+    member = Mock(spec=discord.Member)
+    member.id = 30
+    member.roles = [wz_role, qs_role]
+    member.remove_roles = AsyncMock()
+
+    async def fetch_members(*, limit: int):
+        assert limit is None
+        yield member
+
+    guild = Mock(spec=discord.Guild)
+    guild.id = 10
+    guild.fetch_members = fetch_members
+    guild.get_role.side_effect = {21: qs_role}.get
+    module = SimpleNamespace(
+        roles=SimpleNamespace(
+            get=AsyncMock(return_value=[SimpleNamespace(role=21)])
+        )
+    )
+    manager = SimpleNamespace(get_module=AsyncMock(return_value=module))
+    message = SimpleNamespace(delete=AsyncMock())
+    interaction = cast(
+        discord.Interaction,
+        SimpleNamespace(
+            user=SimpleNamespace(id=1),
+            locale=discord.Locale.german,
+            client=SimpleNamespace(module_manager=manager),
+            response=SimpleNamespace(defer=AsyncMock(), is_done=Mock(return_value=True)),
+            message=message,
+            followup=SimpleNamespace(send=AsyncMock()),
+        ),
+    )
+    view = QsRolesResetConfirmation(guild=guild, channel_id=40, owner_id=1)
+    confirm = next(
+        item for item in view.children if item.custom_id == "qs_reset_roles_confirm"
+    )
+
+    with patch(
+        "hmwz.modules.hs.ephemeral_view.send_temporary_followup",
+        new_callable=AsyncMock,
+    ):
+        await confirm.callback(interaction)
+
+    member.remove_roles.assert_awaited_once_with(
+        qs_role, reason="QS Reset Roles"
+    )
+    module.roles.get.assert_awaited_once_with(guild=guild, channel_id=40)
+    message.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_qs_role_reset_cancel_deletes_confirmation() -> None:
+    guild = Mock(spec=discord.Guild)
+    message = SimpleNamespace(delete=AsyncMock())
+    interaction = cast(
+        discord.Interaction,
+        SimpleNamespace(
+            locale=discord.Locale.german,
+            response=SimpleNamespace(
+                defer=AsyncMock(), is_done=Mock(return_value=False)
+            ),
+            message=message,
+            delete_original_response=AsyncMock(),
+            followup=SimpleNamespace(send=AsyncMock()),
+        ),
+    )
+    view = QsRolesResetConfirmation(guild=guild, channel_id=40, owner_id=1)
+    cancel = next(
+        item for item in view.children if item.custom_id == "qs_reset_roles_cancel"
+    )
+
+    with patch(
+        "hmwz.modules.hs.ephemeral_view.send_temporary_followup",
+        new_callable=AsyncMock,
+    ):
+        await cancel.callback(interaction)
+
+    interaction.response.defer.assert_awaited_once_with(
+        ephemeral=True, thinking=True
+    )
+    message.delete.assert_awaited_once()
+    interaction.delete_original_response.assert_awaited_once()

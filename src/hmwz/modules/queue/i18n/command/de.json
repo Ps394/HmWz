@@ -1,7 +1,6 @@
 {
   "group.description.queue": "Verwaltet kanalbezogene Warteschlangen und Runs",
-  "group.description.queue.setup": "Richtet Warteschlangen ein",
-  "command.description.queue.setup.config": "Richtet eine Queue über einen interaktiven Dialog ein.",
-  "command.description.queue.setup.remove": "Entfernt die Queue im aktuellen Kanal.",
-  "command.description.queue.setup.reset": "Setzt eine Staffelqueue samt Teilnahmen, Zählern und Nachrichten zurück."
+  "command.description.queue.setup": "Richtet eine Queue über einen interaktiven Dialog ein.",
+  "command.description.queue.remove": "Entfernt die Queue im aktuellen Kanal.",
+  "command.description.queue.reset": "Setzt eine Staffelqueue samt Teilnahmen, Zählern und Nachrichten zurück."
 }

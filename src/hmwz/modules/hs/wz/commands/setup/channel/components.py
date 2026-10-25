@@ -5,12 +5,13 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 
 if TYPE_CHECKING:
     from .selection import PurgeChannelSelection
 
 
-class PurgeChannelConfirmation(discord.ui.View):
+class PurgeChannelConfirmation(EphemeralView):
     def __init__(
         self,
         *,
@@ -35,8 +36,8 @@ class PurgeChannelConfirmation(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "wz.setup.channel.selection_owner"), ephemeral=True
+        await self.send_temporary_response(
+            interaction, t(interaction, "wz.setup.channel.selection_owner")
         )
         return False
 
@@ -61,10 +62,7 @@ class PurgeChannelConfirmation(discord.ui.View):
     ) -> None:
         self.stop()
         self.selection.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "wz.setup.channel.cancelled"),
-            view=None,
-        )
+        await self.finish(interaction, t(interaction, "wz.setup.channel.cancelled"))
 
 
 class _ChannelSelect(discord.ui.Select):

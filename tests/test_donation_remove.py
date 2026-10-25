@@ -15,6 +15,7 @@ async def test_remove_channel_deletes_setup_and_history_before_messages() -> Non
     configuration = SimpleNamespace(
         overview_message_id=501,
         ranking_message_id=502,
+        history_message_id=503,
     )
     guild = cast(
         discord.Guild,
@@ -43,12 +44,14 @@ async def test_remove_channel_deletes_setup_and_history_before_messages() -> Non
 
         return SimpleNamespace(delete=AsyncMock(side_effect=delete))
 
-    messages = {message_id: create_message(message_id) for message_id in (501, 502)}
+    messages = {
+        message_id: create_message(message_id) for message_id in (501, 502, 503)
+    }
     channel = Mock(spec=discord.TextChannel)
     channel.fetch_message = AsyncMock(side_effect=messages.__getitem__)
     guild.get_channel.return_value = channel
     donations = SimpleNamespace(
-        get_channel=AsyncMock(side_effect=(configuration, None, None)),
+        get_channel=AsyncMock(side_effect=(configuration, None, None, None)),
         delete_channel=AsyncMock(
             side_effect=lambda **_: operations.append("setup") or True
         ),
@@ -58,7 +61,7 @@ async def test_remove_channel_deletes_setup_and_history_before_messages() -> Non
         SimpleNamespace(
             guild=guild,
             donations=donations,
-            _views={},
+            _views={456: object()},
             _registered_message_ids={501},
             _rush_view_states={},
         ),
@@ -66,5 +69,74 @@ async def test_remove_channel_deletes_setup_and_history_before_messages() -> Non
 
     assert await DonationModule._remove_channel(module, 456)
 
-    assert operations == ["setup", "message:501", "message:502"]
+    assert operations == ["setup", "message:501", "message:502", "message:503"]
     donations.delete_channel.assert_awaited_once_with(guild=guild, channel_id=456)
+    assert 456 not in module._views
+
+
+@pytest.mark.asyncio
+async def test_sync_message_registers_replacement_view_for_existing_message() -> None:
+    view = Mock(spec=discord.ui.View)
+    embed = discord.Embed()
+    message = SimpleNamespace(id=501, edit=AsyncMock())
+    channel = Mock(spec=discord.TextChannel)
+    channel.fetch_message = AsyncMock(return_value=message)
+    client = SimpleNamespace(add_view=Mock())
+    module = cast(
+        DonationModule,
+        SimpleNamespace(
+            guild=SimpleNamespace(name="test guild"),
+            client=client,
+            donations=SimpleNamespace(set_message=AsyncMock(return_value=True)),
+            _registered_message_ids=set(),
+        ),
+    )
+
+    assert await DonationModule._sync_message(
+        module,
+        channel=channel,
+        channel_id=456,
+        message_id=501,
+        embed=embed,
+        view=view,
+    )
+
+    client.add_view.assert_called_once_with(view, message_id=501)
+    message.edit.assert_awaited_once_with(embed=embed, view=view)
+
+
+@pytest.mark.asyncio
+async def test_sync_message_persists_standalone_summary_message() -> None:
+    embed = discord.Embed(
+        title="2 Spenden | Aktuelles Enddatum: Montag 02.11.2026 - 12:00"
+    )
+    message = SimpleNamespace(id=503)
+    channel = Mock(spec=discord.TextChannel)
+    channel.send = AsyncMock(return_value=message)
+    donations = SimpleNamespace(set_message=AsyncMock(return_value=True))
+    module = cast(
+        DonationModule,
+        SimpleNamespace(
+            guild=SimpleNamespace(name="test guild"),
+            client=SimpleNamespace(add_view=Mock()),
+            donations=donations,
+            _registered_message_ids=set(),
+        ),
+    )
+
+    assert await DonationModule._sync_message(
+        module,
+        channel=channel,
+        channel_id=456,
+        message_id=None,
+        embed=embed,
+        history=True,
+    )
+
+    donations.set_message.assert_awaited_once_with(
+        guild=module.guild,
+        channel_id=456,
+        message_id=503,
+        ranking=False,
+        history=True,
+    )

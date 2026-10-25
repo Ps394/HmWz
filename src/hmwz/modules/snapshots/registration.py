@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import weakref
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import discord
@@ -16,28 +18,45 @@ if TYPE_CHECKING:
     from hmwz.modules.registration.repositories import (
         MemberRegistrationRepository,
         RegistrationEventChannelRepository,
+        RegistrationSnapshotMessageRepository,
         RegistrationSettingsRepository,
     )
+
+
+@dataclass
+class _StartupSyncExportState:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    exported: set[tuple[int, int]] = field(default_factory=set)
 
 
 class RegistrationSnapshotExporter:
     """Coordinate registration snapshot creation and delivery."""
 
+    _startup_sync_states: weakref.WeakKeyDictionary[
+        discord.Client, dict[int, _StartupSyncExportState]
+    ] = weakref.WeakKeyDictionary()
+
     def __init__(
         self,
         *,
+        client: discord.Client,
         guild: discord.Guild,
         module_key: str,
         event_channel: RegistrationEventChannelRepository,
         registration: RegistrationSettingsRepository,
         registrations: MemberRegistrationRepository,
+        snapshot_messages: RegistrationSnapshotMessageRepository | None = None,
         exporter: SnapshotExporter | None = None,
     ) -> None:
+        self.client = client
         self.guild = guild
         self.event_channel = event_channel
         self.registration = registration
+        self.snapshot_messages = snapshot_messages
         self.exporter = (
-            exporter if exporter is not None else DiscordJsonSnapshotExporter(guild)
+            exporter
+            if exporter is not None
+            else DiscordJsonSnapshotExporter(guild, snapshot_messages)
         )
         self.snapshot_builder = RegistrationSnapshotBuilder(
             guild=guild,
@@ -45,8 +64,17 @@ class RegistrationSnapshotExporter:
             registration=registration,
             registrations=registrations,
         )
-        self._startup_sync_export_lock = asyncio.Lock()
-        self._startup_sync_exports: set[tuple[int, int]] = set()
+
+    def _startup_sync_state(self) -> _StartupSyncExportState:
+        guild_states = self._startup_sync_states.get(self.client)
+        if guild_states is None:
+            guild_states = {}
+            self._startup_sync_states[self.client] = guild_states
+        state = guild_states.get(self.guild.id)
+        if state is None:
+            state = _StartupSyncExportState()
+            guild_states[self.guild.id] = state
+        return state
 
     async def export(self, channel_id: int, event_type: RegistrationEventType) -> bool:
         """Export the current registration snapshot to its configured destination."""
@@ -74,8 +102,13 @@ class RegistrationSnapshotExporter:
         return await self.exporter.export(snapshot)
 
     async def export_startup_snapshots(self) -> None:
-        """Export one startup snapshot per registration and destination channel."""
-        async with self._startup_sync_export_lock:
+        """Export one startup snapshot per registration and destination channel.
+
+        WZ and QS share registration tables and the export destination, so
+        different module exporters must share the startup deduplication state.
+        """
+        state = self._startup_sync_state()
+        async with state.lock:
             destination_channel_id = await self.event_channel.get(guild=self.guild)
             if destination_channel_id is None:
                 return
@@ -86,14 +119,14 @@ class RegistrationSnapshotExporter:
                 if channel_id is None:
                     continue
                 export_key = (channel_id, destination_channel_id)
-                if export_key in self._startup_sync_exports:
+                if export_key in state.exported:
                     continue
                 if await self._export_to_destination(
                     channel_id=channel_id,
                     destination_channel_id=destination_channel_id,
                     event_type="sync",
                 ):
-                    self._startup_sync_exports.add(export_key)
+                    state.exported.add(export_key)
 
 
 __all__ = ["RegistrationEventType", "RegistrationSnapshotExporter"]

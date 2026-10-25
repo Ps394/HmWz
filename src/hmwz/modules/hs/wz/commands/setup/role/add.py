@@ -79,20 +79,22 @@ async def add(interaction: discord.Interaction, permanent: bool = False) -> None
             )
             return
 
-        await interaction.followup.send(
+        view = SetupRoleSelection(
+            guild=guild,
+            module=module,
+            owner_id=interaction.user.id,
+            action="add",
+            channel_id=channel_id,
+            roles=available_roles,
+            max_selected=slots,
+            permanent=permanent,
+            context=interaction,
+        )
+        view.message = await interaction.followup.send(
             t(interaction, "wz.setup.role.select.add"),
-            view=SetupRoleSelection(
-                guild=guild,
-                module=module,
-                owner_id=interaction.user.id,
-                action="add",
-                channel_id=channel_id,
-                roles=available_roles,
-                max_selected=slots,
-                permanent=permanent,
-                context=interaction,
-            ),
+            view=view,
             ephemeral=True,
+            wait=True,
         )
     except Exception as error:
         logger.exception(

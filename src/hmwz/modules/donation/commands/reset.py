@@ -1,22 +1,37 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
 
-from hmwz.i18n import t
-from hmwz.modules.donation.validation import parse_rush_start
+from hmwz.i18n import CommandLocalizations, t
+from hmwz.modules.donation.module import DonationModule
+from hmwz.modules.donation.validation import (
+    donation_timezone,
+    donation_timezone_translation_key,
+    parse_rush_start,
+)
 
-if TYPE_CHECKING:
-    from hmwz.modules.donation.module import DonationModule
+
+async def _send_temporary_response(
+    interaction: discord.Interaction, message: str
+) -> None:
+    """Send an ephemeral response and remove it after a short interval."""
+    await interaction.response.send_message(message, ephemeral=True)
+    response = await interaction.original_response()
+    await response.delete(delay=5)
 
 
 @app_commands.command(
     name="reset",
-    description="Start a new donation cycle in this channel",
+    description=app_commands.locale_str(
+        CommandLocalizations.get("en", {}).get(
+            "command.description.donation.reset",
+            "Start a new donation cycle in this channel",
+        ),
+        key="donation.reset.description",
+    ),
 )
 @app_commands.checks.has_permissions(manage_channels=True)
 async def reset(interaction: discord.Interaction) -> None:
@@ -25,8 +40,8 @@ async def reset(interaction: discord.Interaction) -> None:
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)
     if guild is None or channel_id is None or manager is None:
-        await interaction.response.send_message(
-            t(interaction, "donation.error.not_configured"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.not_configured")
         )
         return
 
@@ -36,14 +51,19 @@ async def reset(interaction: discord.Interaction) -> None:
     )
     donation_type = await module.donations.get_type(guild=guild, channel_id=channel_id)
     if configuration is None or donation_type is None:
-        await interaction.response.send_message(
-            t(interaction, "donation.error.not_configured"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.not_configured")
         )
         return
 
     if donation_type.kind == "time_reduction":
         await interaction.response.send_modal(
-            DonationRushResetModal(module, channel_id, interaction.user.id)
+            DonationRushResetModal(
+                module,
+                channel_id,
+                interaction.user.id,
+                configuration.timezone_name,
+            )
         )
         return
 
@@ -74,8 +94,8 @@ class DonationCycleResetView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "donation.setup.owner_only"), ephemeral=True
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.setup.owner_only")
         )
         return False
 
@@ -88,12 +108,18 @@ class DonationCycleResetView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.defer(ephemeral=True)
-        reset_done, messages_updated = await self.module.reset_cycle(
+        reset_done, messages_updated, export_failed = await self.module.reset_cycle(
             self.channel_id, rush_start_at=None
         )
-        result_key = _reset_result_key(reset_done, messages_updated)
+        result_key = _reset_result_key(
+            reset_done, messages_updated, export_failed=export_failed
+        )
         self.stop()
-        await interaction.followup.send(t(interaction, result_key), ephemeral=True)
+        await interaction.delete_original_response()
+        result = await interaction.followup.send(
+            t(interaction, result_key), ephemeral=True, wait=True
+        )
+        await result.delete(delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -104,28 +130,46 @@ class DonationCycleResetView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
-        await interaction.response.edit_message(
-            content=t(interaction, "donation.reset.cancelled"), view=None
-        )
+        await interaction.response.defer(ephemeral=True)
+        await interaction.delete_original_response()
 
 
 class DonationRushResetModal(discord.ui.Modal):
-    """Set the next Rush cycle's Berlin-local start date and time."""
+    """Set the next Rush start using the channel's configured timezone."""
 
-    def __init__(self, module: DonationModule, channel_id: int, owner_id: int) -> None:
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        owner_id: int,
+        timezone_name: str,
+    ) -> None:
         super().__init__(title=t(module.guild, "donation.reset.start_modal_title")[:45])
         self.module = module
         self.channel_id = channel_id
         self.owner_id = owner_id
-        current_time = datetime.now(ZoneInfo("Europe/Berlin"))
+        self.timezone_name = timezone_name
+        current_time = datetime.now(donation_timezone(timezone_name))
         self.date_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(module.guild, "donation.setup.start_date")[:45],
+            label=t(
+                module.guild,
+                "donation.setup.start_date",
+                timezone=t(
+                    module.guild, donation_timezone_translation_key(timezone_name)
+                ),
+            )[:45],
             placeholder="YYYY-MM-DD",
             default=current_time.strftime("%Y-%m-%d"),
             max_length=10,
         )
         self.time_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(module.guild, "donation.setup.start_time")[:45],
+            label=t(
+                module.guild,
+                "donation.setup.start_time",
+                timezone=t(
+                    module.guild, donation_timezone_translation_key(timezone_name)
+                ),
+            )[:45],
             placeholder="HH:MM",
             default=current_time.strftime("%H:%M"),
             max_length=5,
@@ -135,31 +179,43 @@ class DonationRushResetModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self.owner_id:
-            await interaction.response.send_message(
-                t(interaction, "donation.setup.owner_only"), ephemeral=True
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.setup.owner_only")
             )
             return
         try:
             rush_start_at = parse_rush_start(
-                self.date_input.value, self.time_input.value
+                self.date_input.value,
+                self.time_input.value,
+                self.timezone_name,
             )
         except ValueError:
-            await interaction.response.send_message(
-                t(interaction, "donation.error.invalid_rush_start"),
-                ephemeral=True,
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_rush_start")
             )
             return
         await interaction.response.defer(ephemeral=True)
-        reset_done, messages_updated = await self.module.reset_cycle(
+        reset_done, messages_updated, export_failed = await self.module.reset_cycle(
             self.channel_id, rush_start_at=rush_start_at
         )
-        await interaction.followup.send(
-            t(interaction, _reset_result_key(reset_done, messages_updated)),
+        result = await interaction.followup.send(
+            t(
+                interaction,
+                _reset_result_key(
+                    reset_done, messages_updated, export_failed=export_failed
+                ),
+            ),
             ephemeral=True,
+            wait=True,
         )
+        await result.delete(delay=5)
 
 
-def _reset_result_key(reset_done: bool, messages_updated: bool) -> str:
+def _reset_result_key(
+    reset_done: bool, messages_updated: bool, *, export_failed: bool = False
+) -> str:
+    if export_failed:
+        return "donation.error.reset_export"
     if not reset_done:
         return "donation.error.reset"
     if messages_updated:

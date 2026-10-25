@@ -1,6 +1,8 @@
 from discord.app_commands import Group, checks, locale_str
 
-from . import manage, reset, setup, submit
+from hmwz.i18n import CommandLocalizations
+
+from . import manage, reset, setup
 
 __all__ = ["DonationGroup"]
 
@@ -18,11 +20,13 @@ class DonationGroup(Group):
         super().__init__(
             name="donation",
             description=locale_str(
-                "Configure donations, record donations, and manage donation data"
+                CommandLocalizations.get("en", {}).get(
+                    "group.description.donation.group",
+                    "Configure donations and manage donation data",
+                ),
+                key="donation.group.description",
             ),
         )
         self.add_command(setup.setup)
         self.add_command(manage.remove)
-        self.add_command(manage.delete)
         self.add_command(reset.reset)
-        self.add_command(submit.submit)

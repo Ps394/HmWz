@@ -19,6 +19,7 @@ async def test_remove_command_requires_confirmation() -> None:
     registration = SimpleNamespace(get=AsyncMock(return_value=object()))
     module = SimpleNamespace(registration=registration)
     manager = SimpleNamespace(get_module=AsyncMock(return_value=module))
+    confirmation_message = SimpleNamespace(delete=AsyncMock())
     response = SimpleNamespace(send_message=AsyncMock())
     interaction = cast(
         discord.Interaction,
@@ -29,6 +30,7 @@ async def test_remove_command_requires_confirmation() -> None:
             client=SimpleNamespace(module_manager=manager),
             locale=discord.Locale.german,
             response=response,
+            original_response=AsyncMock(return_value=confirmation_message),
         ),
     )
 
@@ -38,6 +40,7 @@ async def test_remove_command_requires_confirmation() -> None:
     arguments = response.send_message.await_args
     assert arguments.kwargs["ephemeral"] is True
     assert isinstance(arguments.kwargs["view"], RegistrationRemoveConfirmation)
+    assert arguments.kwargs["view"].message is confirmation_message
     assert "Teilnahmen" in arguments.args[0]
     registration.get.assert_awaited_once_with(guild=guild, channel_id=20)
 
@@ -111,6 +114,7 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
     )
     manager = SimpleNamespace(get_module=AsyncMock(return_value=module))
     response = SimpleNamespace(defer=AsyncMock())
+    confirmation_message = SimpleNamespace(delete=AsyncMock())
     interaction = cast(
         discord.Interaction,
         SimpleNamespace(
@@ -122,7 +126,7 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
             ),
             locale=discord.Locale.german,
             response=response,
-            edit_original_response=AsyncMock(),
+            edit_original_response=AsyncMock(return_value=confirmation_message),
         ),
     )
     deleted_ids: list[int] = []
@@ -206,3 +210,36 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
     )
     settings.remove.assert_awaited_once_with(guild=guild, channel_id=20)
     interaction.edit_original_response.assert_awaited_once()
+    assert interaction.edit_original_response.await_args.kwargs["view"] is None
+    confirmation_message.delete.assert_awaited_once_with(delay=5)
+
+
+@pytest.mark.asyncio
+async def test_cancel_closes_and_deletes_confirmation_dialog() -> None:
+    guild = cast(discord.Guild, SimpleNamespace(id=10))
+    interaction = cast(
+        discord.Interaction,
+        SimpleNamespace(
+            user=SimpleNamespace(id=30),
+            locale=discord.Locale.german,
+            response=SimpleNamespace(edit_message=AsyncMock()),
+        ),
+    )
+    view = RegistrationRemoveConfirmation(
+        owner_id=30,
+        guild=guild,
+        channel_id=20,
+        context=interaction,
+    )
+    cancel_button = next(
+        item
+        for item in view.children
+        if item.custom_id == "wz_registration_remove_cancel"
+    )
+
+    await cancel_button.callback(interaction)
+
+    interaction.response.edit_message.assert_awaited_once()
+    arguments = interaction.response.edit_message.await_args
+    assert arguments.kwargs["view"] is None
+    assert arguments.kwargs["delete_after"] == 5

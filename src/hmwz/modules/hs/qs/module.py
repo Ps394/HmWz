@@ -44,6 +44,7 @@ class QsRegistrationModule(RegistrationModuleBase):
             for repository in (
                 self.registration,
                 self.registration_event_channel,
+                self.registration_snapshot_messages,
                 self.roles,
                 self.registrations,
                 self.list,

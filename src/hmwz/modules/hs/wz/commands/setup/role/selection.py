@@ -6,6 +6,7 @@ import discord
 
 from hmwz import utils
 from hmwz.i18n import t
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from .components import (
@@ -19,7 +20,7 @@ from .operations import RoleAction, RoleSetupOperations
 logger = logging.getLogger(__name__)
 
 
-class SetupRoleSelection(discord.ui.View):
+class SetupRoleSelection(EphemeralView):
     def __init__(
         self,
         *,
@@ -49,8 +50,8 @@ class SetupRoleSelection(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
-            t(interaction, "wz.setup.role.selection_owner"), ephemeral=True
+        await self.send_temporary_response(
+            interaction, t(interaction, "wz.setup.role.selection_owner")
         )
         return False
 
@@ -133,11 +134,9 @@ class SetupRoleSelection(discord.ui.View):
         ]
         selected_roles = [role for role in selected if role is not None]
         if not selected_roles:
-            await interaction.response.edit_message(
-                content=t(interaction, "wz.setup.role.selection_no_changes"),
-                view=None,
+            await self.finish(
+                interaction, t(interaction, "wz.setup.role.selection_no_changes")
             )
-            self.stop()
             return
         action_label = (
             "wz.setup.role.confirmation.add"
@@ -153,6 +152,14 @@ class SetupRoleSelection(discord.ui.View):
                     count=len(selected_roles) - len(role_names),
                 )
             )
+        confirmation = SetupRoleConfirmation(
+            selection=self,
+            owner_id=self.owner_id,
+            selected_role_ids=[role.id for role in selected_roles],
+            context=interaction,
+        )
+        confirmation.message = interaction.message
+        self.stop()
         await interaction.response.edit_message(
             content=t(
                 interaction,
@@ -165,12 +172,7 @@ class SetupRoleSelection(discord.ui.View):
                     else "wz.setup.role.permanent_no",
                 ),
             ),
-            view=SetupRoleConfirmation(
-                selection=self,
-                owner_id=self.owner_id,
-                selected_role_ids=[role.id for role in selected_roles],
-                context=interaction,
-            ),
+            view=confirmation,
         )
 
     async def commit(
@@ -194,7 +196,7 @@ class SetupRoleSelection(discord.ui.View):
             )
             content = t(interaction, "wz.setup.role.error")
         self.stop()
-        await interaction.edit_original_response(content=content, view=None)
+        await self.finish(interaction, content)
 
     async def _add_roles(
         self, interaction: discord.Interaction, selected_role_ids: list[int]
