@@ -247,12 +247,12 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Registrierungen werden unter `/reg
 
 | Befehl | Beschreibung |
 | --- | --- |
-| `/wz setup` | Öffnet das private WZ-Menü zum Hinzufügen und Entfernen von WZ-Rollen und Bereinigungskanälen sowie zur Anzeige der aktuellen Konfiguration. |
+| `/wz setup` | Öffnet das private WZ-Menü mit direkt sichtbarer Konfiguration und Aktionen zum Hinzufügen und Entfernen von WZ-Rollen und WZ-Kanälen. |
 | `/wz reset-channels` | Bereinigt nach Bestätigung die konfigurierten WZ-Kanäle. |
 | `/wz reset-roles` | Entfernt nach Bestätigung konfigurierte WZ-Rollen von Servermitgliedern; ausgewählte Ausnahmen bleiben erhalten. |
-| `/qs setup` | Öffnet das private QS-Menü zum Einrichten des aktuellen Kanals, Definieren von Rollen und Bearbeiten des Übersichtstexts. |
-| `/qs reset-wz-roles` | Startet den WZ-Rollen-Reset aus der QS-Modulgruppe. |
-| `/qs reset-qs-roles` | Entfernt nach Bestätigung die im aktuellen QS-Kanal konfigurierten Rollen von Servermitgliedern. |
+| `/qs setup` | Öffnet das private QS-Menü mit direkt sichtbarer Konfiguration und Aktionen zum Hinzufügen und Entfernen von QS-Rollen und QS-Kanälen. |
+| `/qs reset-channels` | Bereinigt nach Bestätigung die konfigurierten QS-Kanäle. |
+| `/qs reset-roles` | Entfernt nach Bestätigung die im aktuellen QS-Kanal konfigurierten Rollen von Servermitgliedern. |
 
 Verknüpfe Accounts mit `account-add`, bevor du sie anmeldest. Registrierungen über die Übersichtsschaltflächen bleiben Discord-Mitglied-bezogen; die Commands `register` und `deregister` verwalten gezielt den angegebenen Ingame-Account. Vorhandene Registrierungen bleiben beim Datenbank-Upgrade erhalten.
 

@@ -9,7 +9,7 @@ from discord import app_commands
 
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.modules.hs.ephemeral_view import EphemeralView, send_temporary_followup
+from hmwz.modules.hs.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from .channel.add import add as add_channel
@@ -29,7 +29,6 @@ class WzSetupMenu(EphemeralView):
             "wz_setup_remove_channel": "wz.setup.menu.remove_channel",
             "wz_setup_add_role": "wz.setup.menu.add_role",
             "wz_setup_remove_role": "wz.setup.menu.remove_role",
-            "wz_setup_overview": "wz.setup.menu.overview",
         }
         for item in self.children:
             if isinstance(item, discord.ui.Button):
@@ -99,58 +98,6 @@ class WzSetupMenu(EphemeralView):
         )
         await callback(interaction)
 
-    @discord.ui.button(
-        label="Overview",
-        style=discord.ButtonStyle.secondary,
-        custom_id="wz_setup_overview",
-    )
-    async def overview_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        await interaction.response.defer(ephemeral=True)
-        try:
-            guild = interaction.guild
-            manager = getattr(interaction.client, "module_manager", None)
-            if guild is None or manager is None:
-                content = t(interaction, "wz.setup.menu.error")
-            else:
-                module: WzRegistrationModule = await manager.get_module(
-                    guild, WzRegistrationModule
-                )
-                registrations = await module.registration.get_all(guild=guild)
-                roles = await module.roles.get(guild=guild)
-                channels = await module.purge_channels.get(guild=guild)
-                registration_channels = [
-                    f"<#{record.channel}>"
-                    for record in registrations or ()
-                    if record.channel is not None
-                ]
-                role_names = [
-                    f"{role.mention} — <#{record.channel_id}> "
-                    f"({t(interaction, 'wz.setup.role.permanent_yes' if record.permanent else 'wz.setup.role.permanent_no')})"
-                    for record in roles or ()
-                    if (role := guild.get_role(record.role)) is not None
-                ]
-                cleanup_channels = [
-                    f"<#{record.channel_id}>" for record in channels or ()
-                ]
-                content = t(
-                    interaction,
-                    "wz.setup.menu.overview_content",
-                    registration_channels="\n".join(registration_channels)
-                    or t(interaction, "wz.setup.menu.none"),
-                    roles="\n".join(role_names)
-                    or t(interaction, "wz.setup.menu.none"),
-                    channels="\n".join(cleanup_channels)
-                    or t(interaction, "wz.setup.menu.none"),
-                )
-        except Exception:
-            _logger.exception(
-                "%s WZ setup overview failed.", utils.log_interaction(interaction)
-            )
-            content = t(interaction, "wz.setup.menu.error")
-        await send_temporary_followup(interaction, content)
-
 
 @app_commands.command(
     name="setup",
@@ -164,7 +111,43 @@ class WzSetupMenu(EphemeralView):
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
 async def setup(interaction: discord.Interaction) -> None:
     view = WzSetupMenu(owner_id=interaction.user.id, context=interaction)
-    await interaction.response.send_message(
-        t(interaction, "wz.setup.menu.title"), view=view, ephemeral=True
-    )
+    try:
+        guild = interaction.guild
+        manager = getattr(interaction.client, "module_manager", None)
+        if guild is None or manager is None:
+            content = t(interaction, "wz.setup.menu.error")
+        else:
+            module: WzRegistrationModule = await manager.get_module(
+                guild, WzRegistrationModule
+            )
+            registrations = await module.registration.get_all(guild=guild)
+            roles = await module.roles.get(guild=guild)
+            channels = await module.purge_channels.get(guild=guild)
+            registration_channels = [
+                f"<#{record.channel}>"
+                for record in registrations or ()
+                if record.channel is not None
+            ]
+            role_names = [
+                f"{role.mention} — <#{record.channel_id}> "
+                f"({t(interaction, 'wz.setup.role.permanent_yes' if record.permanent else 'wz.setup.role.permanent_no')})"
+                for record in roles or ()
+                if (role := guild.get_role(record.role)) is not None
+            ]
+            cleanup_channels = [f"<#{record.channel_id}>" for record in channels or ()]
+            content = t(
+                interaction,
+                "wz.setup.menu.overview_content",
+                registration_channels="\n".join(registration_channels)
+                or t(interaction, "wz.setup.menu.none"),
+                roles="\n".join(role_names) or t(interaction, "wz.setup.menu.none"),
+                channels="\n".join(cleanup_channels)
+                or t(interaction, "wz.setup.menu.none"),
+            )
+    except Exception:
+        _logger.exception(
+            "%s WZ setup configuration failed.", utils.log_interaction(interaction)
+        )
+        content = t(interaction, "wz.setup.menu.error")
+    await interaction.response.send_message(content, view=view, ephemeral=True)
     view.message = await interaction.original_response()

@@ -30,6 +30,6 @@
   "parameter.description.qs.setup.message.title": "Titel der QS-Übersicht",
   "parameter.description.qs.setup.message.description": "Beschreibung der QS-Übersicht",
   "command.description.qs.setup": "Öffnet das QS-Menü zum Definieren von Kanälen und Rollen",
-  "command.description.qs.reset_wz_roles": "Entfernt alle konfigurierten WZ-Rollen von Servermitgliedern",
-  "command.description.qs.reset_qs_roles": "Entfernt die QS-Rollen des aktuellen Kanals von Servermitgliedern"
+  "command.description.qs.reset_roles": "Entfernt nach Bestätigung die QS-Rollen des aktuellen Kanals von Servermitgliedern",
+  "command.description.qs.reset_channels": "Bereinigt nach Bestätigung alle konfigurierten QS-Kanäle"
 }

@@ -29,6 +29,7 @@ class QsRegistrationModule(RegistrationModuleBase):
         self.roles = repositories.QSRegistrationRoleRepository(database)
         self.registrations = repositories.QSMemberRegistrationRepository(database)
         self.list = repositories.QSRegistrationMessageRepository(database)
+        self.purge_channels = repositories.QSPurgeChannelRepository(database)
         self._initialize_registration(
             registration=self.registration,
             roles=self.roles,
@@ -48,6 +49,7 @@ class QsRegistrationModule(RegistrationModuleBase):
                 self.roles,
                 self.registrations,
                 self.list,
+                self.purge_channels,
             ):
                 if not await self._database.execute(repository.table):
                     _logger.error(
@@ -109,6 +111,7 @@ class QsRegistrationModule(RegistrationModuleBase):
         await self.roles.remove(guild=guild)
         await self.list.remove(guild=guild)
         await self.registrations.remove(guild=guild)
+        await self.purge_channels.remove(guild=guild)
         return True
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
@@ -122,7 +125,10 @@ class QsRegistrationModule(RegistrationModuleBase):
         return before.guild.id == self.guild.id
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
-        return channel.guild.id == self.guild.id
+        if channel.guild.id != self.guild.id:
+            return False
+        await self.purge_channels.remove(guild=self.guild, channel_id=channel.id)
+        return True
 
     async def on_guild_role_update(
         self, before: discord.Role, after: discord.Role

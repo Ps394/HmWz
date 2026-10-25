@@ -2,7 +2,7 @@ from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import reset_roles
+from . import reset_channels, reset_roles
 from .setup.menu import setup
 
 
@@ -25,8 +25,8 @@ class QsGroup(Group):
             ),
         )
         self.add_command(setup)
-        self.add_command(reset_roles.reset_wz_roles)
-        self.add_command(reset_roles.reset_qs_roles)
+        self.add_command(reset_roles.reset_roles)
+        self.add_command(reset_channels.reset_channels)
 
 
 __all__ = ["QsGroup"]

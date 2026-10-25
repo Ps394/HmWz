@@ -30,6 +30,6 @@
   "parameter.description.qs.setup.message.title": "QS overview title",
   "parameter.description.qs.setup.message.description": "QS overview description",
   "command.description.qs.setup": "Open the QS menu to define channels and roles",
-  "command.description.qs.reset_wz_roles": "Remove all configured WZ roles from server members",
-  "command.description.qs.reset_qs_roles": "Remove this channel's QS roles from server members"
+  "command.description.qs.reset_roles": "Remove this channel's QS roles from server members after confirmation",
+  "command.description.qs.reset_channels": "Clean all configured QS channels after confirmation"
 }
