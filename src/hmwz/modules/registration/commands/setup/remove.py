@@ -12,7 +12,7 @@ from hmwz.interactions import (
     safe_edit_original_response,
     send_temporary_response,
 )
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 _logger = logging.getLogger(__name__)

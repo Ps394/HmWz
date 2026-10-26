@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 import discord
@@ -14,7 +14,8 @@ from hmwz.modules.basic_module import BasicModule
 from hmwz.modules.registry import register
 
 from .overview import DonationOverview
-from .repository import DonationRepository, DonationType
+from .models import DonationType
+from .repositories import DonationRepository
 from hmwz.modules.snapshots import Snapshot
 from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
 from .rush_pricing import (
@@ -225,7 +226,7 @@ class DonationModule(BasicModule):
             configuration = await self.donations.get_channel(
                 guild=self.guild, channel_id=channel_id
             )
-            now = datetime.now(timezone.utc)
+            now = discord.utils.utcnow()
             if configuration is None or configuration.rush_start_at is None:
                 await _send_temporary_response(
                     interaction, t(interaction, "donation.error.rush_closed")
@@ -405,7 +406,7 @@ class DonationModule(BasicModule):
             channel_id=channel_id,
             cycle=configuration.current_cycle,
         )
-        now = datetime.now(timezone.utc)
+        now = discord.utils.utcnow()
         if (
             summary is None
             or duration_hours
@@ -573,7 +574,7 @@ class DonationModule(BasicModule):
         )
         if summary is None:
             return False
-        now = datetime.now(timezone.utc)
+        now = discord.utils.utcnow()
         rush_prices = (
             rush_donation_prices(
                 started_at=configuration.rush_start_at,
@@ -676,7 +677,7 @@ class DonationModule(BasicModule):
     async def _maintenance_loop(self) -> None:
         while True:
             try:
-                now = datetime.now(timezone.utc)
+                now = discord.utils.utcnow()
                 for channel_id in await self.donations.get_channels(guild=self.guild):
                     configuration = await self.donations.get_channel(
                         guild=self.guild, channel_id=channel_id

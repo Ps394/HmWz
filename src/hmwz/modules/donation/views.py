@@ -12,10 +12,10 @@ from hmwz.interactions import (
     send_temporary_followup,
     send_temporary_response as _send_temporary_response,
 )
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui import EphemeralView
 
 from .overview import DonationOverview
-from .repository import DEFAULT_DONATION_CHOICES, DonationType
+from .models import DEFAULT_DONATION_CHOICES, DonationType
 from .rush_pricing import RUSH_BUTTON_DURATIONS_HOURS
 from .validation import parse_amount
 

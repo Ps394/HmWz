@@ -13,16 +13,14 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 - QS-Anmeldungen auf derselben Registrierungsbasis wie WZ, mit bis zu vier
   nicht permanenten Rollen.
 - Kanalbezogene QS-Übersichten; ein Reset benötigt eine ausdrückliche Bestätigung.
-- Kanalbezogene Queues in drei Modi: stufenlos, mit getrennten Stufen und mit
-  benannten Staffeln samt Zielzähler.
-- Min/Max-Run-Größe; Runs starten automatisch bei Max. In Stufenqueues kann ab
-  Min ein einstimmiger Frühstart abgestimmt werden.
-- Interaktiver Queue-Setup-Dialog mit anpassbarem Übersichtstitel/-text,
-  Run-Größe und einem Einstellungsmenü für die ausgewählte Queue-Art.
-- Private Run-Threads, eine einmalige Run-Information mit optionalem Ping und
-  zeitgesteuerte Abschlussbestätigung ohne Erinnerungsfunktion.
-- Nummerierte Stufen und nach Stunden von 00:00 bis 23:00 benannte Staffeln;
-  Staffel-Ziellimit und -Beschriftung gelten einheitlich für alle Staffeln.
+- Kanalbezogene QS-Phasenqueues mit 24-stündigen Eruptionen und 3 bis 6
+  konfigurierbaren Phasen.
+- Höchstens 40 verschiedene Teilnehmende pro Eruption; eine Person kann sich
+  für mehrere Phasen anmelden und pro Eruption nur eine Basiszerstörung bestätigen.
+- Private Phasenthreads mit nummerierten Anmeldelisten, hervorgehobenen ersten
+  acht Plätzen, separat konfigurierter QS-Rolle und Bestätigungsübersicht.
+- IANA-Zeitzonen für lokale Phasenstarts; nicht existierende und mehrdeutige
+  Ortszeiten sowie überlappende Phasen werden abgewiesen.
 - Interaktive Anmeldung und Abmeldung über Schaltflächen in der jeweiligen Übersicht.
 - Verknüpfung mehrerer Ingame-Accounts mit einem Discord-Mitglied sowie
   accountbezogene An- und Abmeldung (einschließlich ALT-Anmeldungen).
@@ -62,49 +60,43 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 
 Registrierungen und deren Einrichtung werden über die gemeinsamen Befehle unter `/registration` verwaltet. Verknüpfte Ingame-Accounts liegen unabhängig davon unter `/account`.
 
-Queues werden pro Textkanal mit `/queue setup` eingerichtet und können
-auch bei Teilnehmenden oder laufenden Runs neu konfiguriert werden. Das
-Auswahlmenü für den Queue-Typ bleibt während des gesamten Setups verfügbar.
-Gemeinsam konfigurierbar sind Titel, Übersichtstext und der optionale Ping beim
-Start eines Runs. Ein Queue-Typwechsel muss bestätigt werden; er entfernt die
-bisherigen Modus-Einstellungen, Teilnahmen, laufenden Runs und zugehörigen
-Threads, behält aber die gemeinsamen Queue-Einstellungen. Für **Stufenlos**
-und **Stufen** lassen sich Min/Max festlegen
-(`1 ≤ Min ≤ Max ≤ 100`); Runs starten automatisch bei Max. Ab Min können die
-Wartenden einer Stufe einstimmig für einen sofortigen Start abstimmen. Bei
-**Stufen** werden Anzahl und Text-Prefix festgelegt. Jede Stufe hat einen
-eigenen Pool; in der Teilnehmenden-Übersicht erscheinen nur belegte Stufen.
-Die An-/Abmelde-Schaltflächen bleiben für alle Stufen verfügbar und zeigen
-ausschließlich Prefix und Stufennummer. Erneutes Drücken meldet ab,
-während die Auswahl einer anderen Stufe die Anmeldung in diesen Pool wechselt.
-Für **Staffeln** werden bis zu sechs Stunden zwischen `00:00` und `23:00`, ein
-gemeinsamer Start-Kalendertag samt IANA-Zeitzone und eine Dauer von 12, 24, 36,
-48, 60 oder 72 Stunden festgelegt. Aufgaben werden als Name und jeweiliges
-Abschlusslimit konfiguriert. Jede Staffel hat eine eigene Schaltfläche, die
-ausschließlich die Uhrzeit zeigt, sowie einen privaten Thread mit
-Teilnehmendenzugriff. Nur Staffeln mit Teilnehmenden erscheinen in der
-Teilnehmenden-Übersicht. Ein Mitglied kann gleichzeitig in mehreren Staffeln
-aktiv sein; die jeweilige Schaltfläche erteilt beziehungsweise entzieht den
-Thread-Zugriff. Anmeldung und Thread-Zugriff sind vor dem Start möglich. Erst ab
-dem jeweiligen Staffelstart werden die Teilnehmenden benachrichtigt und
-Aufgabenbestätigungen freigeschaltet. Im Thread und im Queue-Kanal wird der
-Fortschritt je Aufgabe angezeigt. Ein Mitglied kann pro Queue genau eine Aufgabe
-bestätigen, auch wenn es in mehreren Staffel-Threads teilnimmt. Das jeweilige
-Limit verhindert weitere Bestätigungen für eine volle Aufgabe; nach Erreichen
-aller Aufgabenlimits oder Ablauf der Dauer wird die Staffelqueue abgeschlossen.
-Wird ein neuer Staffelstart (Datum, Zeitzone oder Staffelstunden) gespeichert,
-werden Teilnahmen, Bestätigungen und Thread-Inhalte bereinigt und die Zähler
-zurückgesetzt.
-In stufenlosen Queues schaltet dieselbe An-/Abmelde-Schaltfläche die Teilnahme
-um. `/queue reset` setzt nach
-Bestätigung alle Staffel-Zähler zurück, löscht Teilnahmen und Ziele und
-bereinigt Bot-Nachrichten im Queue-Kanal und in den Staffel-Threads. Die
-Staffel-Threads selbst bleiben erhalten. `/queue remove` entfernt die
-Queue im aktuellen Kanal einschließlich wartender Teilnahmen und des
-gespeicherten Queue-Verlaufs; aktive Runs müssen vorher abgeschlossen sein. Der
-Bot benötigt das Erstellen privater Threads, das Verwalten von Threads und das
-Senden von Nachrichten darin. Für den Reset benötigt er außerdem die
-Berechtigung **Manage Messages**, um die Staffel-Thread-Inhalte zu leeren.
+QS-Phasenqueues werden pro Textkanal mit `/queue setup` eingerichtet. Das Setup
+konfiguriert eine QS-Rolle, den Titel und die Beschreibung der Gesamtübersicht,
+ein lokales Startdatum und eine Startuhrzeit mit IANA-Zeitzone sowie 3 bis 6 Phasen. Jede Phase startet
+zu einer vollen Stunde zwischen `00:00` und `23:00` und dauert 1 bis 3 Stunden.
+Phasen dürfen sich nicht überlappen; Starts in DST-Lücken oder doppelte lokale
+Uhrzeiten bei der Herbstumstellung werden abgewiesen. Die Eruption beginnt zum gewählten lokalen Zeitpunkt und dauert exakt 24 Stunden.
+
+In jeder Eruption können höchstens 40 unterschiedliche Personen teilnehmen.
+Eine Person darf sich für mehrere Phasen anmelden; die Anmeldung vergibt die
+konfigurierte QS-Rolle und gibt Zugriff auf den jeweiligen privaten
+Phasenthread. Beim Abmelden aus der letzten Phase dieser Eruption entfernt der
+Bot die QS-Rolle nur, wenn er sie bei der Anmeldung selbst vergeben hatte. Die
+nummerierte Thread-Liste ist chronologisch sortiert und hebt die ersten acht
+Plätze optisch hervor; weitere Anmeldungen bleiben möglich, solange die
+Eruptionsgrenze von 40 Personen nicht erreicht ist.
+
+Im aktiven Phasenthread können angemeldete Personen eine Basiszerstörung über
+ein Modal bestätigen. Der konfigurierbare Modaltext wird angezeigt. Pro Person
+und Eruption wird die Bestätigung datenbankseitig nur einmal angenommen, auch
+wenn die Person mehreren Phasen angehört. Die Gesamtübersicht zeigt die
+Teilnehmendenzahl und Phasen; eine separate Übersicht zählt bestätigte
+Zerstörungen und offene Zerstörungen anhand der tatsächlich angemeldeten
+Personen, nicht anhand der Obergrenze 40. Der Bot pingt die QS-Rolle nicht
+automatisch. Ein Moderator kann einen abgeschlossenen Lauf mit `/queue reset`
+bestätigt bereinigen und dabei den nächsten lokalen Start festlegen. Der Reset
+entfernt nur gespeicherte Queue-Übersichtsnachrichten und die referenzierten
+Phasenthreads; die Queue-Grundkonfiguration bleibt erhalten. Optional kann die
+konfigurierte QS-Rolle dabei von Teilnehmenden entfernt werden. Drei getrennte,
+standardmäßig deaktivierte Erinnerungen können für Eruptionsstart, Eruptionsende
+und Phasenstart eingestellt werden; ihre Zustellung bleibt über Bot-Neustarts
+gespeichert und Erwähnungen sind jeweils auf die QS-Rolle beziehungsweise
+Phasenteilnehmenden begrenzt. `/queue remove` entfernt nur die aktuelle Queue-Konfiguration;
+gespeicherte Eruptionen, Anmeldungen und Bestätigungen bleiben erhalten.
+Historische Einstellungen der früheren Queue-Modi bleiben als Legacy-Daten in
+der Datenbank erhalten und werden nicht mehr ausgeführt oder in QS-Phasen
+umgedeutet. Der Bot benötigt das Erstellen privater Threads, das Verwalten von
+Threads sowie **Manage Roles** mit passender Rollenposition.
 
 ### Spendenübersichten
 
@@ -310,6 +302,12 @@ src/
         i18n/                   Übersetzungen der Anmeldungsfunktion
         models/                 Allgemeine Registrierungsmodelle
         repositories/           Gemeinsamer Registrierungsdatenzugriff
+      donation/                 Spendenübersichten und persistente Spenden
+        models/                 Fachliche Spenden- und Kanalwerte
+        repositories/           SQLite-Persistenz der Spenden
+      queue/                    QS-Eruptionen und Phasenqueues
+        models/                 Eruptions- und Phasenmodelle
+        repositories/           SQLite-Persistenz der QS-Phasenqueues
       hs/
         account/                Guildweite Account-Verwaltung
         qs/                     QS-spezifische Funktionen und Commands
@@ -318,6 +316,7 @@ src/
         wz/                     WZ-Kanalverwaltung und Commands
           repositories/         WZ-Konfiguration und Bereinigungskanäle
     hm_models/                  gemeinsame Daten- und Embed-Modelle
+    ui/                         gemeinsame Discord-UI-Komponenten
     i18n/                       gemeinsame Übersetzungen
     configuration.py            Laden der Laufzeitkonfiguration
     sqlite_db.py                asynchroner SQLite-Zugriff

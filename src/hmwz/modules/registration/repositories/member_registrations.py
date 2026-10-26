@@ -297,10 +297,9 @@ class MemberRegistrationRepository(sqlite_db.Base):
         roles: list[int] | None = None,
         channel_id: int | None = None,
     ) -> int:
+        if role is not None and roles:
+            raise ValueError("Cannot provide both role and roles filters.")
         try:
-            if role is not None and roles:
-                raise ValueError("Cannot provide both role and roles filters.")
-
             query = f"SELECT COUNT(*) FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: list[typing.Any] = [guild.id]
             if channel_id is not None:
@@ -333,14 +332,13 @@ class MemberRegistrationRepository(sqlite_db.Base):
         roles: list[int] | None = None,
         channel_id: int | None = None,
     ) -> Records:
+        if member is not None and (role is not None or roles):
+            raise ValueError("Cannot combine member with role or roles filters.")
+        if account is not None and (member is None or role is not None or roles):
+            raise ValueError("Account filters require a member filter only.")
+        if role is not None and roles:
+            raise ValueError("Cannot provide both role and roles filters.")
         try:
-            if member is not None and (role is not None or roles):
-                raise ValueError("Cannot combine member with role or roles filters.")
-            if account is not None and (member is None or role is not None or roles):
-                raise ValueError("Account filters require a member filter only.")
-            if role is not None and roles:
-                raise ValueError("Cannot provide both role and roles filters.")
-
             query = f"SELECT * FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: list[typing.Any] = [guild.id]
             if channel_id is not None:
@@ -451,14 +449,13 @@ class MemberRegistrationRepository(sqlite_db.Base):
         channel_id: int | None = None,
     ) -> bool:
         target = "registrations"
+        if member is not None and (role is not None or roles):
+            raise ValueError("Cannot combine member with role or roles filters.")
+        if account is not None and (member is None or role is not None or roles):
+            raise ValueError("Account filters require a member filter only.")
+        if role is not None and roles:
+            raise ValueError("Cannot provide both role and roles filters.")
         try:
-            if member is not None and (role is not None or roles):
-                raise ValueError("Cannot combine member with role or roles filters.")
-            if account is not None and (member is None or role is not None or roles):
-                raise ValueError("Account filters require a member filter only.")
-            if role is not None and roles:
-                raise ValueError("Cannot provide both role and roles filters.")
-
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: list[typing.Any] = [guild.id]
             if channel_id is not None:

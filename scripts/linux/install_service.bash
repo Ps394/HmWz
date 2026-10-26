@@ -51,10 +51,10 @@ Wants=network-online.target
 Type=simple
 User=$service_user
 Group=$service_group
-EnvironmentFile=-$(systemd_quote "$TOKEN_FILE")
-Environment=HOME=$(systemd_quote "$service_home")
-WorkingDirectory=$(systemd_quote "$PROJECT_DIR")
-ExecStart=$(systemd_quote "$python_path") $(systemd_quote "$entry_path")
+EnvironmentFile=-$(systemd_quote $TOKEN_FILE)
+Environment=HOME=$(systemd_quote $service_home)
+WorkingDirectory=$(systemd_quote $PROJECT_DIR)
+ExecStart=$(systemd_quote $python_path) $(systemd_quote $entry_path)
 Restart=on-failure
 RestartSec=5
 

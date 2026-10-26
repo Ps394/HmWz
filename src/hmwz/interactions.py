@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, cast
+from typing import Any, cast, Callable
 
 import discord
 
@@ -117,7 +117,7 @@ async def safe_delete_message(
     """Delete a message, treating an already-deleted message as a successful no-op."""
     if message is None:
         return True
-    delete = getattr(message, "delete", None)
+    delete : Callable | None = getattr(message, "delete", None)
     if not callable(delete):
         _logger.debug("Skipped deletion for an unavailable message object.")
         return False

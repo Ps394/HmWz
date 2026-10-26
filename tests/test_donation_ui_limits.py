@@ -3,7 +3,7 @@ from typing import cast
 
 import pytest
 
-from hmwz.modules.donation.repository import DonationType
+from hmwz.modules.donation.models import DonationType
 from hmwz.modules.donation.views import (
     MAX_DONATION_BUTTONS,
     DonationAmountChoiceView,

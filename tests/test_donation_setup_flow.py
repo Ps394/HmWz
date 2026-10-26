@@ -10,7 +10,7 @@ import pytest
 from hmwz.modules.donation.commands import DonationGroup
 from hmwz.modules.donation.commands.reset import reset as donation_reset
 from hmwz.modules.donation.module import DonationModule
-from hmwz.modules.donation.repository import DonationType
+from hmwz.modules.donation.models import DEFAULT_DONATION_CHOICES, DonationType
 from hmwz.modules.donation.views import (
     DonationAmountOptionButton,
     DonationAmountChoiceView,
@@ -37,7 +37,6 @@ from hmwz.modules.donation.rush_pricing import (
     RUSH_DURATIONS_HOURS,
     RUSH_PERIOD_DURATION,
 )
-from hmwz.modules.donation.repository import DEFAULT_DONATION_CHOICES
 
 
 def test_donation_setup_is_a_direct_command() -> None:

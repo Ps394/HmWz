@@ -7,7 +7,7 @@ import discord
 
 from hmwz.i18n import t
 
-from .repository import (
+from .models import (
     DonationChannel,
     DonationRank,
     DonationRecord,

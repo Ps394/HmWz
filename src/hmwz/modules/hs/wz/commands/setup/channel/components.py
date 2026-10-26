@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui import EphemeralView
 
 if TYPE_CHECKING:
     from .selection import PurgeChannelSelection

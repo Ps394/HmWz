@@ -6,7 +6,7 @@ import discord
 
 from hmwz import utils
 from hmwz.i18n import t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui import EphemeralView
 
 from ....module import WzRegistrationModule
 from .channels import PurgeAction, get_selectable_channels

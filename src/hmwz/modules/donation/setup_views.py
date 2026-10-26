@@ -13,7 +13,7 @@ from hmwz.interactions import (
     send_temporary_response as _send_temporary_response,
 )
 
-from .repository import (
+from .models import (
     DEFAULT_DONATION_CHOICES,
     DonationChannel,
     DonationKind,
@@ -243,7 +243,7 @@ class DonationSetupKindSelect(discord.ui.Select):
             else None
         )
         if kind == "time_reduction" and rush_start_at is None:
-            rush_start_at = datetime.now(UTC)
+            rush_start_at = discord.utils.utcnow()
         return DonationSetupDraft(
             module=self.module,
             channel_id=self.channel_id,
