@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz import sqlite_db, utils
+from hmwz.interactions import safe_edit_message
 
 from . import Snapshot
 
@@ -66,7 +67,11 @@ class DiscordJsonSnapshotExporter:
             if existing_message is None:
                 message = await channel.send(file=file)
             else:
-                message = await existing_message.edit(attachments=[file])
+                message = await safe_edit_message(
+                    existing_message, attachments=[file]
+                )
+                if message is None:
+                    message = await channel.send(file=file)
             if self._is_startup_snapshot(snapshot):
                 if self.snapshot_messages is None:
                     return True

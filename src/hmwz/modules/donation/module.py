@@ -8,6 +8,7 @@ from decimal import Decimal
 import discord
 
 from hmwz import events, sqlite_db
+from hmwz.interactions import send_temporary_response as _send_temporary_response
 from hmwz.i18n import t
 from hmwz.modules.basic_module import BasicModule
 from hmwz.modules.registry import register
@@ -24,6 +25,7 @@ from .rush_pricing import (
     rush_donation_prices,
 )
 from .views import (
+    MAX_DONATION_BUTTONS,
     DonationAmountModal,
     DonationAmountChoiceView,
     DonationOverviewView,
@@ -32,15 +34,6 @@ from .views import (
 )
 
 _logger = logging.getLogger(__name__)
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
 
 
 @register
@@ -309,7 +302,11 @@ class DonationModule(BasicModule):
                 interaction, t(interaction, "donation.error.invalid_type")
             )
             return
-        if donation_type.input_mode == "choice" and donation_type.choices:
+        if (
+            donation_type.input_mode == "choice"
+            and donation_type.choices
+            and len(donation_type.choices) <= MAX_DONATION_BUTTONS
+        ):
             await interaction.response.send_message(
                 t(interaction, "donation.setup.amount_donation_prompt"),
                 view=DonationAmountChoiceView(self, channel_id, donation_type),

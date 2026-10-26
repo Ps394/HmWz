@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
+from hmwz.interactions import (
+    safe_delete_original_response,
+    send_temporary_followup,
+    send_temporary_response as _send_temporary_response,
+)
 from hmwz.modules.hs.ephemeral_view import EphemeralView
 
 from .overview import DonationOverview
@@ -14,17 +19,10 @@ from .repository import DEFAULT_DONATION_CHOICES, DonationType
 from .rush_pricing import RUSH_BUTTON_DURATIONS_HOURS
 from .validation import parse_amount
 
+MAX_DONATION_BUTTONS = 25
+
 if TYPE_CHECKING:
     from .module import DonationModule
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
 
 
 class DonationRecordButton(discord.ui.Button):
@@ -80,7 +78,7 @@ class DonationAmountOptionButton(discord.ui.Button):
             time_reduction=None,
         )
         if self.dismiss_prompt:
-            await interaction.delete_original_response()
+            await safe_delete_original_response(interaction)
         result_key = (
             "donation.error.save"
             if not saved
@@ -90,10 +88,7 @@ class DonationAmountOptionButton(discord.ui.Button):
                 else "donation.success.saved_overview_failed"
             )
         )
-        result = await interaction.followup.send(
-            t(interaction, result_key), ephemeral=True, wait=True
-        )
-        await result.delete(delay=5)
+        await send_temporary_followup(interaction, t(interaction, result_key))
 
 
 class DonationAmountChoiceView(discord.ui.View):
@@ -109,6 +104,9 @@ class DonationAmountChoiceView(discord.ui.View):
     ) -> None:
         super().__init__(timeout=timeout)
         choices = donation_type.choices or DEFAULT_DONATION_CHOICES
+        if len(choices) > MAX_DONATION_BUTTONS:
+            self.add_item(DonationRecordButton(module, channel_id))
+            return
         for index, choice in enumerate(choices):
             self.add_item(
                 DonationAmountOptionButton(
@@ -197,17 +195,24 @@ class DonationOverviewView(discord.ui.View):
                         self.rush_prices[int(reduction.removesuffix("h"))],
                     )
                 )
-        elif donation_type.input_mode == "choice" and donation_type.choices:
-            for index, choice in enumerate(donation_type.choices):
-                self.add_item(
-                    DonationAmountOptionButton(
-                        module,
-                        channel_id,
-                        donation_type,
-                        Decimal(choice),
-                        index,
+        el        if (
+            donation_type.input_mode == "choice"
+            and donation_type.choices
+            and len(donation_type.choices) <= MAX_DONATION_BUTTONS
+        ):
+            if len(donation_type.choices) > MAX_DONATION_BUTTONS:
+                self.add_item(DonationRecordButton(module, channel_id))
+            else:
+                for index, choice in enumerate(donation_type.choices):
+                    self.add_item(
+                        DonationAmountOptionButton(
+                            module,
+                            channel_id,
+                            donation_type,
+                            Decimal(choice),
+                            index,
+                        )
                     )
-                )
         else:
             self.add_item(DonationRecordButton(module, channel_id))
 
@@ -308,11 +313,8 @@ class DonationRushConfirmationView(EphemeralView):
             )
         )
         self.stop()
-        await interaction.delete_original_response()
-        result_message = await interaction.followup.send(
-            t(interaction, result_key), ephemeral=True, wait=True
-        )
-        await result_message.delete(delay=5)
+        await safe_delete_original_response(interaction)
+        await send_temporary_followup(interaction, t(interaction, result_key))
 
     @discord.ui.button(
         label="Cancel",
@@ -324,7 +326,7 @@ class DonationRushConfirmationView(EphemeralView):
     ) -> None:
         self.stop()
         await interaction.response.defer()
-        await interaction.delete_original_response()
+        await safe_delete_original_response(interaction)
 
 
 class DonationDeleteConfirmationView(EphemeralView):
@@ -371,15 +373,13 @@ class DonationDeleteConfirmationView(EphemeralView):
         removed = await self.module.delete_channel(self.channel_id)
         self.stop()
         await interaction.delete_original_response()
-        result = await interaction.followup.send(
+        await send_temporary_followup(
+            interaction,
             t(
                 interaction,
                 "donation.delete.complete" if removed else "donation.error.delete",
             ),
-            ephemeral=True,
-            wait=True,
         )
-        await result.delete(delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -391,7 +391,7 @@ class DonationDeleteConfirmationView(EphemeralView):
     ) -> None:
         self.stop()
         await interaction.response.defer(ephemeral=True)
-        await interaction.delete_original_response()
+        await safe_delete_original_response(interaction)
 
 
 class DonationAmountModal(discord.ui.Modal):
@@ -481,12 +481,9 @@ class DonationAmountModal(discord.ui.Modal):
             amount,
             time_reduction=self.time_reduction,
         )
-        result = await interaction.followup.send(
-            t(interaction, self._result_key(saved, messages_updated)),
-            ephemeral=True,
-            wait=True,
+        await send_temporary_followup(
+            interaction, t(interaction, self._result_key(saved, messages_updated))
         )
-        await result.delete(delay=5)
 
     @staticmethod
     def _result_key(saved: bool, messages_updated: bool) -> str:
