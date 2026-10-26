@@ -42,9 +42,7 @@ def _serialize_csv(rows: Iterable[Sequence[str | int]]) -> str:
 )
 @app_commands.checks.cooldown(1, 60, key=lambda i: i.guild_id)
 async def csv(interaction: Interaction, ephemeral: bool = True):
-    if not await defer_interaction(
-        interaction, ephemeral=ephemeral, thinking=True
-    ):
+    if not await defer_interaction(interaction, ephemeral=ephemeral, thinking=True):
         return
     try:
         if not interaction.guild:
