@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
+from hmwz.ui import EphemeralView
 
 if TYPE_CHECKING:
     from .module import QueueModule
@@ -12,19 +13,29 @@ if TYPE_CHECKING:
 
 class QueueOverviewView(discord.ui.View):
     def __init__(
-        self, module: QueueModule, eruption_id: int, phases: tuple[tuple[int, int], ...]
+        self,
+        module: QueueModule,
+        eruption_id: int,
+        phases: tuple[tuple[int, int, str], ...],
     ) -> None:
         super().__init__(timeout=None)
-        for phase_id, index in phases:
-            self.add_item(PhaseSignupButton(module, eruption_id, phase_id, index))
+        for phase_id, index, label in phases:
+            self.add_item(
+                PhaseSignupButton(module, eruption_id, phase_id, index, label)
+            )
 
 
 class PhaseSignupButton(discord.ui.Button):
     def __init__(
-        self, module: QueueModule, eruption_id: int, phase_id: int, index: int
+        self,
+        module: QueueModule,
+        eruption_id: int,
+        phase_id: int,
+        index: int,
+        phase_label: str,
     ) -> None:
         super().__init__(
-            label=t(module.guild, "queue.phase.signup", index=index),
+            label=f"📝 {phase_label}"[:80],
             style=discord.ButtonStyle.primary,
             custom_id=f"qsphase:signup:{eruption_id}:{phase_id}",
             row=(index - 1) // 5,
@@ -88,33 +99,33 @@ class BaseDestructionButton(discord.ui.Button):
         )
 
 
-class BaseDestructionModal(discord.ui.Modal):
+class BaseDestructionConfirmationView(EphemeralView):
     def __init__(
         self,
         module: QueueModule,
         eruption_id: int,
         phase_id: int,
-        prompt: str,
     ) -> None:
-        super().__init__(
-            title=t(module.guild, "queue.destruction.modal_title"),
-            timeout=300,
-        )
+        super().__init__(timeout=300)
         self.module = module
         self.eruption_id = eruption_id
         self.phase_id = phase_id
-        self.details: discord.ui.TextInput = discord.ui.TextInput(
-            label=prompt[:45],
-            required=False,
-            max_length=500,
-            style=discord.TextStyle.short,
-        )
-        self.add_item(self.details)
+        self.add_item(BaseDestructionConfirmButton(self))
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        await self.module.confirm_destruction(
+
+class BaseDestructionConfirmButton(discord.ui.Button):
+    def __init__(self, view: BaseDestructionConfirmationView) -> None:
+        super().__init__(
+            label=t(view.module.guild, "queue.destruction.confirm"),
+            style=discord.ButtonStyle.success,
+            custom_id=f"qsphase:destroy:confirm:{view.eruption_id}:{view.phase_id}",
+        )
+        self.confirmation = view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await self.confirmation.module.confirm_destruction(
             interaction,
-            self.eruption_id,
-            self.phase_id,
-            self.details.value,
+            self.confirmation.eruption_id,
+            self.confirmation.phase_id,
+            "",
         )

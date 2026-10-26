@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
@@ -11,7 +11,8 @@ from hmwz.ui import EphemeralView
 
 from .module import QueueModule
 from .models import QueueConfiguration
-from .rules import phase_schedule
+from .rules import local_datetime_timestamp, phase_schedule
+from .schedule_picker import SchedulePickerView
 
 
 @dataclass(slots=True)
@@ -87,6 +88,7 @@ class QueueSetupView(EphemeralView):
         self.add_item(QueueSetupButton(self, "details"))
         self.add_item(QueueSetupButton(self, "prompt"))
         self.add_item(QueueSetupButton(self, "reminders"))
+        self.add_item(QueueSetupButton(self, "schedule"))
         self.add_item(QueueSetupButton(self, "save"))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -124,12 +126,14 @@ class QueueSetupButton(discord.ui.Button):
             "details": "queue.wizard.edit_details",
             "prompt": "queue.wizard.edit_prompt",
             "reminders": "queue.wizard.edit_reminders",
+            "schedule": "queue.wizard.edit_schedule",
             "save": "queue.wizard.save",
         }
         styles = {
             "details": discord.ButtonStyle.secondary,
             "prompt": discord.ButtonStyle.secondary,
             "reminders": discord.ButtonStyle.secondary,
+            "schedule": discord.ButtonStyle.secondary,
             "save": discord.ButtonStyle.success,
         }
         super().__init__(
@@ -149,6 +153,23 @@ class QueueSetupButton(discord.ui.Button):
             await interaction.response.send_modal(QueuePromptModal(draft))
         elif self.action == "reminders":
             await interaction.response.send_modal(QueueReminderModal(draft))
+        elif self.action == "schedule":
+
+            async def update_setup(
+                picker_interaction: discord.Interaction,
+            ) -> None:
+                if interaction.message is not None:
+                    await interaction.message.edit(
+                        content=setup_content(draft, picker_interaction),
+                        view=self.setup_view,
+                    )
+
+            picker = SchedulePickerView(draft, on_done=update_setup)
+            await interaction.response.send_message(
+                content=picker.summary(interaction),
+                view=picker,
+                ephemeral=True,
+            )
         else:
             await _save_setup(interaction, draft, self.setup_view)
 
@@ -173,18 +194,6 @@ class QueueDetailsModal(discord.ui.Modal):
             required=False,
             style=discord.TextStyle.paragraph,
         )
-        self.date_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "queue.wizard.date_label"),
-            default=f"{draft.start_date} {draft.start_time}",
-            max_length=16,
-            required=True,
-        )
-        self.timezone_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "queue.wizard.timezone_label"),
-            default=draft.timezone_name,
-            max_length=64,
-            required=True,
-        )
         self.phases_input: discord.ui.TextInput = discord.ui.TextInput(
             label=t(draft.module.guild, "queue.wizard.phases_label"),
             default="\n".join(
@@ -197,8 +206,6 @@ class QueueDetailsModal(discord.ui.Modal):
         for item in (
             self.title_input,
             self.description_input,
-            self.date_input,
-            self.timezone_input,
             self.phases_input,
         ):
             self.add_item(item)
@@ -216,12 +223,10 @@ class QueueDetailsModal(discord.ui.Modal):
             )
             return
         schedule = phase_schedule(
-            self.date_input.value.strip().split(" ", 1)[0],
-            self.timezone_input.value.strip(),
+            self.draft.start_date,
+            self.draft.timezone_name,
             tuple(parsed_phases),
-            self.date_input.value.strip().split(" ", 1)[1]
-            if " " in self.date_input.value.strip()
-            else "",
+            self.draft.start_time,
         )
         if schedule is None:
             await interaction.response.send_message(
@@ -229,18 +234,8 @@ class QueueDetailsModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
-        if schedule[0] <= discord.utils.utcnow().timestamp():
-            await interaction.response.send_message(
-                t(interaction, "queue.error.start_in_past"),
-                ephemeral=True,
-            )
-            return
         self.draft.title = self.title_input.value.strip()
         self.draft.description = self.description_input.value.strip()
-        self.draft.start_date, self.draft.start_time = (
-            self.date_input.value.strip().split(" ", 1)
-        )
-        self.draft.timezone_name = self.timezone_input.value.strip()
         self.draft.phase_hours = tuple(parsed_phases)
         await interaction.response.send_message(
             t(interaction, "queue.wizard.details_updated"),
@@ -353,6 +348,22 @@ def setup_content(
         else t(interaction, "queue.wizard.role_missing")
     )
     phases = ", ".join(f"{hour} ({duration} h)" for hour, duration in draft.phase_hours)
+    try:
+        start_timestamp = local_datetime_timestamp(
+            date.fromisoformat(draft.start_date),
+            datetime.strptime(draft.start_time, "%H:%M").time(),
+            draft.timezone_name,
+        )
+    except ValueError:
+        start_timestamp = None
+    discord_start = (
+        discord.utils.format_dt(
+            datetime.fromtimestamp(start_timestamp, timezone.utc),
+            style="F",
+        )
+        if start_timestamp is not None
+        else t(interaction, "queue.schedule.invalid_local_time")
+    )
     start, start_minutes, end, end_minutes, phase, phase_minutes = (
         draft.reminder_settings
     )
@@ -364,6 +375,7 @@ def setup_content(
         date=draft.start_date,
         time=draft.start_time,
         timezone=draft.timezone_name,
+        discord_time=discord_start,
         phases=phases,
         prompt=draft.modal_prompt,
         remove_role="on" if draft.remove_role_on_reset else "off",

@@ -1,5 +1,7 @@
 from .queue import (
     BaseDestruction,
+    QueueCleanupItem,
+    QueueCleanupJob,
     Eruption,
     PhaseParticipant,
     QueueConfiguration,
@@ -9,6 +11,8 @@ from .queue import (
 
 __all__ = [
     "BaseDestruction",
+    "QueueCleanupItem",
+    "QueueCleanupJob",
     "Eruption",
     "PhaseParticipant",
     "QueueConfiguration",

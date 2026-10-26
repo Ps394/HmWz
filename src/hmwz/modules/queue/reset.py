@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,9 @@ from hmwz.ui import EphemeralView
 
 from .models import Eruption, QueueConfiguration
 from .rules import phase_schedule
+from .schedule_picker import SchedulePickerView
+
+_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .module import QueueModule
@@ -23,9 +27,26 @@ class QueueResetDraft:
     configuration: QueueConfiguration
     eruption: Eruption
     owner_id: int
+    start_date: str = ""
+    start_time: str = "00:00"
+    timezone_name: str = ""
     starts_at: float | None = None
     ends_at: float | None = None
     phases: tuple[tuple[float, float], ...] = ()
+
+    def __post_init__(self) -> None:
+        self.timezone_name = self.configuration.timezone
+        if self.configuration.next_start_at is not None:
+            local = datetime.fromtimestamp(
+                self.configuration.next_start_at, timezone.utc
+            ).astimezone(ZoneInfo(self.timezone_name))
+            self.start_date = local.date().isoformat()
+            self.start_time = local.strftime("%H:%M")
+        else:
+            tomorrow = discord.utils.utcnow().astimezone(
+                ZoneInfo(self.timezone_name)
+            ).date() + timedelta(days=1)
+            self.start_date = tomorrow.isoformat()
 
 
 class QueueResetView(EphemeralView):
@@ -75,7 +96,60 @@ class QueueResetButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction) -> None:
         draft = self.reset_view.draft
         if self.confirm is None:
-            await interaction.response.send_modal(QueueNextStartModal(draft))
+
+            async def finish_schedule(
+                picker_interaction: discord.Interaction,
+            ) -> None:
+                try:
+                    schedule = phase_schedule(
+                        draft.start_date,
+                        draft.timezone_name,
+                        draft.configuration.phase_hours,
+                        draft.start_time,
+                    )
+                except ValueError:
+                    schedule = None
+                if schedule is None:
+                    if picker_interaction.message is not None:
+                        await picker_interaction.message.edit(
+                            content=t(
+                                picker_interaction,
+                                "queue.reset.invalid_start",
+                            ),
+                            view=SchedulePickerView(draft, on_done=finish_schedule),
+                        )
+                    return
+                draft.starts_at, draft.ends_at, draft.phases = schedule
+                local_start = datetime.fromtimestamp(
+                    draft.starts_at, timezone.utc
+                ).astimezone(ZoneInfo(draft.timezone_name))
+                if picker_interaction.message is not None:
+                    await picker_interaction.message.edit(
+                        content=t(
+                            picker_interaction,
+                            "queue.reset.confirmation",
+                            start=local_start.strftime("%Y-%m-%d %H:%M"),
+                            timezone=draft.timezone_name,
+                            discord_time=discord.utils.format_dt(
+                                datetime.fromtimestamp(draft.starts_at, timezone.utc),
+                                style="F",
+                            ),
+                            role_removal=t(
+                                picker_interaction,
+                                "queue.reset.enabled"
+                                if draft.configuration.remove_role_on_reset
+                                else "queue.reset.disabled",
+                            ),
+                        ),
+                        view=QueueResetView(draft, confirm=True),
+                    )
+
+            picker = SchedulePickerView(draft, on_done=finish_schedule)
+            await interaction.response.send_message(
+                content=picker.summary(interaction),
+                view=picker,
+                ephemeral=True,
+            )
             return
         if self.confirm is False:
             await interaction.response.edit_message(
@@ -87,74 +161,24 @@ class QueueResetButton(discord.ui.Button):
                 t(interaction, "queue.reset.invalid_start"), ephemeral=True
             )
             return
-        result = await draft.module.reset_queue(
-            draft.configuration,
-            draft.eruption,
-            draft.starts_at,
-            draft.ends_at,
-            draft.phases,
-        )
+        try:
+            result = await draft.module.reset_queue(
+                draft.configuration,
+                draft.eruption,
+                draft.starts_at,
+                draft.ends_at,
+                draft.phases,
+                draft.timezone_name,
+            )
+        except Exception:
+            _logger.exception(
+                "QS reset failed unexpectedly for guild %s, channel %s, eruption %s.",
+                draft.module.guild.id,
+                draft.configuration.channel_id,
+                draft.eruption.id,
+            )
+            result = "failed"
         await interaction.response.edit_message(
             content=t(interaction, f"queue.reset.{result}"),
             view=self.reset_view if result == "failed" else None,
-        )
-
-
-class QueueNextStartModal(discord.ui.Modal):
-    def __init__(self, draft: QueueResetDraft) -> None:
-        super().__init__(
-            title=t(draft.module.guild, "queue.reset.start_title"), timeout=300
-        )
-        self.draft = draft
-        self.start: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "queue.reset.start_label"),
-            placeholder="YYYY-MM-DD HH:MM",
-            max_length=16,
-        )
-        self.add_item(self.start)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        try:
-            date_text, time_text = self.start.value.strip().split(" ", 1)
-            schedule = phase_schedule(
-                date_text,
-                self.draft.configuration.timezone,
-                self.draft.configuration.phase_hours,
-                time_text,
-            )
-        except ValueError:
-            schedule = None
-        if schedule is None:
-            await interaction.response.send_message(
-                t(interaction, "queue.reset.invalid_start"), ephemeral=True
-            )
-            return
-        starts_at, ends_at, phases = schedule
-        if starts_at <= discord.utils.utcnow().timestamp():
-            await interaction.response.send_message(
-                t(interaction, "queue.reset.past_start"), ephemeral=True
-            )
-            return
-        self.draft.starts_at = starts_at
-        self.draft.ends_at = ends_at
-        self.draft.phases = phases
-        local = datetime.fromtimestamp(starts_at, timezone.utc).astimezone(
-            ZoneInfo(self.draft.configuration.timezone)
-        )
-        view = QueueResetView(self.draft, confirm=True)
-        await interaction.response.send_message(
-            content=t(
-                interaction,
-                "queue.reset.confirmation",
-                start=local.strftime("%Y-%m-%d %H:%M"),
-                timezone=self.draft.configuration.timezone,
-                role_removal=t(
-                    interaction,
-                    "queue.reset.enabled"
-                    if self.draft.configuration.remove_role_on_reset
-                    else "queue.reset.disabled",
-                ),
-            ),
-            view=view,
-            ephemeral=True,
         )

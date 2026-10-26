@@ -69,3 +69,23 @@ class QueueReminder:
     due_at: float
     event_at: float
     attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class QueueCleanupJob:
+    id: int
+    guild_id: int
+    channel_id: int
+    operation: str
+    status: str
+    payload: str
+
+
+@dataclass(frozen=True, slots=True)
+class QueueCleanupItem:
+    kind: str
+    parent_id: int | None
+    resource_id: int
+    status: str
+    attempts: int
+    last_error: str | None

@@ -65,7 +65,11 @@ konfiguriert eine QS-Rolle, den Titel und die Beschreibung der Gesamtübersicht,
 ein lokales Startdatum und eine Startuhrzeit mit IANA-Zeitzone sowie 3 bis 6 Phasen. Jede Phase startet
 zu einer vollen Stunde zwischen `00:00` und `23:00` und dauert 1 bis 3 Stunden.
 Phasen dürfen sich nicht überlappen; Starts in DST-Lücken oder doppelte lokale
-Uhrzeiten bei der Herbstumstellung werden abgewiesen. Die Eruption beginnt zum gewählten lokalen Zeitpunkt und dauert exakt 24 Stunden.
+Uhrzeiten bei der Herbstumstellung werden abgewiesen. Datum, Uhrzeit und
+IANA-Zeitzone werden über Discord-Auswahlen festgelegt und in der Übersicht
+zusätzlich als Discord-Zeitstempel angezeigt. Vergangene Startzeitpunkte werden
+nicht verschoben; bereits begonnene Eruptionen werden beim Botstart idempotent
+wieder aufgenommen. Die Eruption dauert exakt 24 Stunden.
 
 In jeder Eruption können höchstens 40 unterschiedliche Personen teilnehmen.
 Eine Person darf sich für mehrere Phasen anmelden; die Anmeldung vergibt die

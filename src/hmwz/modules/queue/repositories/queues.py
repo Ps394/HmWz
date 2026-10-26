@@ -14,6 +14,8 @@ from hmwz import sqlite_db
 from ..models import (
     BaseDestruction,
     Eruption,
+    QueueCleanupItem,
+    QueueCleanupJob,
     PhaseParticipant,
     QueueConfiguration,
     QueuePhase,
@@ -67,7 +69,8 @@ class QueueRepository(sqlite_db.Base):
                 StartsAt REAL NOT NULL,
                 EndsAt REAL NOT NULL,
                 TimeZone TEXT NOT NULL,
-                CreatedAt REAL NOT NULL
+                CreatedAt REAL NOT NULL,
+                CleanupJob INTEGER UNIQUE
             )
             """,
             f"""
@@ -137,6 +140,39 @@ class QueueRepository(sqlite_db.Base):
                 PRIMARY KEY (Eruption, Phase, Kind)
             ) WITHOUT ROWID
             """,
+            """
+            CREATE TABLE IF NOT EXISTS Queue_Cleanup_Jobs (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Guild INTEGER NOT NULL,
+                Channel INTEGER NOT NULL,
+                Operation TEXT NOT NULL CHECK (Operation IN ('reset', 'remove')),
+                Status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (Status IN ('pending', 'partial', 'completed')),
+                Payload TEXT NOT NULL,
+                CreatedAt REAL NOT NULL,
+                UpdatedAt REAL NOT NULL
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS UX_Queue_Cleanup_Open
+            ON Queue_Cleanup_Jobs (Guild, Channel)
+            WHERE Status IN ('pending', 'partial')
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS Queue_Cleanup_Items (
+                JobId INTEGER NOT NULL,
+                Kind TEXT NOT NULL,
+                ParentId INTEGER,
+                ResourceId INTEGER NOT NULL,
+                Status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (Status IN ('pending', 'completed')),
+                Attempts INTEGER NOT NULL DEFAULT 0,
+                LastError TEXT,
+                PRIMARY KEY (JobId, Kind, ResourceId),
+                FOREIGN KEY (JobId) REFERENCES Queue_Cleanup_Jobs(Id)
+                    ON DELETE CASCADE
+            ) WITHOUT ROWID
+            """,
         )
 
     async def ensure_schema(self) -> bool:
@@ -165,6 +201,34 @@ class QueueRepository(sqlite_db.Base):
                 f"ALTER TABLE {self.table_name} ADD COLUMN {name} {declaration}"
             ):
                 return False
+        eruption_columns = await self.database.fetch_all(
+            f'PRAGMA table_info("{self.eruptions_table}")'
+        )
+        if "CleanupJob" not in {row["name"] for row in eruption_columns}:
+            if not await self.database.execute(
+                f"ALTER TABLE {self.eruptions_table} ADD COLUMN CleanupJob INTEGER"
+            ):
+                return False
+        cleanup_columns = await self.database.fetch_all(
+            'PRAGMA table_info("Queue_Cleanup_Items")'
+        )
+        cleanup_column_names = {row["name"] for row in cleanup_columns}
+        if "ParentId" not in cleanup_column_names and not await self.database.execute(
+            "ALTER TABLE Queue_Cleanup_Items ADD COLUMN ParentId INTEGER"
+        ):
+            return False
+        if "LastError" in cleanup_column_names:
+            await self.database.execute(
+                "UPDATE Queue_Cleanup_Items SET LastError = NULL "
+                "WHERE typeof(LastError) = 'integer'"
+            )
+        if not await self.database.execute(
+            f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS UX_{self.eruptions_table}_CleanupJob
+            ON {self.eruptions_table} (CleanupJob)
+            """
+        ):
+            return False
         rows = await self.database.fetch_all(
             f'PRAGMA table_info("{self.participants_table}")'
         )
@@ -490,6 +554,19 @@ class QueueRepository(sqlite_db.Base):
         )
         return self._eruption_from_row(row) if row is not None else None
 
+    async def get_eruption_by_cleanup_job(
+        self, *, guild: discord.Guild, channel_id: int, cleanup_job_id: int
+    ) -> Eruption | None:
+        row = await self.database.fetch_one(
+            f"""
+            SELECT Id, Guild, Channel, StartsAt, EndsAt, TimeZone
+            FROM {self.eruptions_table}
+            WHERE Guild = ? AND Channel = ? AND CleanupJob = ?
+            """,
+            (guild.id, channel_id, cleanup_job_id),
+        )
+        return self._eruption_from_row(row) if row is not None else None
+
     async def update_settings_for_eruption(
         self,
         *,
@@ -553,6 +630,18 @@ class QueueRepository(sqlite_db.Base):
                     ),
                 )
                 await connection.execute(
+                    f"""
+                    UPDATE {self.eruptions_table} SET TimeZone = ?
+                    WHERE Id = ? AND Guild = ? AND Channel = ?
+                    """,
+                    (
+                        timezone_name,
+                        eruption_id,
+                        guild.id,
+                        configuration.channel_id,
+                    ),
+                )
+                await connection.execute(
                     """
                     DELETE FROM Queue_Reminders
                     WHERE Eruption = ? AND Status IN ('pending', 'skipped')
@@ -593,15 +682,395 @@ class QueueRepository(sqlite_db.Base):
         )
         return tuple(row["Member"] for row in rows)
 
+    async def get_cleanup_job(
+        self,
+        *,
+        guild: discord.Guild,
+        channel_id: int,
+        operation: str | None = None,
+        open_only: bool = True,
+    ) -> QueueCleanupJob | None:
+        clauses = ["Guild = ?", "Channel = ?"]
+        params: list[object] = [guild.id, channel_id]
+        if operation is not None:
+            clauses.append("Operation = ?")
+            params.append(operation)
+        if open_only:
+            clauses.append("Status IN ('pending', 'partial')")
+        row = await self.database.fetch_one(
+            "SELECT Id, Guild, Channel, Operation, Status, Payload "
+            "FROM Queue_Cleanup_Jobs WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY Id DESC LIMIT 1",
+            tuple(params),
+        )
+        return (
+            QueueCleanupJob(
+                id=row["Id"],
+                guild_id=row["Guild"],
+                channel_id=row["Channel"],
+                operation=row["Operation"],
+                status=row["Status"],
+                payload=row["Payload"],
+            )
+            if row is not None
+            else None
+        )
+
+    async def get_open_cleanup_jobs(
+        self, *, guild: discord.Guild
+    ) -> tuple[QueueCleanupJob, ...]:
+        rows = await self.database.fetch_all(
+            """
+            SELECT Id, Guild, Channel, Operation, Status, Payload
+            FROM Queue_Cleanup_Jobs
+            WHERE Guild = ? AND Status IN ('pending', 'partial')
+            ORDER BY Id
+            """,
+            (guild.id,),
+        )
+        return tuple(
+            QueueCleanupJob(
+                id=row["Id"],
+                guild_id=row["Guild"],
+                channel_id=row["Channel"],
+                operation=row["Operation"],
+                status=row["Status"],
+                payload=row["Payload"],
+            )
+            for row in rows
+        )
+
+    async def get_cleanup_items(self, job_id: int) -> tuple[QueueCleanupItem, ...]:
+        rows = await self.database.fetch_all(
+            """
+            SELECT Kind, ParentId, ResourceId, Status, Attempts, LastError
+            FROM Queue_Cleanup_Items WHERE JobId = ?
+            ORDER BY CASE Kind
+                WHEN 'role_scan' THEN 0
+                WHEN 'role_member' THEN 1
+                WHEN 'queue_message' THEN 2
+                WHEN 'phase_message' THEN 3
+                ELSE 4
+            END, ResourceId
+            """,
+            (job_id,),
+        )
+        return tuple(
+            QueueCleanupItem(
+                kind=row["Kind"],
+                parent_id=row["ParentId"],
+                resource_id=row["ResourceId"],
+                status=row["Status"],
+                attempts=row["Attempts"],
+                last_error=row["LastError"],
+            )
+            for row in rows
+        )
+
+    async def _insert_cleanup_items(
+        self,
+        connection: Connection,
+        job_id: int,
+        items: tuple[tuple[str, int | None, int], ...],
+    ) -> None:
+        await connection.executemany(
+            """
+            INSERT OR IGNORE INTO Queue_Cleanup_Items
+                (JobId, Kind, ParentId, ResourceId)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                (job_id, kind, parent_id, resource_id)
+                for kind, parent_id, resource_id in items
+            ),
+        )
+
+    async def add_cleanup_items(
+        self, job_id: int, items: tuple[tuple[str, int | None, int], ...]
+    ) -> bool:
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                await self._insert_cleanup_items(connection, job_id, items)
+                await connection.commit()
+            return True
+        except Exception:
+            _logger.exception(
+                "Failed to persist QS cleanup resources for job %s.", job_id
+            )
+            return False
+
+    async def update_cleanup_item(
+        self,
+        *,
+        job_id: int,
+        kind: str,
+        parent_id: int | None,
+        resource_id: int,
+        completed: bool,
+        error: str | None = None,
+    ) -> bool:
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute(
+                    """
+                    UPDATE Queue_Cleanup_Items
+                    SET Status = ?, Attempts = Attempts + 1, LastError = ?
+                    WHERE JobId = ? AND Kind = ? AND ParentId IS ? AND ResourceId = ?
+                    """,
+                    (
+                        "completed" if completed else "pending",
+                        error,
+                        job_id,
+                        kind,
+                        parent_id,
+                        resource_id,
+                    ),
+                )
+                await connection.commit()
+            return True
+        except Exception:
+            _logger.exception(
+                "Failed to persist QS cleanup progress for job %s, resource %s/%s.",
+                job_id,
+                kind,
+                resource_id,
+            )
+            return False
+
+    async def update_cleanup_job_status(self, job_id: int, status: str) -> bool:
+        if status not in {"pending", "partial", "completed"}:
+            raise ValueError(f"Unsupported cleanup status: {status}")
+        return await self.database.execute(
+            """
+            UPDATE Queue_Cleanup_Jobs SET Status = ?, UpdatedAt = ?
+            WHERE Id = ?
+            """,
+            (status, discord.utils.utcnow().timestamp(), job_id),
+        )
+
+    async def prepare_reset_cleanup(
+        self,
+        *,
+        guild: discord.Guild,
+        configuration: QueueConfiguration,
+        eruption_id: int,
+        starts_at: float,
+        ends_at: float,
+        phases: tuple[tuple[float, float], ...],
+        timezone_name: str,
+        now: float,
+    ) -> int | None:
+        existing = await self.get_cleanup_job(
+            guild=guild, channel_id=configuration.channel_id
+        )
+        if existing is not None:
+            return existing.id if existing.operation == "reset" else None
+
+        payload = json.dumps(
+            {
+                "eruption_id": eruption_id,
+                "starts_at": starts_at,
+                "ends_at": ends_at,
+                "phases": phases,
+                "timezone": timezone_name,
+                "created_at": now,
+            }
+        )
+        items: list[tuple[str, int | None, int]] = []
+        for message_id in (
+            configuration.message_id,
+            configuration.destruction_message_id,
+        ):
+            if message_id is not None:
+                items.append(("queue_message", configuration.channel_id, message_id))
+        phase_rows = await self.database.fetch_all(
+            f"""
+            SELECT Thread, Message FROM {self.phases_table}
+            WHERE Eruption = ?
+            """,
+            (eruption_id,),
+        )
+        for row in phase_rows:
+            thread_id = row["Thread"]
+            if row["Message"] is not None and thread_id is not None:
+                items.append(("phase_message", thread_id, row["Message"]))
+            if thread_id is not None:
+                items.append(("thread", None, thread_id))
+        if configuration.remove_role_on_reset:
+            items.append(("role_scan", None, configuration.role_id))
+
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                existing_row = await connection.execute(
+                    """
+                    SELECT Id, Operation FROM Queue_Cleanup_Jobs
+                    WHERE Guild = ? AND Channel = ?
+                      AND Status IN ('pending', 'partial')
+                    ORDER BY Id DESC LIMIT 1
+                    """,
+                    (guild.id, configuration.channel_id),
+                )
+                existing_result = await existing_row.fetchone()
+                if existing_result is not None:
+                    await connection.rollback()
+                    return (
+                        existing_result["Id"]
+                        if existing_result["Operation"] == "reset"
+                        else None
+                    )
+                old_cursor = await connection.execute(
+                    f"""
+                    SELECT EndsAt FROM {self.eruptions_table}
+                    WHERE Id = ? AND Guild = ? AND Channel = ?
+                    """,
+                    (eruption_id, guild.id, configuration.channel_id),
+                )
+                old_eruption = await old_cursor.fetchone()
+                if old_eruption is None or old_eruption["EndsAt"] > now:
+                    await connection.rollback()
+                    return None
+                cursor = await connection.execute(
+                    """
+                    INSERT INTO Queue_Cleanup_Jobs
+                        (Guild, Channel, Operation, Payload, CreatedAt, UpdatedAt)
+                    VALUES (?, ?, 'reset', ?, ?, ?)
+                    """,
+                    (
+                        guild.id,
+                        configuration.channel_id,
+                        payload,
+                        now,
+                        now,
+                    ),
+                )
+                job_id = cursor.lastrowid
+                if job_id is None:
+                    raise RuntimeError("SQLite did not return the cleanup job ID.")
+                await self._insert_cleanup_items(connection, job_id, tuple(items))
+                await connection.commit()
+            return job_id
+        except Exception:
+            _logger.exception(
+                "%s Failed to prepare QS reset cleanup in channel %s.",
+                self.log_prefix(guild),
+                configuration.channel_id,
+            )
+            return None
+
+    async def prepare_remove_cleanup(
+        self, *, guild: discord.Guild, channel_id: int, now: float
+    ) -> int | None:
+        existing = await self.get_cleanup_job(
+            guild=guild, channel_id=channel_id, operation="remove"
+        )
+        if existing is not None:
+            return existing.id
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                config_cursor = await connection.execute(
+                    f"""
+                    SELECT RoleId, Message, DestructionMessage
+                    FROM {self.table_name} WHERE Guild = ? AND Channel = ?
+                    """,
+                    (guild.id, channel_id),
+                )
+                config = await config_cursor.fetchone()
+                if config is None:
+                    await connection.rollback()
+                    return None
+                eruption_cursor = await connection.execute(
+                    f"SELECT Id FROM {self.eruptions_table} "
+                    "WHERE Guild = ? AND Channel = ?",
+                    (guild.id, channel_id),
+                )
+                eruption_rows = await eruption_cursor.fetchall()
+                eruption_ids = tuple(row["Id"] for row in eruption_rows)
+                items: list[tuple[str, int | None, int]] = []
+                for message_id in (config["Message"], config["DestructionMessage"]):
+                    if message_id is not None:
+                        items.append(("queue_message", channel_id, message_id))
+                if eruption_ids:
+                    placeholders = ",".join("?" for _ in eruption_ids)
+                    phase_cursor = await connection.execute(
+                        f"""
+                        SELECT Thread, Message FROM {self.phases_table}
+                        WHERE Eruption IN ({placeholders})
+                        """,
+                        eruption_ids,
+                    )
+                    for phase in await phase_cursor.fetchall():
+                        thread_id = phase["Thread"]
+                        if phase["Message"] is not None and thread_id is not None:
+                            items.append(("phase_message", thread_id, phase["Message"]))
+                        if thread_id is not None:
+                            items.append(("thread", None, thread_id))
+                cursor = await connection.execute(
+                    """
+                    INSERT INTO Queue_Cleanup_Jobs
+                        (Guild, Channel, Operation, Payload, CreatedAt, UpdatedAt)
+                    VALUES (?, ?, 'remove', ?, ?, ?)
+                    """,
+                    (
+                        guild.id,
+                        channel_id,
+                        json.dumps({"role_id": config["RoleId"]}),
+                        now,
+                        now,
+                    ),
+                )
+                job_id = cursor.lastrowid
+                if job_id is None:
+                    raise RuntimeError("SQLite did not return the cleanup job ID.")
+                await self._insert_cleanup_items(connection, job_id, tuple(items))
+                for eruption_id in eruption_ids:
+                    await connection.execute(
+                        "DELETE FROM Queue_Reminders WHERE Eruption = ?",
+                        (eruption_id,),
+                    )
+                    for table in (
+                        self.destructions_table,
+                        self.phase_members_table,
+                        self.participants_table,
+                        self.phases_table,
+                    ):
+                        await connection.execute(
+                            f"DELETE FROM {table} WHERE Eruption = ?",
+                            (eruption_id,),
+                        )
+                await connection.execute(
+                    f"DELETE FROM {self.eruptions_table} "
+                    "WHERE Guild = ? AND Channel = ?",
+                    (guild.id, channel_id),
+                )
+                await connection.execute(
+                    f"DELETE FROM {self.table_name} WHERE Guild = ? AND Channel = ?",
+                    (guild.id, channel_id),
+                )
+                await connection.commit()
+            return job_id
+        except Exception:
+            _logger.exception(
+                "%s Failed to persist QS removal cleanup in channel %s.",
+                self.log_prefix(guild),
+                channel_id,
+            )
+            return None
+
     async def reset_eruption(
         self,
         *,
         guild: discord.Guild,
         configuration: QueueConfiguration,
+        cleanup_job_id: int,
         old_eruption_id: int,
         starts_at: float,
         ends_at: float,
         phases: tuple[tuple[float, float], ...],
+        timezone_name: str,
         now: float,
     ) -> bool:
         settings = (
@@ -615,6 +1084,41 @@ class QueueRepository(sqlite_db.Base):
         try:
             async with self.database.connect() as connection:
                 await connection.execute("BEGIN IMMEDIATE")
+                async with connection.execute(
+                    f"""
+                    SELECT Id FROM {self.eruptions_table}
+                    WHERE CleanupJob = ? AND Guild = ? AND Channel = ?
+                    """,
+                    (cleanup_job_id, guild.id, configuration.channel_id),
+                ) as cursor:
+                    existing_new = await cursor.fetchone()
+                if existing_new is not None:
+                    await connection.commit()
+                    return True
+                async with connection.execute(
+                    """
+                    SELECT 1 FROM Queue_Cleanup_Jobs
+                    WHERE Id = ? AND Guild = ? AND Channel = ?
+                      AND Operation = 'reset'
+                    """,
+                    (cleanup_job_id, guild.id, configuration.channel_id),
+                ) as cursor:
+                    job_exists = await cursor.fetchone()
+                if job_exists is None:
+                    await connection.rollback()
+                    return False
+                async with connection.execute(
+                    """
+                    SELECT 1 FROM Queue_Cleanup_Items
+                    WHERE JobId = ? AND Status != 'completed'
+                    LIMIT 1
+                    """,
+                    (cleanup_job_id,),
+                ) as cursor:
+                    open_items = await cursor.fetchone()
+                if open_items is not None:
+                    await connection.rollback()
+                    return False
                 async with connection.execute(
                     f"""
                     SELECT EndsAt FROM {self.eruptions_table}
@@ -647,16 +1151,18 @@ class QueueRepository(sqlite_db.Base):
                 cursor = await connection.execute(
                     f"""
                     INSERT INTO {self.eruptions_table}
-                        (Guild, Channel, StartsAt, EndsAt, TimeZone, CreatedAt)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (Guild, Channel, StartsAt, EndsAt, TimeZone, CreatedAt,
+                         CleanupJob)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         guild.id,
                         configuration.channel_id,
                         starts_at,
                         ends_at,
-                        configuration.timezone,
+                        timezone_name,
                         now,
+                        cleanup_job_id,
                     ),
                 )
                 new_id = cursor.lastrowid
@@ -672,10 +1178,16 @@ class QueueRepository(sqlite_db.Base):
                 await connection.execute(
                     f"""
                     UPDATE {self.table_name}
-                    SET NextStartAt = ?, Message = NULL, DestructionMessage = NULL
+                    SET NextStartAt = ?, TimeZone = ?,
+                        Message = NULL, DestructionMessage = NULL
                     WHERE Guild = ? AND Channel = ?
                     """,
-                    (starts_at, guild.id, configuration.channel_id),
+                    (
+                        starts_at,
+                        timezone_name,
+                        guild.id,
+                        configuration.channel_id,
+                    ),
                 )
                 await self._insert_reminders(
                     connection, new_id, starts_at, ends_at, phases, now, settings
@@ -1170,15 +1682,4 @@ class QueueRepository(sqlite_db.Base):
                 details=row["Details"],
             )
             for row in rows
-        )
-
-    async def remove_configuration(
-        self, *, guild: discord.Guild, channel_id: int
-    ) -> bool:
-        return await self.database.execute(
-            f"""
-            DELETE FROM {self.table_name}
-            WHERE Guild = ? AND Channel = ?
-            """,
-            (guild.id, channel_id),
         )

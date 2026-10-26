@@ -16,6 +16,23 @@ from hmwz.modules.queue.wizard import QueueSetupDraft, QueueSetupView, setup_con
 _logger = logging.getLogger(__name__)
 
 
+async def _send_ephemeral_status(
+    interaction: discord.Interaction, translation_key: str
+) -> None:
+    try:
+        message = t(interaction, translation_key)
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+    except discord.HTTPException:
+        _logger.exception(
+            "Could not report queue command result for guild %s, channel %s.",
+            interaction.guild_id,
+            interaction.channel_id,
+        )
+
+
 @checks.has_permissions(manage_channels=True, manage_roles=True)
 @app_commands.command(
     name="reset",
@@ -25,6 +42,18 @@ _logger = logging.getLogger(__name__)
     ),
 )
 async def reset(interaction: discord.Interaction) -> None:
+    try:
+        await _reset_command(interaction)
+    except Exception:
+        _logger.exception(
+            "QS reset command failed for guild %s, channel %s.",
+            interaction.guild_id,
+            interaction.channel_id,
+        )
+        await _send_ephemeral_status(interaction, "queue.reset.failed")
+
+
+async def _reset_command(interaction: discord.Interaction) -> None:
     guild = interaction.guild
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)
@@ -35,6 +64,32 @@ async def reset(interaction: discord.Interaction) -> None:
         return
     module: QueueModule = await manager.get_module(guild, QueueModule)
     configuration = await module.queues.get(guild=guild, channel_id=channel_id)
+    open_job = await module.queues.get_cleanup_job(guild=guild, channel_id=channel_id)
+    if open_job is not None and open_job.operation == "reset":
+        if configuration is None:
+            await interaction.response.send_message(
+                t(interaction, "queue.reset.failed"), ephemeral=True
+            )
+            return
+        try:
+            result = await module.resume_reset(configuration, open_job)
+        except Exception:
+            _logger.exception(
+                "%s Could not resume QS reset job %s in channel %s.",
+                guild.name,
+                open_job.id,
+                channel_id,
+            )
+            result = "failed"
+        await interaction.response.send_message(
+            t(interaction, f"queue.reset.{result}"), ephemeral=True
+        )
+        return
+    if open_job is not None:
+        await interaction.response.send_message(
+            t(interaction, "queue.remove.partial"), ephemeral=True
+        )
+        return
     eruption = await module.queues.get_latest_eruption(
         guild=guild, channel_id=channel_id
     )
@@ -62,6 +117,14 @@ async def reset(interaction: discord.Interaction) -> None:
                 datetime.fromtimestamp(configuration.next_start_at, timezone.utc)
                 .astimezone(ZoneInfo(configuration.timezone))
                 .strftime("%Y-%m-%d %H:%M")
+                if configuration.next_start_at is not None
+                else t(interaction, "queue.reset.not_set")
+            ),
+            discord_time=(
+                discord.utils.format_dt(
+                    datetime.fromtimestamp(configuration.next_start_at, timezone.utc),
+                    style="F",
+                )
                 if configuration.next_start_at is not None
                 else t(interaction, "queue.reset.not_set")
             ),
@@ -122,6 +185,18 @@ async def setup(interaction: discord.Interaction) -> None:
     ),
 )
 async def remove(interaction: discord.Interaction) -> None:
+    try:
+        await _remove_command(interaction)
+    except Exception:
+        _logger.exception(
+            "QS remove command failed for guild %s, channel %s.",
+            interaction.guild_id,
+            interaction.channel_id,
+        )
+        await _send_ephemeral_status(interaction, "queue.remove.failed")
+
+
+async def _remove_command(interaction: discord.Interaction) -> None:
     guild = interaction.guild
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)
@@ -132,36 +207,17 @@ async def remove(interaction: discord.Interaction) -> None:
         )
         return
     module: QueueModule = await manager.get_module(guild, QueueModule)
-    configuration = await module.queues.get(guild=guild, channel_id=channel_id)
-    if configuration is None or configuration.mode != "qs_phases":
-        await interaction.response.send_message(
-            t(interaction, "queue.error.not_configured"),
-            ephemeral=True,
-        )
-        return
-    current = await module.queues.get_current_eruption(
-        guild=guild,
-        channel_id=channel_id,
-        now=discord.utils.utcnow().timestamp(),
-    )
-    if current is not None:
-        await interaction.response.send_message(
-            t(interaction, "queue.error.active_eruption"),
-            ephemeral=True,
-        )
-        return
-    if not await module.remove_queue(channel_id):
+    try:
+        result = await module.remove_queue(channel_id)
+    except Exception:
         _logger.error(
-            "%s Failed to remove QS queue configuration in channel %s.",
+            "%s Queue removal failed unexpectedly in channel %s.",
             guild.name,
             channel_id,
+            exc_info=True,
         )
-        await interaction.response.send_message(
-            t(interaction, "queue.error.remove_failed"),
-            ephemeral=True,
-        )
-        return
+        result = "failed"
     await interaction.response.send_message(
-        t(interaction, "queue.setup.removed"),
+        t(interaction, f"queue.remove.{result}"),
         ephemeral=True,
     )

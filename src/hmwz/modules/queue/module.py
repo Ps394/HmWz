@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 
 import discord
+from zoneinfo import ZoneInfo
 
 from hmwz import sqlite_db
 from hmwz.i18n import t
@@ -13,6 +15,8 @@ from hmwz.modules.registry import register
 
 from .models import (
     Eruption,
+    QueueCleanupItem,
+    QueueCleanupJob,
     PhaseParticipant,
     QueueConfiguration,
     QueuePhase,
@@ -21,7 +25,7 @@ from .models import (
 from .repositories import QueueRepository
 from .rules import phase_schedule
 from .views import (
-    BaseDestructionModal,
+    BaseDestructionConfirmationView,
     PhaseThreadView,
     QueueOverviewView,
 )
@@ -51,6 +55,37 @@ class QueueModule(BasicModule):
             self._reminder_task = asyncio.create_task(self._reminder_loop())
         now = discord.utils.utcnow().timestamp()
         success = True
+        for job in await self.queues.get_open_cleanup_jobs(guild=self.guild):
+            try:
+                if job.operation == "remove":
+                    result = await self.remove_queue(job.channel_id)
+                elif job.operation == "reset":
+                    configuration = await self.queues.get(
+                        guild=self.guild, channel_id=job.channel_id
+                    )
+                    result = (
+                        await self.resume_reset(configuration, job)
+                        if configuration is not None
+                        else "partial"
+                    )
+                else:
+                    _logger.error(
+                        "%s Cleanup job %s has unsupported operation %s.",
+                        self.guild.name,
+                        job.id,
+                        job.operation,
+                    )
+                    result = "failed"
+                if result not in {"saved", "completed"}:
+                    success = False
+            except Exception:
+                _logger.exception(
+                    "%s Could not resume cleanup job %s in channel %s.",
+                    self.guild.name,
+                    job.id,
+                    job.channel_id,
+                )
+                success = False
         for configuration in await self.queues.get_all(guild=self.guild):
             eruption = await self.queues.get_current_eruption(
                 guild=self.guild,
@@ -106,14 +141,13 @@ class QueueModule(BasicModule):
             return "invalid_schedule"
         starts_at, ends_at, phases = schedule
         now = discord.utils.utcnow().timestamp()
-        if starts_at <= now:
-            active = await self.queues.get_current_eruption(
-                guild=self.guild, channel_id=channel_id, now=now
-            )
-            if active is None or active.starts_at != starts_at:
-                return "past"
         if not await self.queues.ensure_schema():
             return "error"
+        if (
+            await self.queues.get_cleanup_job(guild=self.guild, channel_id=channel_id)
+            is not None
+        ):
+            return "cleanup_pending"
         eruption_id = await self.queues.create_eruption(
             guild=self.guild,
             channel_id=channel_id,
@@ -208,89 +242,77 @@ class QueueModule(BasicModule):
         starts_at: float,
         ends_at: float,
         phases: tuple[tuple[float, float], ...],
+        timezone_name: str,
     ) -> str:
         if not configuration.phase_hours:
             return "failed"
-        if configuration.remove_role_on_reset:
-            role = self.guild.get_role(configuration.role_id)
-            if role is None:
-                _logger.error(
-                    "%s Cannot reset queue: configured QS role %s is missing.",
-                    self.guild.name,
-                    configuration.role_id,
-                )
-                return "failed"
-            try:
-                members = self.guild.fetch_members(limit=None)
-                async for member in members:
-                    if role not in member.roles:
-                        continue
-                    try:
-                        await member.remove_roles(role, reason="QS queue reset")
-                    except discord.HTTPException:
-                        _logger.exception(
-                            "Could not remove QS role from member %s.", member.id
-                        )
-                        return "failed"
-            except discord.HTTPException:
-                _logger.exception("Could not enumerate guild members for QS reset.")
-                return "failed"
-
-        channel = self.guild.get_channel(configuration.channel_id)
-        if not isinstance(channel, discord.TextChannel):
-            _logger.error(
-                "QS reset target channel %s is unavailable.", configuration.channel_id
-            )
-            return "failed"
-        message_ids = {
-            value
-            for value in (
-                configuration.message_id,
-                configuration.destruction_message_id,
-            )
-            if value is not None
-        }
-        try:
-            for message_id in message_ids:
-                try:
-                    message = await channel.fetch_message(message_id)
-                    await message.delete()
-                except discord.NotFound:
-                    pass
-            for phase in await self.queues.get_phases(eruption.id):
-                if phase.thread_id is None:
-                    continue
-                thread = self.guild.get_channel_or_thread(phase.thread_id)
-                if thread is None:
-                    try:
-                        thread = await self.guild.fetch_channel(phase.thread_id)
-                    except discord.NotFound:
-                        continue
-                if not isinstance(thread, discord.Thread):
-                    _logger.error(
-                        "QS reset reference %s does not resolve to a thread.",
-                        phase.thread_id,
-                    )
-                    return "failed"
-                if phase.message_id is not None:
-                    try:
-                        await thread.get_partial_message(phase.message_id).delete()
-                    except discord.NotFound:
-                        pass
-                await thread.delete(reason="QS queue reset")
-        except discord.HTTPException:
-            _logger.exception(
-                "%s Discord cleanup failed during QS reset; runtime data retained.",
-                self.guild.name,
-            )
-            return "failed"
-        reset = await self.queues.reset_eruption(
+        now = discord.utils.utcnow().timestamp()
+        job_id = await self.queues.prepare_reset_cleanup(
             guild=self.guild,
             configuration=configuration,
-            old_eruption_id=eruption.id,
+            eruption_id=eruption.id,
             starts_at=starts_at,
             ends_at=ends_at,
             phases=phases,
+            timezone_name=timezone_name,
+            now=now,
+        )
+        if job_id is None:
+            return "failed"
+        job = await self.queues.get_cleanup_job(
+            guild=self.guild,
+            channel_id=configuration.channel_id,
+            open_only=False,
+        )
+        if job is None or job.id != job_id or job.operation != "reset":
+            return "failed"
+        if job.status == "completed":
+            return "saved"
+        try:
+            payload = json.loads(job.payload)
+            saved_eruption_id = int(payload["eruption_id"])
+            saved_starts_at = float(payload["starts_at"])
+            saved_ends_at = float(payload["ends_at"])
+            saved_phases = tuple(
+                (float(start), float(end)) for start, end in payload["phases"]
+            )
+            saved_timezone = str(payload["timezone"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            _logger.exception(
+                "Guild %s channel %s reset cleanup job %s has invalid persisted payload.",
+                self.guild.id,
+                configuration.channel_id,
+                job_id,
+            )
+            return "failed"
+        if saved_eruption_id != eruption.id:
+            already_created = await self.queues.get_eruption_by_cleanup_job(
+                guild=self.guild,
+                channel_id=configuration.channel_id,
+                cleanup_job_id=job_id,
+            )
+            if already_created is None or already_created.id != eruption.id:
+                _logger.error(
+                    "Guild %s channel %s reset cleanup job %s belongs to eruption %s, not %s.",
+                    self.guild.id,
+                    configuration.channel_id,
+                    job_id,
+                    saved_eruption_id,
+                    eruption.id,
+                )
+                return "partial"
+
+        if not await self._process_cleanup_job(job):
+            return "partial"
+        reset = await self.queues.reset_eruption(
+            guild=self.guild,
+            configuration=configuration,
+            cleanup_job_id=job_id,
+            old_eruption_id=saved_eruption_id,
+            starts_at=saved_starts_at,
+            ends_at=saved_ends_at,
+            phases=saved_phases,
+            timezone_name=saved_timezone,
             now=discord.utils.utcnow().timestamp(),
         )
         if not reset:
@@ -298,19 +320,273 @@ class QueueModule(BasicModule):
         updated = await self.queues.get(
             guild=self.guild, channel_id=configuration.channel_id
         )
-        upcoming = await self.queues.get_current_eruption(
+        if updated is None:
+            await self.queues.update_cleanup_job_status(job_id, "partial")
+            return "partial"
+        if saved_ends_at <= discord.utils.utcnow().timestamp():
+            return (
+                "saved"
+                if await self.queues.update_cleanup_job_status(job_id, "completed")
+                else "partial"
+            )
+        upcoming = await self.queues.get_latest_eruption(
             guild=self.guild,
             channel_id=configuration.channel_id,
-            now=discord.utils.utcnow().timestamp(),
         )
-        if updated is None or upcoming is None:
+        if upcoming is None:
+            await self.queues.update_cleanup_job_status(job_id, "partial")
             return "partial"
         if not await self.compose_overviews(updated, upcoming):
+            await self.queues.update_cleanup_job_status(job_id, "partial")
             return "partial"
         for phase in await self.queues.get_phases(upcoming.id):
             if not await self._ensure_phase_thread(updated, upcoming, phase):
+                await self.queues.update_cleanup_job_status(job_id, "partial")
                 return "partial"
-        return "saved"
+        return (
+            "saved"
+            if await self.queues.update_cleanup_job_status(job_id, "completed")
+            else "partial"
+        )
+
+    async def resume_reset(
+        self, configuration: QueueConfiguration, job: QueueCleanupJob
+    ) -> str:
+        try:
+            payload = json.loads(job.payload)
+            eruption_id = int(payload["eruption_id"])
+            eruption = await self.queues.get_eruption(
+                guild=self.guild, eruption_id=eruption_id
+            )
+            if eruption is None:
+                eruption = await self.queues.get_eruption_by_cleanup_job(
+                    guild=self.guild,
+                    channel_id=configuration.channel_id,
+                    cleanup_job_id=job.id,
+                )
+            if eruption is None:
+                _logger.error(
+                    "Guild %s channel %s open reset job %s references missing eruption %s.",
+                    self.guild.id,
+                    job.channel_id,
+                    job.id,
+                    eruption_id,
+                )
+                return "partial"
+            phases = tuple(
+                (float(start), float(end)) for start, end in payload["phases"]
+            )
+            return await self.reset_queue(
+                configuration=configuration,
+                eruption=eruption,
+                starts_at=float(payload["starts_at"]),
+                ends_at=float(payload["ends_at"]),
+                phases=phases,
+                timezone_name=str(payload["timezone"]),
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            _logger.exception(
+                "Guild %s channel %s reset cleanup job %s has invalid persisted payload.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+            )
+            return "failed"
+
+    async def _process_cleanup_job(self, job: QueueCleanupJob) -> bool:
+        if job.status == "completed":
+            return True
+        try:
+            json.loads(job.payload)
+        except json.JSONDecodeError:
+            _logger.exception(
+                "Guild %s channel %s cleanup job %s has invalid persisted JSON.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+            )
+            return False
+
+        items = await self.queues.get_cleanup_items(job.id)
+        for item in items:
+            if item.status != "pending" or item.kind != "role_scan":
+                continue
+            await self._scan_cleanup_role(job, item)
+
+        items = await self.queues.get_cleanup_items(job.id)
+        for item in items:
+            if item.status != "pending" or item.kind == "role_scan":
+                continue
+            await self._process_cleanup_item(job, item)
+
+        remaining = await self.queues.get_cleanup_items(job.id)
+        pending = any(item.status == "pending" for item in remaining)
+        if not await self.queues.update_cleanup_job_status(
+            job.id, "partial" if pending else "pending"
+        ):
+            return False
+        return not pending
+
+    async def _scan_cleanup_role(
+        self, job: QueueCleanupJob, item: QueueCleanupItem
+    ) -> None:
+        role = self.guild.get_role(item.resource_id)
+        if role is None:
+            await self.queues.update_cleanup_item(
+                job_id=job.id,
+                kind=item.kind,
+                parent_id=item.parent_id,
+                resource_id=item.resource_id,
+                completed=True,
+            )
+            return
+        try:
+            members = [member async for member in self.guild.fetch_members(limit=None)]
+        except discord.HTTPException as error:
+            _logger.warning(
+                "Guild %s channel %s could not enumerate members for cleanup job %s, role %s.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+                role.id,
+                exc_info=True,
+            )
+            await self.queues.update_cleanup_item(
+                job_id=job.id,
+                kind=item.kind,
+                parent_id=item.parent_id,
+                resource_id=item.resource_id,
+                completed=False,
+                error=type(error).__name__,
+            )
+            return
+        role_items = tuple(
+            ("role_member", role.id, member.id)
+            for member in members
+            if role in member.roles
+        )
+        if not await self.queues.add_cleanup_items(job.id, role_items):
+            return
+        await self.queues.update_cleanup_item(
+            job_id=job.id,
+            kind=item.kind,
+            parent_id=item.parent_id,
+            resource_id=item.resource_id,
+            completed=True,
+        )
+
+    async def _process_cleanup_item(
+        self, job: QueueCleanupJob, item: QueueCleanupItem
+    ) -> None:
+        try:
+            complete = await self._delete_cleanup_resource(item)
+        except discord.HTTPException as error:
+            _logger.warning(
+                "Guild %s Discord cleanup failed: queue channel %s, job %s, "
+                "resource %s/%s/%s.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+                item.kind,
+                item.parent_id,
+                item.resource_id,
+                exc_info=True,
+            )
+            await self.queues.update_cleanup_item(
+                job_id=job.id,
+                kind=item.kind,
+                parent_id=item.parent_id,
+                resource_id=item.resource_id,
+                completed=False,
+                error=type(error).__name__,
+            )
+            return
+        except Exception as error:
+            _logger.exception(
+                "Guild %s unexpected cleanup error: queue channel %s, job %s, "
+                "resource %s/%s/%s.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+                item.kind,
+                item.parent_id,
+                item.resource_id,
+            )
+            await self.queues.update_cleanup_item(
+                job_id=job.id,
+                kind=item.kind,
+                parent_id=item.parent_id,
+                resource_id=item.resource_id,
+                completed=False,
+                error=type(error).__name__,
+            )
+            return
+        await self.queues.update_cleanup_item(
+            job_id=job.id,
+            kind=item.kind,
+            parent_id=item.parent_id,
+            resource_id=item.resource_id,
+            completed=complete,
+            error=None if complete else "resource_unavailable",
+        )
+
+    async def _delete_cleanup_resource(self, item: QueueCleanupItem) -> bool:
+        if item.kind == "role_member":
+            role = self.guild.get_role(item.parent_id or 0)
+            member = self.guild.get_member(item.resource_id)
+            if role is None:
+                return True
+            if member is None:
+                try:
+                    member = await self.guild.fetch_member(item.resource_id)
+                except discord.NotFound:
+                    return True
+            if role not in member.roles:
+                return True
+            await member.remove_roles(role, reason="QS queue cleanup")
+            return True
+        if item.kind in {"queue_message", "phase_message"}:
+            parent_id = item.parent_id
+            if parent_id is None:
+                return True
+            channel = self.guild.get_channel_or_thread(parent_id)
+            if channel is None:
+                try:
+                    channel = await self.guild.fetch_channel(parent_id)
+                except discord.NotFound:
+                    return True
+            if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                try:
+                    await channel.get_partial_message(item.resource_id).delete()
+                except discord.NotFound:
+                    return True
+                return True
+            _logger.error(
+                "Guild %s QS cleanup message %s in %s has unsupported parent %s.",
+                self.guild.id,
+                item.resource_id,
+                item.kind,
+                parent_id,
+            )
+            return False
+        if item.kind == "thread":
+            thread = self.guild.get_channel_or_thread(item.resource_id)
+            if thread is None:
+                try:
+                    thread = await self.guild.fetch_channel(item.resource_id)
+                except discord.NotFound:
+                    return True
+            if isinstance(thread, discord.Thread):
+                await thread.delete(reason="QS queue cleanup")
+                return True
+            _logger.error(
+                "Guild %s QS cleanup thread %s resolved to an unsupported channel.",
+                self.guild.id,
+                item.resource_id,
+            )
+            return False
+        _logger.error("Unknown QS cleanup resource kind %s.", item.kind)
+        return False
 
     async def _reminder_loop(self) -> None:
         while True:
@@ -403,11 +679,35 @@ class QueueModule(BasicModule):
         )
         return True
 
-    async def remove_queue(self, channel_id: int) -> bool:
-        return await self.queues.remove_configuration(
+    async def remove_queue(self, channel_id: int) -> str:
+        job_id = await self.queues.prepare_remove_cleanup(
             guild=self.guild,
             channel_id=channel_id,
+            now=discord.utils.utcnow().timestamp(),
         )
+        if job_id is None:
+            open_job = await self.queues.get_cleanup_job(
+                guild=self.guild, channel_id=channel_id
+            )
+            if open_job is not None:
+                return "reset_pending" if open_job.operation == "reset" else "partial"
+            configuration = await self.queues.get(
+                guild=self.guild, channel_id=channel_id
+            )
+            return "failed" if configuration is not None else "completed"
+        job = await self.queues.get_cleanup_job(
+            guild=self.guild,
+            channel_id=channel_id,
+            operation="remove",
+            open_only=False,
+        )
+        if job is None or job.id != job_id:
+            return "partial"
+        if not await self._process_cleanup_job(job):
+            return "partial"
+        if not await self.queues.update_cleanup_job_status(job_id, "completed"):
+            return "partial"
+        return "completed"
 
     async def toggle_phase_signup(
         self,
@@ -550,13 +850,10 @@ class QueueModule(BasicModule):
                 ephemeral=True,
             )
             return
-        await interaction.response.send_modal(
-            BaseDestructionModal(
-                self,
-                eruption_id,
-                phase_id,
-                configuration.modal_prompt,
-            )
+        await interaction.response.send_message(
+            content=configuration.modal_prompt,
+            view=BaseDestructionConfirmationView(self, eruption_id, phase_id),
+            ephemeral=True,
         )
 
     async def confirm_destruction(
@@ -622,8 +919,12 @@ class QueueModule(BasicModule):
                 self.guild,
                 "queue.overview.phase",
                 index=phase.index,
+                local_range=self._phase_local_range(
+                    phase.starts_at, phase.ends_at, eruption.timezone
+                ),
                 start=self._discord_timestamp(phase.starts_at),
                 end=self._discord_timestamp(phase.ends_at),
+                timezone=eruption.timezone,
             )
             for phase in phases
         ]
@@ -634,7 +935,14 @@ class QueueModule(BasicModule):
         )
         embed.add_field(
             name=t(self.guild, "queue.overview.window"),
-            value=t(self.guild, "queue.overview.window_value", start=start, end=end),
+            value=t(
+                self.guild,
+                "queue.overview.window_value",
+                start=start,
+                end=end,
+                local_start=self._local_datetime(eruption.starts_at, eruption.timezone),
+                timezone=eruption.timezone,
+            ),
             inline=False,
         )
         embed.add_field(
@@ -668,7 +976,16 @@ class QueueModule(BasicModule):
         view = QueueOverviewView(
             self,
             eruption.id,
-            tuple((phase.id, phase.index) for phase in phases),
+            tuple(
+                (
+                    phase.id,
+                    phase.index,
+                    self._phase_local_range(
+                        phase.starts_at, phase.ends_at, eruption.timezone
+                    ),
+                )
+                for phase in phases
+            ),
         )
         try:
             message = await self._fetch_message(channel, configuration.message_id)
@@ -836,7 +1153,14 @@ class QueueModule(BasicModule):
             line = f"{index}. {display}"
             lines.append(f"**{line}**" if index <= 8 else line)
         embed = discord.Embed(
-            title=t(self.guild, "queue.phase.title", index=phase.index),
+            title=t(
+                self.guild,
+                "queue.phase.title",
+                index=phase.index,
+                local_range=self._phase_local_range(
+                    phase.starts_at, phase.ends_at, eruption.timezone
+                ),
+            ),
             description="\n".join(lines)[:4000]
             or t(self.guild, "queue.overview.empty"),
             color=discord.Color.blurple(),
@@ -848,6 +1172,7 @@ class QueueModule(BasicModule):
                 "queue.overview.window_value",
                 start=self._discord_timestamp(phase.starts_at),
                 end=self._discord_timestamp(phase.ends_at),
+                timezone=eruption.timezone,
             ),
             inline=False,
         )
@@ -873,6 +1198,24 @@ class QueueModule(BasicModule):
     def _discord_timestamp(value: float) -> str:
         timestamp = datetime.fromtimestamp(value, timezone.utc)
         return discord.utils.format_dt(timestamp, style="F")
+
+    @staticmethod
+    def _phase_local_range(
+        starts_at: float,
+        ends_at: float,
+        timezone_name: str,
+    ) -> str:
+        zone = ZoneInfo(timezone_name)
+        start = datetime.fromtimestamp(starts_at, timezone.utc).astimezone(zone)
+        end = datetime.fromtimestamp(ends_at, timezone.utc).astimezone(zone)
+        return f"{start:%H:%M}-{end:%H:%M}"
+
+    @staticmethod
+    def _local_datetime(timestamp: float, timezone_name: str) -> str:
+        local = datetime.fromtimestamp(timestamp, timezone.utc).astimezone(
+            ZoneInfo(timezone_name)
+        )
+        return local.strftime("%Y-%m-%d %H:%M")
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         if channel.guild.id != self.guild.id:
