@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Starting discordbot.service..."
-sudo systemctl restart discordbot.service
-sudo systemctl status discordbot.service --no-pager
+SERVICE_NAME="${HMWZ_SERVICE_NAME:-discordbot-test}"
+
+echo "Starting $SERVICE_NAME.service..."
+sudo systemctl restart $SERVICE_NAME.service
+sudo systemctl status $SERVICE_NAME.service --no-pager

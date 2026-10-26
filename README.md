@@ -192,6 +192,8 @@ Die Etappen können einzeln ausgeführt werden:
 | Token optional konfigurieren | `.\scripts\win\configure_token.ps1` | `bash scripts/linux/configure_token.bash` |
 | Automatischen Start einrichten | `.\scripts\win\install_service.ps1` | `bash scripts/linux/install_service.bash` |
 
+**Test-Branch (Linux):** Dieser Branch ist für einen Test-Bot parallel zum produktiven Bot gedacht. Die Linux-Skripte verwenden daher standardmäßig den Dienst `discordbot-test.service` und die Token-Datei `~/.config/hsbot-test/config` (wird per `EnvironmentFile` an den Dienst übergeben). Klone den Branch in ein eigenes Verzeichnis (eigene `venv`), nutze einen eigenen Bot-Token und überschreibe bei Bedarf `HMWZ_SERVICE_NAME` bzw. `HMWZ_TOKEN_FILE`. Der produktive `discordbot.service` bleibt unberührt.
+
 Die Dienstinstallation unter Linux benötigt `systemd` und `sudo`; führe das Installationsskript als Bot-Benutzer aus, nicht als root. Sie installiert `discordbot.service`, aktiviert ihn beim Systemstart und startet ihn. Verwende `scripts/linux/start_bot_service.bash` zum Neustart und `scripts/linux/stop_bot_service.bash` zum Stoppen; der Dienst bleibt für den nächsten Systemstart aktiviert.
 
 ### Manuelle Installation
