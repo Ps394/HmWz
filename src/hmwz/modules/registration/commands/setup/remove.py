@@ -7,6 +7,11 @@ from discord import app_commands
 
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.interactions import (
+    safe_delete_message,
+    safe_edit_original_response,
+    send_temporary_response,
+)
 from hmwz.modules.hs.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
@@ -38,10 +43,9 @@ class RegistrationRemoveConfirmation(EphemeralView):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
+        await send_temporary_response(
+            interaction,
             t(interaction, "wz.setup.registration.remove.confirmation_owner"),
-            ephemeral=True,
-            delete_after=5,
         )
         return False
 
@@ -187,17 +191,8 @@ class RegistrationRemoveConfirmation(EphemeralView):
         async def delete_message(message: discord.Message) -> None:
             nonlocal failed
             handled_message_ids.add(message.id)
-            try:
-                await message.delete()
-            except discord.NotFound:
-                pass
-            except discord.HTTPException:
+            if not await safe_delete_message(message):
                 failed = True
-                _logger.exception(
-                    "Failed to delete registration message %s in channel %s.",
-                    message.id,
-                    self.channel_id,
-                )
 
         for message_id in message_ids:
             try:
@@ -237,11 +232,12 @@ class RegistrationRemoveConfirmation(EphemeralView):
                 item.disabled = True
 
     async def _finish(self, interaction: discord.Interaction, result: str) -> None:
-        message = await interaction.edit_original_response(
+        message = await safe_edit_original_response(
+            interaction,
             content=t(interaction, f"wz.setup.registration.remove.{result}"),
             view=None,
         )
-        await message.delete(delay=5)
+        await safe_delete_message(message, delay=5)
 
     @discord.ui.button(
         label="Cancel",

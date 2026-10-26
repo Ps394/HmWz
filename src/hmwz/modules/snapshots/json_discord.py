@@ -67,11 +67,15 @@ class DiscordJsonSnapshotExporter:
             if existing_message is None:
                 message = await channel.send(file=file)
             else:
-                message = await safe_edit_message(
+                edited_message = await safe_edit_message(
                     existing_message, attachments=[file]
                 )
-                if message is None:
-                    message = await channel.send(file=file)
+                if edited_message is None:
+                    message = await channel.send(
+                        file=discord.File(io.BytesIO(data), filename=snapshot.filename)
+                    )
+                else:
+                    message = edited_message
             if self._is_startup_snapshot(snapshot):
                 if self.snapshot_messages is None:
                     return True

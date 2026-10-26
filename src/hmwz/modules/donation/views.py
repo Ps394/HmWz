@@ -195,11 +195,7 @@ class DonationOverviewView(discord.ui.View):
                         self.rush_prices[int(reduction.removesuffix("h"))],
                     )
                 )
-        el        if (
-            donation_type.input_mode == "choice"
-            and donation_type.choices
-            and len(donation_type.choices) <= MAX_DONATION_BUTTONS
-        ):
+        elif donation_type.input_mode == "choice" and donation_type.choices:
             if len(donation_type.choices) > MAX_DONATION_BUTTONS:
                 self.add_item(DonationRecordButton(module, channel_id))
             else:
@@ -372,7 +368,7 @@ class DonationDeleteConfirmationView(EphemeralView):
         await interaction.response.defer()
         removed = await self.module.delete_channel(self.channel_id)
         self.stop()
-        await interaction.delete_original_response()
+        await safe_delete_original_response(interaction)
         await send_temporary_followup(
             interaction,
             t(

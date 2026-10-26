@@ -3,13 +3,20 @@ from __future__ import annotations
 import discord
 
 from hmwz.interactions import (
+    defer_interaction,
     delete_temporary_message,
     respond,
     safe_delete_original_response,
     schedule_temporary_delete,
-    send_temporary_followup,
-    send_temporary_response,
+    send_temporary_followup as _send_temporary_followup,
 )
+
+
+async def send_temporary_followup(
+    interaction: discord.Interaction, content: str, *, delay: float = 10
+) -> None:
+    """Schedule cleanup of a private follow-up without blocking the callback."""
+    await _send_temporary_followup(interaction, content, delay=delay, schedule=True)
 
 
 class EphemeralView(discord.ui.View):
@@ -31,7 +38,7 @@ class EphemeralView(discord.ui.View):
         response_state = getattr(interaction.response, "is_done", None)
         response_pending = response_state is not None and not response_state()
         if response_pending:
-            await interaction.response.defer(ephemeral=True, thinking=True)
+            await defer_interaction(interaction, ephemeral=True, thinking=True)
 
         message = getattr(interaction, "message", None) or self.message
         if message is not None:

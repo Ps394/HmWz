@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 import discord
 
@@ -52,9 +52,7 @@ async def respond(
         return await safe_followup(interaction, content, ephemeral=ephemeral, **kwargs)
 
     try:
-        await interaction.response.send_message(
-            content, ephemeral=ephemeral, **kwargs
-        )
+        await interaction.response.send_message(content, ephemeral=ephemeral, **kwargs)
     except discord.InteractionResponded:
         return await safe_followup(interaction, content, ephemeral=ephemeral, **kwargs)
     except (discord.NotFound, discord.HTTPException):
@@ -77,9 +75,8 @@ async def safe_followup(
 ) -> discord.Message | None:
     """Send a follow-up and return its message when Discord provides one."""
     try:
-        message = await interaction.followup.send(
-            content, ephemeral=ephemeral, wait=True, **kwargs
-        )
+        send = cast(Any, interaction.followup.send)
+        message = await send(content, ephemeral=ephemeral, wait=True, **kwargs)
     except (discord.NotFound, discord.HTTPException):
         _logger.exception("Failed to send an interaction follow-up.")
         return None
@@ -101,17 +98,34 @@ async def safe_edit_message(
     return None
 
 
+async def safe_edit_original_response(
+    interaction: discord.Interaction, **kwargs: Any
+) -> discord.Message | None:
+    """Edit an interaction response while tolerating expired response tokens."""
+    try:
+        return await interaction.edit_original_response(**kwargs)
+    except discord.NotFound:
+        _logger.debug("Skipped editing a deleted interaction response.")
+    except discord.HTTPException:
+        _logger.exception("Failed to edit an interaction response.")
+    return None
+
+
 async def safe_delete_message(
     message: discord.Message | None, *, delay: float | None = None
 ) -> bool:
     """Delete a message, treating an already-deleted message as a successful no-op."""
     if message is None:
         return True
+    delete = getattr(message, "delete", None)
+    if not callable(delete):
+        _logger.debug("Skipped deletion for an unavailable message object.")
+        return False
     try:
         if delay is None:
-            await message.delete()
+            await delete()
         else:
-            await message.delete(delay=delay)
+            await delete(delay=delay)
     except discord.NotFound:
         return True
     except discord.HTTPException:
@@ -143,9 +157,7 @@ async def send_temporary_response(
     **kwargs: Any,
 ) -> None:
     """Send a short-lived response, using follow-up delivery after prior acknowledgement."""
-    message = await respond(
-        interaction, content, ephemeral=ephemeral, **kwargs
-    )
+    message = await respond(interaction, content, ephemeral=ephemeral, **kwargs)
     if message is not None:
         await safe_delete_message(message, delay=delay)
 
@@ -156,14 +168,15 @@ async def send_temporary_followup(
     *,
     ephemeral: bool = True,
     delay: float = 5,
+    schedule: bool = False,
     file: discord.File | None = None,
 ) -> None:
     """Send a short-lived follow-up, optionally with an attachment."""
     kwargs = {"file": file} if file is not None else {}
-    message = await safe_followup(
-        interaction, content, ephemeral=ephemeral, **kwargs
-    )
-    if message is not None:
+    message = await safe_followup(interaction, content, ephemeral=ephemeral, **kwargs)
+    if message is not None and schedule:
+        schedule_temporary_delete(message, delay)
+    elif message is not None:
         await safe_delete_message(message, delay=delay)
 
 
@@ -191,6 +204,7 @@ __all__ = [
     "safe_delete_message",
     "safe_delete_original_response",
     "safe_edit_message",
+    "safe_edit_original_response",
     "safe_followup",
     "schedule_temporary_delete",
     "send_temporary_followup",

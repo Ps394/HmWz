@@ -44,9 +44,7 @@ async def test_respond_uses_followup_after_defer() -> None:
     )
 
     assert await respond(interaction, "Saved", ephemeral=True) is message
-    followup.send.assert_awaited_once_with(
-        "Saved", ephemeral=True, wait=True
-    )
+    followup.send.assert_awaited_once_with("Saved", ephemeral=True, wait=True)
 
 
 @pytest.mark.asyncio
@@ -63,9 +61,7 @@ async def test_temporary_response_uses_followup_and_deletes_after_delay() -> Non
 
     await send_temporary_response(interaction, "Try again", delay=3)
 
-    followup.send.assert_awaited_once_with(
-        "Try again", ephemeral=True, wait=True
-    )
+    followup.send.assert_awaited_once_with("Try again", ephemeral=True, wait=True)
     message.delete.assert_awaited_once_with(delay=3)
 
 
