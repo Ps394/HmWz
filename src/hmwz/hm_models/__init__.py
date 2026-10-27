@@ -1,3 +1,1 @@
-from .botembed import BotEmbed
-
-__all__ = ["BotEmbed"]
+"""UI-agnostic domain models and data transfer objects."""

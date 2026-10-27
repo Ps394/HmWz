@@ -3,6 +3,7 @@ from __future__ import annotations
 import discord
 
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
 
 from .modes.protocol import QueuePool
 from .repository import QueueConfiguration, QueueRepository
@@ -19,7 +20,7 @@ class QueueOverview:
         completed = await repository.completed_count(
             guild=guild, channel_id=configuration.channel_id
         )
-        embed = discord.Embed(
+        embed = create_embed(
             title=configuration.title or t(guild, "queue.overview.default_title"),
             description=(
                 configuration.description or t(guild, "queue.overview.description")

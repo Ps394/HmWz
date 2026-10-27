@@ -9,6 +9,8 @@ import discord
 
 from hmwz import events, sqlite_db
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
+from hmwz.ui.messages import edit_message, send_message
 from hmwz.modules.basic_module import BasicModule
 from hmwz.modules.registry import register
 
@@ -506,7 +508,9 @@ class QueueModule(BasicModule):
                 return False
         try:
             if message is None:
-                message = await channel.send(embed=embed, view=view)
+                message = await send_message(channel, embed=embed, view=view)
+                if message is None:
+                    return False
                 if not await self.queues.set_message(
                     guild=self.guild,
                     channel_id=channel_id,
@@ -519,7 +523,10 @@ class QueueModule(BasicModule):
                     )
                     return False
             else:
-                await message.edit(embed=embed, view=view)
+                updated_message = await edit_message(message, embed=embed, view=view)
+                if updated_message is None:
+                    return False
+                message = updated_message
             self._overview_messages[channel_id] = message
             self._register_view(view, message.id)
             return True
@@ -693,7 +700,7 @@ class QueueModule(BasicModule):
         tasks = await self.queues.get_season_tasks(
             guild=self.guild, channel_id=channel_id
         )
-        embed = discord.Embed(
+        embed = create_embed(
             title=season.name,
             description=t(
                 self.guild,
@@ -1730,7 +1737,7 @@ class QueueModule(BasicModule):
         season: QueueSeason | None,
         members: list[discord.Member],
     ) -> discord.Embed:
-        embed = discord.Embed(
+        embed = create_embed(
             title=season.name if season is not None else run_name,
             description=(
                 season.goal_description
@@ -2582,7 +2589,7 @@ class QueueModule(BasicModule):
             if season is None:
                 return False
             goal_text = await self._season_goal_text(run.channel_id, run.season_index)
-            embed = discord.Embed(
+            embed = create_embed(
                 title=season.name,
                 description=season.goal_description,
                 color=(

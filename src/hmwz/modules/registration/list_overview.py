@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz import emojis, utils
-from hmwz.hm_models.botembed import BotEmbed
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
+from hmwz.ui.messages import delete_message, edit_message, send_message
 
 from . import models
 
@@ -133,7 +134,7 @@ class RegistrationListOverview:
         get_color: Callable[[], discord.Color],
         get_client_avatar: Callable[[], discord.Asset | None],
     ) -> discord.Embed:
-        return BotEmbed(
+        return create_embed(
             title=t(
                 self.guild,
                 f"{self.module_key}.overview.list.title",
@@ -202,7 +203,9 @@ class RegistrationListOverview:
     ) -> None:
         if message.embeds and message.embeds[0].to_dict() == embed.to_dict():
             return
-        updated_message = await message.edit(embed=embed)
+        updated_message = await edit_message(message, embed=embed)
+        if updated_message is None:
+            return
         await self._save_message(channel, updated_message, embed)
 
     async def _create_message(
@@ -210,7 +213,9 @@ class RegistrationListOverview:
         channel: discord.TextChannel,
         embed: discord.Embed,
     ) -> None:
-        message = await channel.send(embed=embed)
+        message = await send_message(channel, embed=embed)
+        if message is None:
+            return
         await self._save_message(channel, message, embed)
 
     async def _save_message(
@@ -229,11 +234,9 @@ class RegistrationListOverview:
         )
 
     async def _delete_message(self, message: discord.Message) -> None:
-        try:
-            await message.delete()
-        finally:
-            self._messages.pop(message.id, None)
-            await self.lists.remove(guild=self.guild, message=message.id)
+        await delete_message(message)
+        self._messages.pop(message.id, None)
+        await self.lists.remove(guild=self.guild, message=message.id)
 
     async def _load_messages(
         self, channel: discord.TextChannel

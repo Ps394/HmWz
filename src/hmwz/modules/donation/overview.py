@@ -6,6 +6,7 @@ from decimal import Decimal
 import discord
 
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
 
 from .repository import (
     DonationChannel,
@@ -32,7 +33,7 @@ class DonationOverview:
         donations_enabled: bool = True,
     ) -> discord.Embed:
         """Build the main embed using the channel's configurable title and text."""
-        embed = discord.Embed(
+        embed = create_embed(
             title=channel.title,
             description=channel.description or None,
             color=discord.Color.gold(),
@@ -102,7 +103,7 @@ class DonationOverview:
             if donation_type.kind == "time_reduction"
             else donation_type.unit
         )
-        embed = discord.Embed(
+        embed = create_embed(
             title=t(guild, "donation.ranking.title"),
             color=discord.Color.gold(),
         )
@@ -138,7 +139,7 @@ class DonationOverview:
             count=summary.donation_count,
             duration=DonationOverview._format_duration(summary.time_reduction_hours),
         )
-        embed = discord.Embed(title=title, color=discord.Color.gold())
+        embed = create_embed(title=title, color=discord.Color.gold())
         unit = (
             t(guild, "donation.setup.crystals_unit")
             if donation_type.kind == "time_reduction"

@@ -10,8 +10,8 @@ import discord
 
 from hmwz import utils
 from hmwz.configuration import registration_defaults
-from hmwz.hm_models.botembed import BotEmbed
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
 
 from . import models
 from .list_overview import RegistrationListOverview
@@ -253,7 +253,7 @@ class RegistrationOverview:
 
         title = configuration.title or default_title
         description = configuration.description or default_description
-        embed = BotEmbed(
+        embed = create_embed(
             title=title,
             description=description,
             color=self._client_color,

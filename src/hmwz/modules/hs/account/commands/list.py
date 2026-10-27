@@ -6,8 +6,8 @@ import discord
 from discord import Interaction, app_commands
 
 from hmwz import utils
-from hmwz.hm_models.botembed import BotEmbed
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
 
 from .common import command_description, get_member_context
 
@@ -72,7 +72,7 @@ async def account_list(interaction: Interaction) -> None:
         color = member.color if member.color.value else discord.Color.blurple()
         for page in pages:
             description = f"{intro}\n\n" + "\n".join(page)
-            embed = BotEmbed(
+            embed = create_embed(
                 title=t(interaction, "wz.registration.account.list_title"),
                 description=description,
                 color=color,

@@ -5,6 +5,8 @@ import logging
 
 import discord
 
+from hmwz.ui.messages import delete_message
+
 logger = logging.getLogger(__name__)
 _delete_tasks: set[asyncio.Task[None]] = set()
 
@@ -23,12 +25,7 @@ async def delete_temporary_message(message: discord.Message | None) -> None:
     """Delete a temporary interaction message when it still exists."""
     if message is None:
         return
-    try:
-        await message.delete()
-    except discord.NotFound:
-        pass
-    except discord.HTTPException:
-        logger.exception("Failed to delete a temporary interaction message.")
+    await delete_message(message)
 
 
 async def send_temporary_followup(
