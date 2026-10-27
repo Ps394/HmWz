@@ -44,6 +44,7 @@ class QueueModule(BasicModule):
         self.queues = QueueRepository(self.database)
         self._registered_views: set[tuple[str, int]] = set()
         self._reminder_task: asyncio.Task[None] | None = None
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     async def sync(self, startup: bool = False) -> bool:
         return await self.queues.ensure_schema()
@@ -57,35 +58,19 @@ class QueueModule(BasicModule):
         success = True
         for job in await self.queues.get_open_cleanup_jobs(guild=self.guild):
             try:
-                if job.operation == "remove":
-                    result = await self.remove_queue(job.channel_id)
-                elif job.operation == "reset":
-                    configuration = await self.queues.get(
-                        guild=self.guild, channel_id=job.channel_id
-                    )
-                    result = (
-                        await self.resume_reset(configuration, job)
-                        if configuration is not None
-                        else "partial"
-                    )
-                else:
-                    _logger.error(
-                        "%s Cleanup job %s has unsupported operation %s.",
-                        self.guild.name,
-                        job.id,
-                        job.operation,
-                    )
-                    result = "failed"
+                result = await self._resume_cleanup_job(job)
                 if result not in {"saved", "completed"}:
                     success = False
             except Exception:
                 _logger.exception(
-                    "%s Could not resume cleanup job %s in channel %s.",
-                    self.guild.name,
+                    "Guild %s could not resume cleanup job %s in channel %s.",
+                    self.guild.id,
                     job.id,
                     job.channel_id,
                 )
                 success = False
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         for configuration in await self.queues.get_all(guild=self.guild):
             eruption = await self.queues.get_current_eruption(
                 guild=self.guild,
@@ -104,6 +89,46 @@ class QueueModule(BasicModule):
                 ):
                     success = False
         return success
+
+    async def _resume_cleanup_job(self, job: QueueCleanupJob) -> str:
+        if job.operation == "remove":
+            return await self.remove_queue(job.channel_id)
+        if job.operation == "reset":
+            configuration = await self.queues.get(
+                guild=self.guild, channel_id=job.channel_id
+            )
+            return (
+                await self.resume_reset(configuration, job)
+                if configuration is not None
+                else "partial"
+            )
+        _logger.error(
+            "Guild %s channel %s cleanup job %s has unsupported operation %s.",
+            self.guild.id,
+            job.channel_id,
+            job.id,
+            job.operation,
+        )
+        return "failed"
+
+    async def _cleanup_loop(self) -> None:
+        while True:
+            await asyncio.sleep(30)
+            try:
+                for job in await self.queues.get_open_cleanup_jobs(guild=self.guild):
+                    try:
+                        await self._resume_cleanup_job(job)
+                    except Exception:
+                        _logger.exception(
+                            "Guild %s could not retry cleanup job %s in channel %s.",
+                            self.guild.id,
+                            job.id,
+                            job.channel_id,
+                        )
+            except Exception:
+                _logger.exception(
+                    "Guild %s cleanup polling failed.", self.guild.id
+                )
 
     async def configure_queue(
         self,
@@ -321,12 +346,14 @@ class QueueModule(BasicModule):
             guild=self.guild, channel_id=configuration.channel_id
         )
         if updated is None:
-            await self.queues.update_cleanup_job_status(job_id, "partial")
+            await self._set_cleanup_status(job_id, configuration.channel_id, "partial")
             return "partial"
         if saved_ends_at <= discord.utils.utcnow().timestamp():
             return (
                 "saved"
-                if await self.queues.update_cleanup_job_status(job_id, "completed")
+                if await self._set_cleanup_status(
+                    job_id, configuration.channel_id, "completed"
+                )
                 else "partial"
             )
         upcoming = await self.queues.get_latest_eruption(
@@ -334,18 +361,22 @@ class QueueModule(BasicModule):
             channel_id=configuration.channel_id,
         )
         if upcoming is None:
-            await self.queues.update_cleanup_job_status(job_id, "partial")
+            await self._set_cleanup_status(job_id, configuration.channel_id, "partial")
             return "partial"
         if not await self.compose_overviews(updated, upcoming):
-            await self.queues.update_cleanup_job_status(job_id, "partial")
+            await self._set_cleanup_status(job_id, configuration.channel_id, "partial")
             return "partial"
         for phase in await self.queues.get_phases(upcoming.id):
             if not await self._ensure_phase_thread(updated, upcoming, phase):
-                await self.queues.update_cleanup_job_status(job_id, "partial")
+                await self._set_cleanup_status(
+                    job_id, configuration.channel_id, "partial"
+                )
                 return "partial"
         return (
             "saved"
-            if await self.queues.update_cleanup_job_status(job_id, "completed")
+            if await self._set_cleanup_status(
+                job_id, configuration.channel_id, "completed"
+            )
             else "partial"
         )
 
@@ -421,28 +452,64 @@ class QueueModule(BasicModule):
 
         remaining = await self.queues.get_cleanup_items(job.id)
         pending = any(item.status == "pending" for item in remaining)
-        if not await self.queues.update_cleanup_job_status(
-            job.id, "partial" if pending else "pending"
+        if not await self._set_cleanup_status(
+            job.id, job.channel_id, "partial" if pending else "pending"
         ):
             return False
         return not pending
+
+    async def _set_cleanup_status(
+        self, job_id: int, channel_id: int, status: str
+    ) -> bool:
+        updated = await self.queues.update_cleanup_job_status(job_id, status)
+        if not updated:
+            _logger.error(
+                "Guild %s channel %s could not save cleanup job %s status %s.",
+                self.guild.id,
+                channel_id,
+                job_id,
+                status,
+            )
+        return updated
+
+    async def _set_cleanup_item(
+        self,
+        job: QueueCleanupJob,
+        item: QueueCleanupItem,
+        *,
+        completed: bool,
+        error: str | None = None,
+    ) -> bool:
+        updated = await self.queues.update_cleanup_item(
+            job_id=job.id,
+            kind=item.kind,
+            parent_id=item.parent_id,
+            resource_id=item.resource_id,
+            completed=completed,
+            error=error,
+        )
+        if not updated:
+            _logger.error(
+                "Guild %s channel %s could not save cleanup job %s resource %s/%s/%s.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+                item.kind,
+                item.parent_id,
+                item.resource_id,
+            )
+        return updated
 
     async def _scan_cleanup_role(
         self, job: QueueCleanupJob, item: QueueCleanupItem
     ) -> None:
         role = self.guild.get_role(item.resource_id)
         if role is None:
-            await self.queues.update_cleanup_item(
-                job_id=job.id,
-                kind=item.kind,
-                parent_id=item.parent_id,
-                resource_id=item.resource_id,
-                completed=True,
-            )
+            await self._set_cleanup_item(job, item, completed=True)
             return
         try:
             members = [member async for member in self.guild.fetch_members(limit=None)]
-        except discord.HTTPException as error:
+        except discord.DiscordException as error:
             _logger.warning(
                 "Guild %s channel %s could not enumerate members for cleanup job %s, role %s.",
                 self.guild.id,
@@ -451,13 +518,8 @@ class QueueModule(BasicModule):
                 role.id,
                 exc_info=True,
             )
-            await self.queues.update_cleanup_item(
-                job_id=job.id,
-                kind=item.kind,
-                parent_id=item.parent_id,
-                resource_id=item.resource_id,
-                completed=False,
-                error=type(error).__name__,
+            await self._set_cleanup_item(
+                job, item, completed=False, error=type(error).__name__
             )
             return
         role_items = tuple(
@@ -466,14 +528,15 @@ class QueueModule(BasicModule):
             if role in member.roles
         )
         if not await self.queues.add_cleanup_items(job.id, role_items):
+            _logger.error(
+                "Guild %s channel %s could not persist cleanup members for job %s, role %s.",
+                self.guild.id,
+                job.channel_id,
+                job.id,
+                role.id,
+            )
             return
-        await self.queues.update_cleanup_item(
-            job_id=job.id,
-            kind=item.kind,
-            parent_id=item.parent_id,
-            resource_id=item.resource_id,
-            completed=True,
-        )
+        await self._set_cleanup_item(job, item, completed=True)
 
     async def _process_cleanup_item(
         self, job: QueueCleanupJob, item: QueueCleanupItem
@@ -492,13 +555,8 @@ class QueueModule(BasicModule):
                 item.resource_id,
                 exc_info=True,
             )
-            await self.queues.update_cleanup_item(
-                job_id=job.id,
-                kind=item.kind,
-                parent_id=item.parent_id,
-                resource_id=item.resource_id,
-                completed=False,
-                error=type(error).__name__,
+            await self._set_cleanup_item(
+                job, item, completed=False, error=type(error).__name__
             )
             return
         except Exception as error:
@@ -512,20 +570,13 @@ class QueueModule(BasicModule):
                 item.parent_id,
                 item.resource_id,
             )
-            await self.queues.update_cleanup_item(
-                job_id=job.id,
-                kind=item.kind,
-                parent_id=item.parent_id,
-                resource_id=item.resource_id,
-                completed=False,
-                error=type(error).__name__,
+            await self._set_cleanup_item(
+                job, item, completed=False, error=type(error).__name__
             )
             return
-        await self.queues.update_cleanup_item(
-            job_id=job.id,
-            kind=item.kind,
-            parent_id=item.parent_id,
-            resource_id=item.resource_id,
+        await self._set_cleanup_item(
+            job,
+            item,
             completed=complete,
             error=None if complete else "resource_unavailable",
         )
@@ -705,7 +756,7 @@ class QueueModule(BasicModule):
             return "partial"
         if not await self._process_cleanup_job(job):
             return "partial"
-        if not await self.queues.update_cleanup_job_status(job_id, "completed"):
+        if not await self._set_cleanup_status(job_id, channel_id, "completed"):
             return "partial"
         return "completed"
 

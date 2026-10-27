@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -100,6 +101,60 @@ async def test_schema_preserves_legacy_queue_rows_and_mode_tables(
     assert member is not None and member["Member"] == 2
     assert season is not None and season["Name"] == "08:00"
     assert phase_settings is not None
+
+
+@pytest.mark.asyncio
+async def test_schema_migrates_existing_eruption_and_cleanup_tables(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="queue-cleanup-legacy.db")
+    repository = QueueRepository(database)
+    assert await database.execute(
+        """
+        CREATE TABLE Queue_Eruptions (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Guild INTEGER NOT NULL,
+            Channel INTEGER NOT NULL,
+            StartsAt REAL NOT NULL,
+            EndsAt REAL NOT NULL,
+            TimeZone TEXT NOT NULL,
+            CreatedAt REAL NOT NULL
+        )
+        """
+    )
+    assert await database.execute(
+        """
+        CREATE TABLE Queue_Cleanup_Jobs (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Guild INTEGER NOT NULL,
+            Channel INTEGER NOT NULL,
+            Operation TEXT NOT NULL,
+            Status TEXT NOT NULL,
+            Payload TEXT NOT NULL,
+            CreatedAt REAL NOT NULL,
+            UpdatedAt REAL NOT NULL
+        )
+        """
+    )
+    assert await database.execute(
+        """
+        CREATE TABLE Queue_Cleanup_Items (
+            JobId INTEGER NOT NULL,
+            Kind TEXT NOT NULL,
+            ResourceId INTEGER NOT NULL,
+            Status TEXT NOT NULL,
+            Attempts INTEGER NOT NULL,
+            LastError INTEGER,
+            PRIMARY KEY (JobId, Kind, ResourceId)
+        )
+        """
+    )
+
+    assert await repository.ensure_schema()
+    eruption_columns = await database.fetch_all('PRAGMA table_info("Queue_Eruptions")')
+    item_columns = await database.fetch_all('PRAGMA table_info("Queue_Cleanup_Items")')
+    assert "CleanupJob" in {row["name"] for row in eruption_columns}
+    assert "ParentId" in {row["name"] for row in item_columns}
 
 
 @pytest.mark.asyncio
@@ -549,6 +604,11 @@ async def test_reset_resumes_saved_schedule_after_partial_discord_failure(
         "WHERE Id = ?",
         (phases[0].id,),
     )
+    assert await repository.database.execute(
+        f"UPDATE {repository.table_name} SET RemoveRoleOnReset = 1 "
+        "WHERE Guild = ? AND Channel = ?",
+        (guild_record.id, 456),
+    )
     config = await repository.get(guild=guild_record, channel_id=456)
     assert config is not None
 
@@ -563,6 +623,17 @@ async def test_reset_resumes_saved_schedule_after_partial_discord_failure(
     )
     channel = Mock(spec=discord.TextChannel)
     channel.get_partial_message.return_value = message
+    role = SimpleNamespace(id=789)
+    member = SimpleNamespace(
+        id=987,
+        roles=(role,),
+        remove_roles=AsyncMock(
+            side_effect=[
+                discord.Forbidden(response, "missing permission"),
+                None,
+            ]
+        ),
+    )
     not_found = discord.NotFound(
         SimpleNamespace(status=404, reason="Not Found"), "missing"
     )
@@ -577,8 +648,16 @@ async def test_reset_resumes_saved_schedule_after_partial_discord_failure(
         async def fetch_channel(self, resource_id: int) -> object:
             raise not_found
 
-        def get_role(self, role_id: int) -> None:
-            return None
+        def get_role(self, role_id: int) -> object:
+            return role
+
+        def get_member(self, member_id: int) -> object:
+            return member
+
+        async def fetch_members(
+            self, limit: int | None
+        ) -> AsyncIterator[SimpleNamespace]:
+            yield member
 
     module = QueueModule(
         cast(discord.Guild, PartialGuildResources()),
@@ -593,12 +672,14 @@ async def test_reset_resumes_saved_schedule_after_partial_discord_failure(
         (original_start + 5 * 3600, original_start + 6 * 3600),
         (original_start + 9 * 3600, original_start + 10 * 3600),
     )
+    old_eruption = await repository.get_eruption(
+        guild=guild_record, eruption_id=old_eruption_id
+    )
+    assert old_eruption is not None
     assert (
         await module.reset_queue(
             config,
-            await repository.get_eruption(
-                guild=guild_record, eruption_id=old_eruption_id
-            ),
+            old_eruption,
             original_start,
             original_start + 86400,
             first_phases,
@@ -632,7 +713,7 @@ async def test_reset_resumes_saved_schedule_after_partial_discord_failure(
     )
     assert await repository.database.execute("DROP TRIGGER FailResetFinalization")
     pending_job = await repository.get_cleanup_job(guild=guild_record, channel_id=456)
-    assert pending_job is not None
+    assert pending_job is not None and pending_job.status == "pending"
     restarted_module.compose_overviews = AsyncMock(return_value=False)
     assert await restarted_module.resume_reset(config, pending_job) == "partial"
     assert (
@@ -640,12 +721,20 @@ async def test_reset_resumes_saved_schedule_after_partial_discord_failure(
         is None
     )
     pending_job = await repository.get_cleanup_job(guild=guild_record, channel_id=456)
-    assert pending_job is not None
+    assert pending_job is not None and pending_job.status == "partial"
     restarted_module.compose_overviews = AsyncMock(return_value=True)
     assert await restarted_module.resume_reset(config, pending_job) == "saved"
+    completed_job = await repository.get_cleanup_job(
+        guild=guild_record,
+        channel_id=456,
+        operation="reset",
+        open_only=False,
+    )
+    assert completed_job is not None and completed_job.status == "completed"
     latest = await repository.get_latest_eruption(guild=guild_record, channel_id=456)
     assert latest is not None and latest.starts_at == original_start
     assert message.delete.await_count == 2
+    assert member.remove_roles.await_count == 2
     rows = await repository.database.fetch_all(
         f"SELECT Id FROM {repository.eruptions_table} WHERE Guild = ? AND Channel = ?",
         (guild_record.id, 456),
@@ -683,13 +772,18 @@ async def test_phase_signup_counts_unique_eruption_participants_and_caps_at_40(
     assert results.count("joined") == 40
     assert results.count("full") == 1
     assert len(await repository.get_eruption_participant_ids(eruption_id)) == 40
+    member_with_signup = next(
+        member_id
+        for member_id, result in enumerate(results, start=1)
+        if result == "joined"
+    )
 
     assert (
         await repository.join_phase(
             guild=guild,
             eruption_id=eruption_id,
             phase_id=phases[1].id,
-            member_id=1,
+            member_id=member_with_signup,
             joined_at=time.time() + 100,
             role_managed=False,
         )

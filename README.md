@@ -91,12 +91,20 @@ automatisch. Ein Moderator kann einen abgeschlossenen Lauf mit `/queue reset`
 bestätigt bereinigen und dabei den nächsten lokalen Start festlegen. Der Reset
 entfernt nur gespeicherte Queue-Übersichtsnachrichten und die referenzierten
 Phasenthreads; die Queue-Grundkonfiguration bleibt erhalten. Optional kann die
-konfigurierte QS-Rolle dabei von Teilnehmenden entfernt werden. Drei getrennte,
+konfigurierte QS-Rolle dabei von Teilnehmenden entfernt werden. Reset und Remove
+speichern einen dauerhaften Bereinigungsauftrag samt Ressourcen-IDs und
+Einzelschrittstatus. Fehlen Discord-Ressourcen, gelten sie als erledigt;
+vorübergehende API- oder Berechtigungsfehler bleiben offen und werden regelmäßig
+erneut versucht sowie nach Botstart oder erneutem Command fortgesetzt. Ein Reset
+meldet erst dann Erfolg, wenn Bereinigung, neuer Lauf und dessen
+Übersichten/Phasenthreads abgeschlossen sind. `/queue remove` deaktiviert die Queue
+sofort und löscht Konfiguration,
+Eruptionen, Anmeldungen, Zerstörungen und Erinnerungen, behält aber offene
+Discord-Bereinigungsschritte bis zu deren erfolgreichem Abschluss. Drei getrennte,
 standardmäßig deaktivierte Erinnerungen können für Eruptionsstart, Eruptionsende
 und Phasenstart eingestellt werden; ihre Zustellung bleibt über Bot-Neustarts
 gespeichert und Erwähnungen sind jeweils auf die QS-Rolle beziehungsweise
-Phasenteilnehmenden begrenzt. `/queue remove` entfernt nur die aktuelle Queue-Konfiguration;
-gespeicherte Eruptionen, Anmeldungen und Bestätigungen bleiben erhalten.
+Phasenteilnehmenden begrenzt.
 Historische Einstellungen der früheren Queue-Modi bleiben als Legacy-Daten in
 der Datenbank erhalten und werden nicht mehr ausgeführt oder in QS-Phasen
 umgedeutet. Der Bot benötigt das Erstellen privater Threads, das Verwalten von

@@ -875,7 +875,6 @@ class QueueRepository(sqlite_db.Base):
                 "ends_at": ends_at,
                 "phases": phases,
                 "timezone": timezone_name,
-                "created_at": now,
             }
         )
         items: list[tuple[str, int | None, int]] = []
