@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 import discord
 
 from hmwz import events, sqlite_db
+from hmwz.interactions import send_temporary_response as _send_temporary_response
 from hmwz.i18n import t
 from hmwz.modules.basic_module import BasicModule
 from hmwz.modules.registry import register
 
 from .overview import DonationOverview
-from .repository import DonationRepository, DonationType
+from .models import DonationType
+from .repositories import DonationRepository
 from hmwz.modules.snapshots import Snapshot
 from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
 from .rush_pricing import (
@@ -24,6 +26,7 @@ from .rush_pricing import (
     rush_donation_prices,
 )
 from .views import (
+    MAX_DONATION_BUTTONS,
     DonationAmountModal,
     DonationAmountChoiceView,
     DonationOverviewView,
@@ -32,15 +35,6 @@ from .views import (
 )
 
 _logger = logging.getLogger(__name__)
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
 
 
 @register
@@ -232,7 +226,7 @@ class DonationModule(BasicModule):
             configuration = await self.donations.get_channel(
                 guild=self.guild, channel_id=channel_id
             )
-            now = datetime.now(timezone.utc)
+            now = discord.utils.utcnow()
             if configuration is None or configuration.rush_start_at is None:
                 await _send_temporary_response(
                     interaction, t(interaction, "donation.error.rush_closed")
@@ -309,7 +303,11 @@ class DonationModule(BasicModule):
                 interaction, t(interaction, "donation.error.invalid_type")
             )
             return
-        if donation_type.input_mode == "choice" and donation_type.choices:
+        if (
+            donation_type.input_mode == "choice"
+            and donation_type.choices
+            and len(donation_type.choices) <= MAX_DONATION_BUTTONS
+        ):
             await interaction.response.send_message(
                 t(interaction, "donation.setup.amount_donation_prompt"),
                 view=DonationAmountChoiceView(self, channel_id, donation_type),
@@ -408,7 +406,7 @@ class DonationModule(BasicModule):
             channel_id=channel_id,
             cycle=configuration.current_cycle,
         )
-        now = datetime.now(timezone.utc)
+        now = discord.utils.utcnow()
         if (
             summary is None
             or duration_hours
@@ -576,7 +574,7 @@ class DonationModule(BasicModule):
         )
         if summary is None:
             return False
-        now = datetime.now(timezone.utc)
+        now = discord.utils.utcnow()
         rush_prices = (
             rush_donation_prices(
                 started_at=configuration.rush_start_at,
@@ -679,7 +677,7 @@ class DonationModule(BasicModule):
     async def _maintenance_loop(self) -> None:
         while True:
             try:
-                now = datetime.now(timezone.utc)
+                now = discord.utils.utcnow()
                 for channel_id in await self.donations.get_channels(guild=self.guild):
                     configuration = await self.donations.get_channel(
                         guild=self.guild, channel_id=channel_id

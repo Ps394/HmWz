@@ -9,7 +9,7 @@ import discord
 import pytest
 
 from hmwz.modules.donation.module import DonationModule
-from hmwz.modules.donation.repository import DonationChannel, DonationType
+from hmwz.modules.donation.models import DonationChannel, DonationType
 from hmwz.modules.donation.rush_pricing import (
     RUSH_PERIOD_DURATION,
     RUSH_DONATION_CUTOFF,

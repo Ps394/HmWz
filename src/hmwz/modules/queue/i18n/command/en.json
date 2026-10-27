@@ -1,6 +1,6 @@
 {
-  "group.description.queue": "Manage channel-based queues and runs",
-  "command.description.queue.setup": "Configure a queue using an interactive dialog.",
-  "command.description.queue.remove": "Remove the queue in the current channel.",
-  "command.description.queue.reset": "Reset a season queue, registrations, counters, and messages."
+  "group.description.queue": "Manage QS eruptions and phase signups",
+  "command.description.queue.setup": "Configure a 24-hour QS eruption with phases.",
+  "command.description.queue.remove": "Remove the QS phase queue in this channel.",
+  "command.description.queue.reset": "Reset a completed QS run and schedule the next start."
 }

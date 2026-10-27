@@ -10,7 +10,7 @@ import discord
 import pytest
 
 from hmwz.modules.donation.module import DonationModule
-from hmwz.modules.donation.repository import (
+from hmwz.modules.donation.models import (
     DonationChannel,
     DonationRecord,
     DonationSummary,

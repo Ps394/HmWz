@@ -21,6 +21,9 @@ if [ ! -x "$PROJECT_DIR/venv/bin/python" ]; then
     exit 1
 fi
 
+SERVICE_NAME="${HMWZ_SERVICE_NAME:-discordbot-test}"
+TOKEN_FILE="${HMWZ_TOKEN_FILE:-$HOME/.config/hsbot-test/config}"
+
 service_user="$(id -un)"
 service_group="$(id -gn)"
 service_home="$HOME"
@@ -40,7 +43,7 @@ trap 'rm -f "$unit_file"' EXIT
 
 cat > "$unit_file" <<EOF
 [Unit]
-Description=HmWz Discord Bot
+Description=HmWz Discord Bot (test, $SERVICE_NAME)
 After=network-online.target
 Wants=network-online.target
 
@@ -48,9 +51,10 @@ Wants=network-online.target
 Type=simple
 User=$service_user
 Group=$service_group
-Environment=HOME=$(systemd_quote "$service_home")
-WorkingDirectory=$(systemd_quote "$PROJECT_DIR")
-ExecStart=$(systemd_quote "$python_path") $(systemd_quote "$entry_path")
+EnvironmentFile=-$(systemd_quote $TOKEN_FILE)
+Environment=HOME=$(systemd_quote $service_home)
+WorkingDirectory=$(systemd_quote $PROJECT_DIR)
+ExecStart=$(systemd_quote $python_path) $(systemd_quote $entry_path)
 Restart=on-failure
 RestartSec=5
 
@@ -58,7 +62,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-sudo install -m 0644 "$unit_file" /etc/systemd/system/discordbot.service
+sudo install -m 0644 "$unit_file" "/etc/systemd/system/$SERVICE_NAME.service"
 sudo systemctl daemon-reload
-sudo systemctl enable --now discordbot.service
-echo "Installed and started discordbot.service for user $service_user."
+sudo systemctl enable --now "$SERVICE_NAME.service"
+echo "Installed and started $SERVICE_NAME.service for user $service_user."

@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.modules.hs.ephemeral_view import (
+from hmwz.ui.ephemeral_view import (
     EphemeralView,
     delete_temporary_message,
     send_temporary_followup,

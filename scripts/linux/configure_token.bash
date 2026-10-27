@@ -19,12 +19,13 @@ if [ -z "$token" ]; then
     exit 0
 fi
 
-config_dir="$HOME/.config/hsbot"
+token_file="${HMWZ_TOKEN_FILE:-$HOME/.config/hsbot-test/config}"
+config_dir="$(dirname -- "$token_file")"
 mkdir -p "$config_dir"
 chmod 700 "$config_dir"
 umask 077
-printf 'WZ_BOT_TOKEN=%s\n' "$token" > "$config_dir/config"
-chmod 600 "$config_dir/config"
+printf 'WZ_BOT_TOKEN=%s\n' "$token" > "$token_file"
+chmod 600 "$token_file"
 unset token
 
-echo "Bot token stored with user-only permissions in $config_dir/config."
+echo "Bot token stored with user-only permissions in $token_file."

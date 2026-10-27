@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import AsyncMock
 
 import discord
 import pytest
@@ -186,6 +188,66 @@ async def test_repository_reports_failed_foreign_key_write(tmp_path: Path) -> No
 
     assert not await repository.upsert(guild=guild, channel_id=456)
     assert await repository.get(guild=guild) is None
+
+
+@pytest.mark.asyncio
+async def test_registration_repository_rejects_conflicting_filters(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="invalid-filters.db")
+    guild = cast(
+        discord.Guild,
+        SimpleNamespace(id=123, name="test guild"),
+    )
+    registrations = MemberRegistrationRepository(database)
+    roles = RegistrationRoleRepository(database)
+    messages = RegistrationMessageRepository(database)
+
+    with pytest.raises(ValueError, match="role and roles"):
+        await registrations.count(guild=guild, role=1, roles=[2])
+    with pytest.raises(ValueError, match="member with role"):
+        await registrations.get(guild=guild, member=1, role=2)
+    with pytest.raises(ValueError, match="member with role"):
+        await registrations.remove(guild=guild, member=1, role=2)
+    with pytest.raises(ValueError, match="member filter only"):
+        await registrations.get(guild=guild, account="Main")
+    with pytest.raises(ValueError, match="permanent and roles"):
+        await roles.count(guild=guild, permanent=True, roles=[1])
+    with pytest.raises(ValueError, match="role and roles"):
+        await roles.remove(guild=guild, role=1, roles=[2])
+    with pytest.raises(ValueError, match="message and messages"):
+        await messages.remove(guild=guild, message=1, messages=[2])
+
+
+@pytest.mark.asyncio
+async def test_registration_repository_keeps_database_error_fallbacks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="repository-errors.db")
+    await initialize_database(database)
+    guild = cast(
+        discord.Guild,
+        SimpleNamespace(id=123, name="test guild"),
+    )
+    registrations = MemberRegistrationRepository(database)
+    roles = RegistrationRoleRepository(database)
+    messages = RegistrationMessageRepository(database)
+
+    monkeypatch.setattr(
+        database,
+        "fetch_one",
+        AsyncMock(side_effect=sqlite3.OperationalError("database unavailable")),
+    )
+    assert await registrations.count(guild=guild) == 0
+    assert await roles.count(guild=guild) == 0
+
+    monkeypatch.setattr(
+        database,
+        "execute",
+        AsyncMock(side_effect=sqlite3.OperationalError("database unavailable")),
+    )
+    assert not await messages.remove(guild=guild, message=456)
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ from discord import app_commands
 
 from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from .channel.add import add as add_channel
