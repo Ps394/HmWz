@@ -18,6 +18,8 @@ async def send_message(
         logger.info("Discord message target was not found while sending.")
     except discord.Forbidden:
         logger.warning("Discord denied sending a message.")
+    except discord.RateLimited:
+        logger.warning("Discord rate-limited sending a message.")
     except discord.HTTPException:
         logger.exception("Discord failed to send a message.")
     return None
@@ -33,6 +35,8 @@ async def edit_message(
         logger.info("Discord message was not found while editing.")
     except discord.Forbidden:
         logger.warning("Discord denied editing a message.")
+    except discord.RateLimited:
+        logger.warning("Discord rate-limited editing a message.")
     except discord.HTTPException:
         logger.exception("Discord failed to edit a message.")
     return None
@@ -46,6 +50,9 @@ async def delete_message(message: discord.Message, **kwargs: Any) -> bool:
         return True
     except discord.Forbidden:
         logger.warning("Discord denied deleting a message.")
+        return False
+    except discord.RateLimited:
+        logger.warning("Discord rate-limited deleting a message.")
         return False
     except discord.HTTPException:
         logger.exception("Discord failed to delete a message.")

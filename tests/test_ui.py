@@ -82,8 +82,14 @@ async def test_message_wrappers_return_discord_results() -> None:
     editable = SimpleNamespace(edit=AsyncMock(return_value=message))
     deletable = SimpleNamespace(delete=AsyncMock())
 
-    assert await send_message(cast(discord.abc.Messageable, target), content="hello") is message
-    assert await edit_message(cast(discord.Message, editable), content="updated") is message
+    assert (
+        await send_message(cast(discord.abc.Messageable, target), content="hello")
+        is message
+    )
+    assert (
+        await edit_message(cast(discord.Message, editable), content="updated")
+        is message
+    )
     assert await delete_message(cast(discord.Message, deletable))
 
 
@@ -108,12 +114,11 @@ async def test_message_wrappers_handle_discord_http_errors(
     expected: discord.Message | bool | None,
 ) -> None:
     response = SimpleNamespace(status=status, reason="test error")
-    error_type = {
-        403: discord.Forbidden,
-        404: discord.NotFound,
-        429: discord.HTTPException,
-    }[status]
-    error = error_type(response, "test error")
+    if status == 429:
+        error = discord.RateLimited(retry_after=1)
+    else:
+        error_type = {403: discord.Forbidden, 404: discord.NotFound}[status]
+        error = error_type(response, "test error")
     method = AsyncMock(side_effect=error)
     target = SimpleNamespace(
         send=method,

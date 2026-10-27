@@ -32,7 +32,7 @@ if message is None:
     return False
 ```
 
-`send_message` and `edit_message` return `None` when Discord reports `NotFound`, `Forbidden`, or another `HTTPException`; `delete_message` returns `True` if the message was deleted or was already missing, and `False` for other Discord failures. Interaction responses remain explicit at their call sites.
+`send_message` and `edit_message` return `None` when Discord reports `NotFound`, `Forbidden`, `RateLimited`, or another `HTTPException`; `delete_message` returns `True` if the message was deleted or was already missing, and `False` for other Discord failures. Interaction responses remain explicit at their call sites.
 
 ## Adding UI features
 
