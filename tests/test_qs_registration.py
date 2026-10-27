@@ -233,7 +233,7 @@ async def test_qs_role_reset_removes_only_qs_configured_roles() -> None:
     )
 
     with patch(
-        "hmwz.ui.ephemeral_view.send_temporary_followup",
+        "hmwz.ui.components.ephemeral_view.send_temporary_followup",
         new_callable=AsyncMock,
     ):
         await confirm.callback(interaction)
@@ -265,7 +265,7 @@ async def test_qs_role_reset_cancel_deletes_confirmation() -> None:
     )
 
     with patch(
-        "hmwz.ui.ephemeral_view.send_temporary_followup",
+        "hmwz.ui.components.ephemeral_view.send_temporary_followup",
         new_callable=AsyncMock,
     ):
         await cancel.callback(interaction)

@@ -5,11 +5,6 @@ from datetime import datetime
 import discord
 from discord import app_commands
 
-from hmwz.interactions import (
-    safe_delete_original_response,
-    send_temporary_followup,
-    send_temporary_response as _send_temporary_response,
-)
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.donation.module import DonationModule
 from hmwz.modules.donation.validation import (
@@ -17,6 +12,7 @@ from hmwz.modules.donation.validation import (
     donation_timezone_translation_key,
     parse_rush_start,
 )
+from ..responses import send_temporary_response as _send_temporary_response
 
 
 @app_commands.command(
@@ -111,8 +107,11 @@ class DonationCycleResetView(discord.ui.View):
             reset_done, messages_updated, export_failed=export_failed
         )
         self.stop()
-        await safe_delete_original_response(interaction)
-        await send_temporary_followup(interaction, t(interaction, result_key))
+        await interaction.delete_original_response()
+        result = await interaction.followup.send(
+            t(interaction, result_key), ephemeral=True, wait=True
+        )
+        await result.delete(delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -124,7 +123,7 @@ class DonationCycleResetView(discord.ui.View):
     ) -> None:
         self.stop()
         await interaction.response.defer(ephemeral=True)
-        await safe_delete_original_response(interaction)
+        await interaction.delete_original_response()
 
 
 class DonationRushResetModal(discord.ui.Modal):
@@ -191,15 +190,17 @@ class DonationRushResetModal(discord.ui.Modal):
         reset_done, messages_updated, export_failed = await self.module.reset_cycle(
             self.channel_id, rush_start_at=rush_start_at
         )
-        await send_temporary_followup(
-            interaction,
+        result = await interaction.followup.send(
             t(
                 interaction,
                 _reset_result_key(
                     reset_done, messages_updated, export_failed=export_failed
                 ),
             ),
+            ephemeral=True,
+            wait=True,
         )
+        await result.delete(delay=5)
 
 
 def _reset_result_key(

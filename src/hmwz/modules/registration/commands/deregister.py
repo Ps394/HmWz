@@ -5,8 +5,8 @@ import logging
 import discord
 from discord import Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 
 from .autocomplete import DISPLAY_NAME_ACCOUNT_VALUE, registered_accounts
 from hmwz.modules.hs.wz.module import WzRegistrationModule
@@ -136,7 +136,7 @@ async def deregister(interaction: Interaction, account: str) -> None:
     except discord.HTTPException:
         logger.exception(
             "%s Failed to remove registration for account %r.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             account,
         )
         await send_temporary_followup(
@@ -145,7 +145,7 @@ async def deregister(interaction: Interaction, account: str) -> None:
     except Exception:
         logger.exception(
             "%s Failed to deregister account %r.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             account,
         )
         await send_temporary_followup(

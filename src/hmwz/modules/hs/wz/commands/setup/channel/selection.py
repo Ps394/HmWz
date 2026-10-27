@@ -4,9 +4,9 @@ import logging
 
 import discord
 
-from hmwz import utils
 from hmwz.i18n import t
-from hmwz.ui import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.utils.interactions import log_interaction
 
 from ....module import WzRegistrationModule
 from .channels import PurgeAction, get_selectable_channels
@@ -139,7 +139,7 @@ class PurgeChannelSelection(EphemeralView):
         except Exception:
             logger.exception(
                 "%s Failed to %s WZ purge channels.",
-                utils.log_interaction(interaction),
+                log_interaction(interaction),
                 self.action,
             )
             await self.finish(interaction, t(interaction, "wz.setup.channel.error"))
@@ -232,7 +232,7 @@ class PurgeChannelSelection(EphemeralView):
         except Exception:
             logger.exception(
                 "%s Failed to %s WZ purge channels.",
-                utils.log_interaction(interaction),
+                log_interaction(interaction),
                 self.action,
             )
             content = t(interaction, "wz.setup.channel.error")

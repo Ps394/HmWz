@@ -180,9 +180,10 @@ class RegistrationRoleRepository(sqlite_db.Base):
         :rtype: int
         :raises ValueError: Wenn sowohl permanent als auch roles Filter gleichzeitig angegeben werden.
         """
-        if permanent is not None and roles:
-            raise ValueError("Cannot provide both permanent and roles filters.")
         try:
+            if permanent is not None and roles:
+                raise ValueError("Cannot provide both permanent and roles filters.")
+
             query = f"SELECT COUNT(*) FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params = [guild.id]
             if channel_id is not None:
@@ -350,8 +351,6 @@ class RegistrationRoleRepository(sqlite_db.Base):
         :return: True, wenn die Rolle(n) erfolgreich entfernt wurden, False bei einem Fehler.
         :rtype: bool
         """
-        if role is not None and roles:
-            raise ValueError("Cannot provide both role and roles filters.")
         target = "roles"
         try:
             role_names = (
@@ -361,12 +360,14 @@ class RegistrationRoleRepository(sqlite_db.Base):
                     await self.role_log_name(guild, role_id) for role_id in roles or ()
                 ]
             )
+            if role and roles:
+                raise ValueError("Cannot provide both role and roles filters.")
             query = f"DELETE FROM {self.table_name} WHERE Guild = ?"
             params = [guild.id]
             if channel_id is not None:
                 query += " AND Channel = ?"
                 params.append(channel_id)
-            if role is not None:
+            if role:
                 query += " AND Role = ?"
                 params.append(role)
                 target = f"role {role_names[0]}"

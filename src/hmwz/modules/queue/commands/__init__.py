@@ -11,7 +11,6 @@ from . import setup as queue_setup
     create_private_threads=True,
     manage_threads=True,
     send_messages_in_threads=True,
-    manage_roles=True,
 )
 class QueueGroup(Group):
     def __init__(self) -> None:

@@ -5,9 +5,10 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.ui import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.utils.fetchers import fetch_channel
+from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.qs.module import QsRegistrationModule
 
 _logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ class QsChannelsResetConfirmation(EphemeralView):
                 deleted_count = 0
                 failed_channels: list[str] = []
                 for channel_id in target_ids:
-                    channel = await utils.fetch_channel(self.guild, channel_id)
+                    channel = await fetch_channel(self.guild, channel_id)
                     if channel is None:
                         failed_channels.append(f"<#{channel_id}>")
                         _logger.warning(
@@ -144,7 +145,7 @@ class QsChannelsResetConfirmation(EphemeralView):
                 )
         except Exception:
             _logger.exception(
-                "%s QS reset-channels failed.", utils.log_interaction(interaction)
+                "%s QS reset-channels failed.", log_interaction(interaction)
             )
             content = t(interaction, "qs.reset_channels.error")
         await self.finish(interaction, content)
@@ -206,7 +207,7 @@ async def reset_channels(interaction: discord.Interaction) -> None:
     except Exception:
         _logger.exception(
             "%s QS reset-channels preparation failed.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
         )
         await interaction.followup.send(
             t(interaction, "qs.reset_channels.error"), ephemeral=True

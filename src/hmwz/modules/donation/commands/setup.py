@@ -4,9 +4,9 @@ import discord
 from discord import app_commands
 from discord.app_commands import locale_str
 
-from hmwz.interactions import send_temporary_response as _send_temporary_response
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.donation.module import DonationModule
+from ..responses import send_temporary_response as _send_temporary_response
 from hmwz.modules.donation.setup_views import (
     DonationSetupKindSelect,
     DonationSetupKindView,

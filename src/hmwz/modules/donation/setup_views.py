@@ -7,13 +7,9 @@ from typing import TYPE_CHECKING, Literal
 import discord
 
 from hmwz.i18n import t
-from hmwz.interactions import (
-    safe_delete_original_response,
-    send_temporary_followup,
-    send_temporary_response as _send_temporary_response,
-)
+from .responses import send_temporary_response as _send_temporary_response
 
-from .models import (
+from .repository import (
     DEFAULT_DONATION_CHOICES,
     DonationChannel,
     DonationKind,
@@ -243,7 +239,7 @@ class DonationSetupKindSelect(discord.ui.Select):
             else None
         )
         if kind == "time_reduction" and rush_start_at is None:
-            rush_start_at = discord.utils.utcnow()
+            rush_start_at = datetime.now(UTC)
         return DonationSetupDraft(
             module=self.module,
             channel_id=self.channel_id,
@@ -586,10 +582,11 @@ class DonationSetupView(DonationSetupOwnerView):
         if not await _save_setup(self.draft, interaction):
             return
         self.stop()
-        await safe_delete_original_response(interaction)
-        await send_temporary_followup(
-            interaction, t(interaction, "donation.setup.complete")
+        await interaction.delete_original_response()
+        confirmation = await interaction.followup.send(
+            t(interaction, "donation.setup.complete"), ephemeral=True, wait=True
         )
+        await confirmation.delete(delay=5)
 
 
 async def _save_setup(
@@ -646,7 +643,10 @@ async def _save_setup(
 async def _send_setup_followup_error(
     interaction: discord.Interaction, translation_key: str
 ) -> None:
-    await send_temporary_followup(interaction, t(interaction, translation_key))
+    message = await interaction.followup.send(
+        t(interaction, translation_key), ephemeral=True, wait=True
+    )
+    await message.delete(delay=5)
 
 
 class DonationContentModal(discord.ui.Modal):

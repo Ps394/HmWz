@@ -11,11 +11,11 @@ import discord
 import pytest
 
 from hmwz.modules.donation.overview import DonationOverview
-from hmwz.modules.donation.models import (
+from hmwz.modules.donation.repository import (
+    DonationRepository,
     DonationSummary,
     DonationType,
 )
-from hmwz.modules.donation.repositories import DonationRepository
 from hmwz.modules.donation.rush_pricing import (
     RUSH_DONATION_CUTOFF,
     RUSH_PERIOD_DURATION,

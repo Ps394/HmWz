@@ -27,7 +27,7 @@ async def test_remove_registration_roles_only_removes_roles_for_known_members(
 
     fetch_member_mock = AsyncMock(side_effect=fetch_member)
     sleep = AsyncMock()
-    monkeypatch.setattr(reset.utils, "fetch_member", fetch_member_mock)
+    monkeypatch.setattr(reset, "fetch_member", fetch_member_mock)
     monkeypatch.setattr(reset.asyncio, "sleep", sleep)
 
     await reset._remove_registration_roles(
@@ -64,7 +64,7 @@ async def test_purge_configured_channels_processes_unique_ids_in_order(
         return channels.get(channel_id)
 
     fetch_channel_mock = AsyncMock(side_effect=fetch_channel)
-    monkeypatch.setattr(reset.utils, "fetch_channel", fetch_channel_mock)
+    monkeypatch.setattr(reset, "fetch_channel", fetch_channel_mock)
 
     await reset._purge_configured_channels(guild, {20, 10})
 

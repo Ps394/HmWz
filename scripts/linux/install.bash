@@ -10,5 +10,5 @@ bash "$SCRIPT_DIR/configure_token.bash"
 bash "$SCRIPT_DIR/install_service.bash"
 
 echo
-echo "Installation complete. The ${HMWZ_SERVICE_NAME:-discordbot-test}.service systemd service is enabled and running."
-echo "Check its status with: sudo systemctl status ${HMWZ_SERVICE_NAME:-discordbot-test}.service"
+echo "Installation complete. The discordbot.service systemd service is enabled and running."
+echo "Check its status with: sudo systemctl status discordbot.service"

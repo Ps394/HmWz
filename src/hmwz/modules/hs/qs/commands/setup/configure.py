@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.utils import log_interaction
+from hmwz.utils.interactions import log_interaction
 
 from .common import add_registration_role, get_setup_context
 

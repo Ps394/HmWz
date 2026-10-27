@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from hmwz import utils
 from hmwz.configuration import registration_defaults
-from hmwz.hm_models.botembed import BotEmbed
 from hmwz.i18n import t
+from hmwz.ui.embeds import create_embed
+from hmwz.ui.messages import edit_message, send_message
+from hmwz.utils.fetchers import fetch_channel, fetch_message
 
 from . import models
 from .list_overview import RegistrationListOverview
@@ -218,7 +219,7 @@ class RegistrationOverview:
         channel_id = configuration.channel_id
         if channel_id is None:
             return False
-        channel = await utils.fetch_channel(self.guild, channel_id)
+        channel = await fetch_channel(self.guild, channel_id)
         if channel is None:
             _logger.warning(
                 "%s (%s) - Registration channel not found: %s",
@@ -253,7 +254,7 @@ class RegistrationOverview:
 
         title = configuration.title or default_title
         description = configuration.description or default_description
-        embed = BotEmbed(
+        embed = create_embed(
             title=title,
             description=description,
             color=self._client_color,
@@ -282,28 +283,29 @@ class RegistrationOverview:
             and configuration.has_message
             and configuration.message_id is not None
         ):
-            message = await utils.fetch_message(channel, configuration.message_id)
+            message = await fetch_message(channel, configuration.message_id)
         registrations = await self._load_registrations(configuration)
 
         if message is None:
-            try:
-                message = await channel.send(embed=embed, view=view)
-            except discord.Forbidden:
+            message = await send_message(channel, embed=embed, view=view)
+            if message is None:
                 _logger.warning(
-                    "%s (%s) - Discord denied sending the registration overview "
+                    "%s (%s) - Discord could not send the registration overview "
                     "in #%s (%s); verify the bot's channel permissions.",
                     self.guild.name,
                     self.guild.id,
                     channel.name,
                     channel.id,
-                    exc_info=True,
                 )
                 return False
             self._overview_message = message
             self._overview_signature = overview_signature
             action = "Created"
         elif self._overview_signature != overview_signature:
-            message = await message.edit(embed=embed, view=view)
+            updated_message = await edit_message(message, embed=embed, view=view)
+            if updated_message is None:
+                return False
+            message = updated_message
             self._overview_message = message
             self._overview_signature = overview_signature
             action = "Updated"

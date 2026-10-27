@@ -8,13 +8,10 @@ import discord
 from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.ui.ephemeral_view import (
-    EphemeralView,
-    delete_temporary_message,
-    send_temporary_followup,
-)
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.ui.messages import delete_temporary_message, send_temporary_followup
 from hmwz.modules.hs.qs.module import QsRegistrationModule
-from hmwz.utils import log_interaction
+from hmwz.utils.interactions import log_interaction
 
 from . import configure as configure_module
 from . import role_remove as role_remove_module
@@ -391,7 +388,9 @@ class QsSetupMenu(EphemeralView):
             )
             if interaction.response.is_done():
                 await send_temporary_followup(
-                    interaction, t(interaction, "qs.setup.error")
+                    interaction,
+                    t(interaction, "qs.setup.error"),
+                    delay=10,
                 )
             else:
                 await self.send_temporary_response(

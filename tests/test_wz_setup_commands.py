@@ -127,7 +127,7 @@ async def test_clean_channels_confirmation_applies_pinned_message_exception() ->
     )
 
     with patch(
-        "hmwz.modules.hs.wz.commands.clean_channels.utils.fetch_channel",
+        "hmwz.modules.hs.wz.commands.clean_channels.fetch_channel",
         new_callable=AsyncMock,
         return_value=channel,
     ):

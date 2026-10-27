@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 import discord
 
-from hmwz import utils
+from hmwz.utils.interactions import log_guild
 
 from .registration_member import RegistrationMember
 
@@ -23,7 +23,7 @@ class Registration:
         self.registrations.append(registration)
         _logger.debug(
             "%s Added registration for member %s role %s",
-            utils.log_guild(self.guild),
+            log_guild(self.guild),
             registration.member_id,
             registration.role.role_id,
         )
@@ -32,7 +32,7 @@ class Registration:
         self.registrations.remove(registration)
         _logger.debug(
             "%s Removed registration for member %s",
-            utils.log_guild(self.guild),
+            log_guild(self.guild),
             registration.member_id,
         )
 

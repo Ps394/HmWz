@@ -5,8 +5,8 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from ...responses import send_temporary_followup
@@ -79,9 +79,7 @@ async def setup(interaction: discord.Interaction) -> None:
             ephemeral=True,
         )
     except Exception:
-        logger.exception(
-            "%s WZ setup config failed.", utils.log_interaction(interaction)
-        )
+        logger.exception("%s WZ setup config failed.", log_interaction(interaction))
         if not interaction.response.is_done():
             await interaction.response.send_message(
                 t(interaction, "wz.setup.config.error"),

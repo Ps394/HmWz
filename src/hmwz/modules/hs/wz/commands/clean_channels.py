@@ -3,9 +3,10 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.ui import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.utils.fetchers import fetch_channel
+from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 logger = logging.getLogger(__name__)
@@ -133,7 +134,7 @@ class CleanChannelsConfirmation(EphemeralView):
                     deleted_count = 0
                     failed_channels: list[str] = []
                     for channel_id in selected_ids:
-                        channel = await utils.fetch_channel(self.guild, channel_id)
+                        channel = await fetch_channel(self.guild, channel_id)
                         if channel is None:
                             logger.warning(
                                 "Configured WZ clean channel %s is missing or is not a text channel in guild %s.",
@@ -171,7 +172,7 @@ class CleanChannelsConfirmation(EphemeralView):
         except Exception:
             logger.exception(
                 "%s WZ clean-channels failed.",
-                utils.log_interaction(interaction),
+                log_interaction(interaction),
             )
             content = t(interaction, "wz.clean_channels.error")
         await self.finish(interaction, content)
@@ -237,7 +238,7 @@ async def clean_channels(interaction: discord.Interaction) -> None:
     except Exception as error:
         logger.exception(
             "%s WZ clean-channels preparation failed: %s",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             error,
         )
         await interaction.followup.send(

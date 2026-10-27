@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from hmwz import sqlite_db, utils
-from hmwz.interactions import safe_edit_message
+from hmwz import sqlite_db
+from hmwz.utils.fetchers import fetch_channel
 
 from . import Snapshot
 
@@ -33,7 +33,7 @@ class DiscordJsonSnapshotExporter:
 
     async def export(self, snapshot: Snapshot) -> bool:
         """Serialize and deliver one snapshot as a JSON attachment."""
-        channel = await utils.fetch_channel(self.guild, snapshot.destination_channel_id)
+        channel = await fetch_channel(self.guild, snapshot.destination_channel_id)
         if channel is None:
             _logger.error(
                 "%s Snapshot destination channel %s is unavailable.",
@@ -67,15 +67,7 @@ class DiscordJsonSnapshotExporter:
             if existing_message is None:
                 message = await channel.send(file=file)
             else:
-                edited_message = await safe_edit_message(
-                    existing_message, attachments=[file]
-                )
-                if edited_message is None:
-                    message = await channel.send(
-                        file=discord.File(io.BytesIO(data), filename=snapshot.filename)
-                    )
-                else:
-                    message = edited_message
+                message = await existing_message.edit(attachments=[file])
             if self._is_startup_snapshot(snapshot):
                 if self.snapshot_messages is None:
                     return True

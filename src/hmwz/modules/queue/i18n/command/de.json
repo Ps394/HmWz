@@ -1,6 +1,6 @@
 {
-  "group.description.queue": "Verwaltet QS-Eruptionen und Phasenanmeldungen",
-  "command.description.queue.setup": "Richtet eine 24-stündige QS-Eruption mit Phasen ein.",
-  "command.description.queue.remove": "Entfernt die QS-Phasenqueue im aktuellen Kanal.",
-  "command.description.queue.reset": "Setzt einen abgeschlossenen QS-Lauf zurück und plant den nächsten Start."
+  "group.description.queue": "Verwaltet kanalbezogene Warteschlangen und Runs",
+  "command.description.queue.setup": "Richtet eine Queue über einen interaktiven Dialog ein.",
+  "command.description.queue.remove": "Entfernt die Queue im aktuellen Kanal.",
+  "command.description.queue.reset": "Setzt eine Staffelqueue samt Teilnahmen, Zählern und Nachrichten zurück."
 }

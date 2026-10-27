@@ -5,14 +5,10 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.interactions import (
-    safe_delete_message,
-    safe_edit_original_response,
-    send_temporary_response,
-)
-from hmwz.ui import EphemeralView
+from hmwz.utils.fetchers import fetch_channel, fetch_member
+from hmwz.utils.interactions import log_interaction
+from hmwz.ui.components.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 _logger = logging.getLogger(__name__)
@@ -43,9 +39,10 @@ class RegistrationRemoveConfirmation(EphemeralView):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
             return True
-        await send_temporary_response(
-            interaction,
+        await interaction.response.send_message(
             t(interaction, "wz.setup.registration.remove.confirmation_owner"),
+            ephemeral=True,
+            delete_after=5,
         )
         return False
 
@@ -141,14 +138,14 @@ class RegistrationRemoveConfirmation(EphemeralView):
         except Exception:
             _logger.exception(
                 "%s WZ registration removal failed.",
-                utils.log_interaction(interaction),
+                log_interaction(interaction),
             )
             await self._finish(interaction, "error")
 
     async def _remove_member_roles(self, registrations: set[tuple[int, int]]) -> bool:
         failed = False
         for member_id, role_id in registrations:
-            member = await utils.fetch_member(self.guild, member_id)
+            member = await fetch_member(self.guild, member_id)
             role = self.guild.get_role(role_id)
             if member is None or role is None or role not in member.roles:
                 continue
@@ -167,7 +164,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
     async def _remove_messages(
         self, message_ids: set[int], *, bot_id: int | None
     ) -> bool:
-        channel = await utils.fetch_channel(self.guild, self.channel_id)
+        channel = await fetch_channel(self.guild, self.channel_id)
         if channel is None:
             _logger.warning(
                 "Could not fetch registration channel %s in guild %s to remove "
@@ -191,8 +188,17 @@ class RegistrationRemoveConfirmation(EphemeralView):
         async def delete_message(message: discord.Message) -> None:
             nonlocal failed
             handled_message_ids.add(message.id)
-            if not await safe_delete_message(message):
+            try:
+                await message.delete()
+            except discord.NotFound:
+                pass
+            except discord.HTTPException:
                 failed = True
+                _logger.exception(
+                    "Failed to delete registration message %s in channel %s.",
+                    message.id,
+                    self.channel_id,
+                )
 
         for message_id in message_ids:
             try:
@@ -232,12 +238,11 @@ class RegistrationRemoveConfirmation(EphemeralView):
                 item.disabled = True
 
     async def _finish(self, interaction: discord.Interaction, result: str) -> None:
-        message = await safe_edit_original_response(
-            interaction,
+        message = await interaction.edit_original_response(
             content=t(interaction, f"wz.setup.registration.remove.{result}"),
             view=None,
         )
-        await safe_delete_message(message, delay=5)
+        await message.delete(delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -311,7 +316,7 @@ async def remove(interaction: discord.Interaction) -> None:
     except Exception:
         _logger.exception(
             "%s WZ setup registration removal prompt failed.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
         )
         await interaction.response.send_message(
             t(interaction, "wz.setup.registration.remove.error"),

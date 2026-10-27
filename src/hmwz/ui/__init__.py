@@ -1,3 +1,1 @@
-from .ephemeral_view import EphemeralView
-
-__all__ = ["EphemeralView"]
+"""Discord presentation and message-operation helpers."""

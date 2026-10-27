@@ -3,10 +3,10 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from hmwz.interactions import send_temporary_response as _send_temporary_response
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.donation.module import DonationModule
 from hmwz.modules.donation.views import DonationDeleteConfirmationView
+from ..responses import send_temporary_response as _send_temporary_response
 
 
 @app_commands.command(

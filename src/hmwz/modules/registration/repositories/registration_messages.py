@@ -134,9 +134,10 @@ class RegistrationMessageRepository(sqlite_db.Base):
         channel: int | None = None,
     ) -> bool:
         target = "lists"
-        if message is not None and messages:
-            raise ValueError("Cannot provide both message and messages filters.")
         try:
+            if message is not None and messages:
+                raise ValueError("Cannot provide both message and messages filters.")
+
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: list[typing.Any] = [guild.id]
 

@@ -82,7 +82,7 @@ async def test_registration_event_sends_required_registration_data(
         exporter=snapshot_exporter,
     )
     monkeypatch.setattr(
-        "hmwz.modules.snapshots.json_discord.utils.fetch_channel",
+        "hmwz.modules.snapshots.json_discord.fetch_channel",
         AsyncMock(return_value=delivery_channel),
     )
 
@@ -183,7 +183,7 @@ async def test_startup_sync_updates_persisted_message_instead_of_sending_duplica
     channel.fetch_message = AsyncMock(return_value=message)
     guild = SimpleNamespace(id=123, name="test guild", me=None)
     monkeypatch.setattr(
-        "hmwz.modules.snapshots.json_discord.utils.fetch_channel",
+        "hmwz.modules.snapshots.json_discord.fetch_channel",
         AsyncMock(return_value=channel),
     )
     snapshot = Snapshot(
@@ -238,7 +238,7 @@ async def test_startup_sync_reuses_legacy_snapshot_message(
         me=SimpleNamespace(id=999),
     )
     monkeypatch.setattr(
-        "hmwz.modules.snapshots.json_discord.utils.fetch_channel",
+        "hmwz.modules.snapshots.json_discord.fetch_channel",
         AsyncMock(return_value=channel),
     )
     exporter = DiscordJsonSnapshotExporter(guild, repository)
