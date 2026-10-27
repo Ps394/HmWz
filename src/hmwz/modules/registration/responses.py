@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import discord
 
+from hmwz.ui.messages import (
+    delete_temporary_message,
+    send_temporary_followup as send_followup,
+)
+
 CONFIRMATION_MESSAGE_LIFETIME_SECONDS = 5
 
 
@@ -13,17 +18,10 @@ async def send_temporary_followup(
     file: discord.File | None = None,
 ) -> None:
     """Send a follow-up notification and delete it after five seconds."""
-    if file is None:
-        message = await interaction.followup.send(
-            content,
-            ephemeral=ephemeral,
-            wait=True,
-        )
-    else:
-        message = await interaction.followup.send(
-            content,
-            file=file,
-            ephemeral=ephemeral,
-            wait=True,
-        )
-    await message.delete(delay=CONFIRMATION_MESSAGE_LIFETIME_SECONDS)
+    message = await send_followup(
+        interaction,
+        content,
+        ephemeral=ephemeral,
+        file=file,
+    )
+    await delete_temporary_message(message, delay=CONFIRMATION_MESSAGE_LIFETIME_SECONDS)

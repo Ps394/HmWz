@@ -2,8 +2,8 @@ import logging
 
 from discord import Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 
 from ....models import PurgeChannel
 from ....module import WzRegistrationModule
@@ -73,7 +73,7 @@ async def remove(interaction: Interaction) -> None:
     except Exception as error:
         logger.exception(
             "%s WZ setup channel remove failed: %s",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             error,
         )
         await interaction.followup.send(

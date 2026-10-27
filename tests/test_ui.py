@@ -10,6 +10,11 @@ import pytest
 
 from hmwz.modules.donation.overview import DonationOverview
 from hmwz.modules.donation.repository import DonationChannel
+from hmwz.modules.registration.list_overview import RegistrationListOverview
+from hmwz.modules.registration.repositories import (
+    MemberRegistrationRepository,
+    RegistrationMessageRepository,
+)
 from hmwz.ui.embeds import DEFAULT_EMBED_COLOR, create_embed
 from hmwz.ui.messages import delete_message, edit_message, send_message
 
@@ -73,6 +78,36 @@ def test_donation_overview_uses_shared_embed_theme(
     assert embed.footer.text == "|"
     assert embed.timestamp is not None
     assert embed.color == discord.Color.gold()
+
+
+@pytest.mark.asyncio
+async def test_registration_list_sends_messages_through_ui_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = SimpleNamespace(id=10)
+    channel = SimpleNamespace(id=20)
+    lists = SimpleNamespace(add=AsyncMock())
+    overview = RegistrationListOverview(
+        guild=cast(discord.Guild, SimpleNamespace(id=1)),
+        registrations=cast(MemberRegistrationRepository, SimpleNamespace()),
+        lists=cast(RegistrationMessageRepository, lists),
+        module_key="wz",
+        max_players=None,
+    )
+    send = AsyncMock(return_value=message)
+    monkeypatch.setattr("hmwz.modules.registration.list_overview.send_message", send)
+    embed = create_embed(title="Title", description="Description")
+
+    await overview._create_message(cast(discord.TextChannel, channel), embed)
+
+    send.assert_awaited_once_with(channel, embed=embed)
+    lists.add.assert_awaited_once_with(
+        guild=overview.guild,
+        channel=channel.id,
+        message=message.id,
+        title="Title",
+        text="Description",
+    )
 
 
 @pytest.mark.asyncio

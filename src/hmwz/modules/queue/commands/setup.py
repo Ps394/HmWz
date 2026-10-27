@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.app_commands import checks, locale_str
 
 from hmwz.i18n import t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
 from hmwz.modules.queue.module import QueueModule
 from hmwz.modules.queue.wizard import (
     QueueConfigView,

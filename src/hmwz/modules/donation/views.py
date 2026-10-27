@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.modules.donation.responses import (
+    send_temporary_response as _send_temporary_response,
+)
 
 from .overview import DonationOverview
 from .repository import DEFAULT_DONATION_CHOICES, DonationType
@@ -16,15 +19,6 @@ from .validation import parse_amount
 
 if TYPE_CHECKING:
     from .module import DonationModule
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
 
 
 class DonationRecordButton(discord.ui.Button):

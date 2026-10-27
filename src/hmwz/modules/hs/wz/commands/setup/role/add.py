@@ -3,9 +3,9 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.configuration import wz_registration_config
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from .selection import SetupRoleSelection
@@ -99,7 +99,7 @@ async def add(interaction: discord.Interaction, permanent: bool = False) -> None
     except Exception as error:
         logger.exception(
             "%s WZ setup role add failed: %s",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             error,
         )
         await interaction.followup.send(

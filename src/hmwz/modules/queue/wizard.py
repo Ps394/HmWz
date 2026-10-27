@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import discord
 
 from hmwz.i18n import t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
 
 from .repository import QueueConfiguration, QueueMode
 from .rules import season_start_timestamp, valid_run_range

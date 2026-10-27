@@ -210,9 +210,7 @@ async def test_qs_role_reset_removes_only_qs_configured_roles() -> None:
     guild.fetch_members = fetch_members
     guild.get_role.side_effect = {21: qs_role}.get
     module = SimpleNamespace(
-        roles=SimpleNamespace(
-            get=AsyncMock(return_value=[SimpleNamespace(role=21)])
-        )
+        roles=SimpleNamespace(get=AsyncMock(return_value=[SimpleNamespace(role=21)]))
     )
     manager = SimpleNamespace(get_module=AsyncMock(return_value=module))
     message = SimpleNamespace(delete=AsyncMock())
@@ -222,7 +220,9 @@ async def test_qs_role_reset_removes_only_qs_configured_roles() -> None:
             user=SimpleNamespace(id=1),
             locale=discord.Locale.german,
             client=SimpleNamespace(module_manager=manager),
-            response=SimpleNamespace(defer=AsyncMock(), is_done=Mock(return_value=True)),
+            response=SimpleNamespace(
+                defer=AsyncMock(), is_done=Mock(return_value=True)
+            ),
             message=message,
             followup=SimpleNamespace(send=AsyncMock()),
         ),
@@ -233,14 +233,12 @@ async def test_qs_role_reset_removes_only_qs_configured_roles() -> None:
     )
 
     with patch(
-        "hmwz.modules.hs.ephemeral_view.send_temporary_followup",
+        "hmwz.ui.components.ephemeral_view.send_temporary_followup",
         new_callable=AsyncMock,
     ):
         await confirm.callback(interaction)
 
-    member.remove_roles.assert_awaited_once_with(
-        qs_role, reason="QS Reset Roles"
-    )
+    member.remove_roles.assert_awaited_once_with(qs_role, reason="QS Reset Roles")
     module.roles.get.assert_awaited_once_with(guild=guild, channel_id=40)
     message.delete.assert_awaited_once()
 
@@ -267,13 +265,11 @@ async def test_qs_role_reset_cancel_deletes_confirmation() -> None:
     )
 
     with patch(
-        "hmwz.modules.hs.ephemeral_view.send_temporary_followup",
+        "hmwz.ui.components.ephemeral_view.send_temporary_followup",
         new_callable=AsyncMock,
     ):
         await cancel.callback(interaction)
 
-    interaction.response.defer.assert_awaited_once_with(
-        ephemeral=True, thinking=True
-    )
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
     message.delete.assert_awaited_once()
     interaction.delete_original_response.assert_awaited_once()

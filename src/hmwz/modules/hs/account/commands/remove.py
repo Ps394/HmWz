@@ -5,8 +5,8 @@ import logging
 import discord
 from discord import Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 
 from hmwz.modules.registration.commands.autocomplete import linked_accounts
 from .common import command_description, get_member_context
@@ -98,7 +98,7 @@ async def account_remove(interaction: Interaction, account: str) -> None:
     except discord.HTTPException:
         logger.exception(
             "%s Failed to remove Discord roles for game account %r.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             account,
         )
         await interaction.followup.send(
@@ -107,7 +107,7 @@ async def account_remove(interaction: Interaction, account: str) -> None:
     except Exception:
         logger.exception(
             "%s Failed to unlink game account %r.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             account,
         )
         await interaction.followup.send(

@@ -4,9 +4,17 @@
 
 - `hmwz.hm_models` contains UI-agnostic domain models, enums, and DTOs. It must not import Discord presentation types or construct embeds.
 - `hmwz.ui` owns shared Discord presentation defaults and technical message operations.
+- `hmwz.utils.fetchers` owns Discord object retrieval; `hmwz.utils.interactions` owns interaction and guild log context.
 - Modules and commands own use-case decisions, text translation, and the choice of when a message or embed is needed. They should use `hmwz.ui` rather than implementing shared styling or message-operation error handling.
-- Dependencies flow from modules and commands to `hmwz.ui`; presentation helpers may depend on domain models when needed. Models must not depend on either layer.
+- Dependencies flow from modules and commands to `hmwz.ui`, then to focused utilities and models as needed. Utilities and models must not depend on modules or UI.
 - Interaction acknowledgements and followups have Discord-specific response semantics; use the interaction response/followup API for those. Use `hmwz.ui.messages` for ordinary channel messages and persistent-message lifecycle operations.
+
+Use focused utility modules rather than a catch-all import:
+
+```python
+from hmwz.utils.fetchers import fetch_member
+from hmwz.utils.interactions import log_interaction
+```
 
 ## Usage
 

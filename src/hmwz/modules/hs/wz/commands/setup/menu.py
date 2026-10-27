@@ -7,9 +7,9 @@ from typing import cast
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from .channel.add import add as add_channel
@@ -146,7 +146,7 @@ async def setup(interaction: discord.Interaction) -> None:
             )
     except Exception:
         _logger.exception(
-            "%s WZ setup configuration failed.", utils.log_interaction(interaction)
+            "%s WZ setup configuration failed.", log_interaction(interaction)
         )
         content = t(interaction, "wz.setup.menu.error")
     await interaction.response.send_message(content, view=view, ephemeral=True)

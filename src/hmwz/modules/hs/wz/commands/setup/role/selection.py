@@ -4,9 +4,9 @@ import logging
 
 import discord
 
-from hmwz import utils
 from hmwz.i18n import t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 from .components import (
@@ -192,7 +192,7 @@ class SetupRoleSelection(EphemeralView):
         except Exception:
             logger.exception(
                 "%s WZ setup role selection failed.",
-                utils.log_interaction(interaction),
+                log_interaction(interaction),
             )
             content = t(interaction, "wz.setup.role.error")
         self.stop()

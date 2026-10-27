@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from importlib import import_module
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, Mock
@@ -6,11 +7,12 @@ from unittest.mock import AsyncMock, Mock
 import discord
 import pytest
 
-import hmwz.modules.registration.commands.setup.remove as remove_command
 from hmwz.modules.registration.commands.setup.remove import (
     RegistrationRemoveConfirmation,
     remove,
 )
+
+remove_command = import_module("hmwz.modules.registration.commands.setup.remove")
 
 
 @pytest.mark.asyncio
@@ -172,7 +174,7 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
     async def fetch_channel(_guild: discord.Guild, _channel_id: int) -> FakeChannel:
         return FakeChannel()
 
-    monkeypatch.setattr(remove_command.utils, "fetch_channel", fetch_channel)
+    monkeypatch.setattr(remove_command, "fetch_channel", fetch_channel)
     remove_member_roles = AsyncMock(return_value=False)
     monkeypatch.setattr(
         RegistrationRemoveConfirmation,

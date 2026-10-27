@@ -6,15 +6,7 @@ from discord import app_commands
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.donation.module import DonationModule
 from hmwz.modules.donation.views import DonationDeleteConfirmationView
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
+from ..responses import send_temporary_response as _send_temporary_response
 
 
 @app_commands.command(

@@ -12,15 +12,7 @@ from hmwz.modules.donation.validation import (
     donation_timezone_translation_key,
     parse_rush_start,
 )
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
+from ..responses import send_temporary_response as _send_temporary_response
 
 
 @app_commands.command(

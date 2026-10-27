@@ -5,9 +5,9 @@ import logging
 import discord
 from discord import Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import t
 from hmwz.ui.embeds import create_embed
+from hmwz.utils.interactions import log_interaction
 
 from .common import command_description, get_member_context
 
@@ -86,7 +86,7 @@ async def account_list(interaction: Interaction) -> None:
     except Exception:
         logger.exception(
             "%s Failed to list linked game accounts.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
         )
         await interaction.followup.send(
             t(interaction, "wz.registration.account.error"), ephemeral=True

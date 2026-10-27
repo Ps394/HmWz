@@ -5,8 +5,8 @@ import logging
 import discord
 from discord import Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 
 from .autocomplete import (
     DISPLAY_NAME_ACCOUNT_VALUE,
@@ -208,7 +208,7 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
     except discord.HTTPException:
         logger.exception(
             "%s Failed to assign registration role %s to account %r.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             role_id,
             account,
         )
@@ -218,7 +218,7 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
     except Exception:
         logger.exception(
             "%s Failed to register account %r for role %s.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             account,
             role_id,
         )

@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from hmwz import sqlite_db, utils
+from hmwz import sqlite_db
 from hmwz.i18n import t
 from hmwz.modules.basic_module import BasicModule
 from hmwz.modules.snapshots.registration import (
     RegistrationEventType,
     RegistrationSnapshotExporter,
 )
+from hmwz.utils.fetchers import fetch_role
 
 from .responses import send_temporary_followup
 from .overview import RegistrationOverview
@@ -240,7 +241,7 @@ class RegistrationModuleBase(BasicModule):
         )
         if any(item.role == role_id for item in remaining or ()):
             return
-        old_role = await utils.fetch_role(guild, role_id)
+        old_role = await fetch_role(guild, role_id)
         if old_role is not None:
             await member.remove_roles(
                 old_role,

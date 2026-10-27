@@ -3,8 +3,9 @@ import logging
 
 from discord import File, Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.fetchers import fetch_member
+from hmwz.utils.interactions import log_interaction
 
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
@@ -75,7 +76,7 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
         index = 1
         for reg in registrations:
             member = (
-                await utils.fetch_member(interaction.guild, reg.member)
+                await fetch_member(interaction.guild, reg.member)
                 if reg.member
                 else None
             )
@@ -111,7 +112,7 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
             bio.close()
     except Exception as e:
         logger.exception(
-            "%s WZ registration csv failed: %s", utils.log_interaction(interaction), e
+            "%s WZ registration csv failed: %s", log_interaction(interaction), e
         )
         await send_temporary_followup(
             interaction, t(interaction, "wz.registration.csv.error"), ephemeral=True

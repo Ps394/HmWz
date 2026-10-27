@@ -6,9 +6,10 @@ from asyncio.log import logger
 
 import discord
 
-from hmwz import events, exceptions, modules, sqlite_db, utils
+from hmwz import events, exceptions, modules, sqlite_db
 from hmwz.configuration import config
 from hmwz.i18n import CommandTranslator, t
+from hmwz.utils.interactions import log_interaction
 
 from . import commands, monitoring, repositories
 
@@ -19,7 +20,6 @@ __all__ = [
     "commands",
     "events",
     "exceptions",
-    "utils",
     "repositories",
     "sqlite_db",
 ]
@@ -249,9 +249,7 @@ class Client(discord.Client):
         :param error: Der aufgetretene Fehler
         :type error: discord.app_commands.AppCommandError
         """
-        log_context = (
-            f"{utils.log_interaction(interaction)} - Command: {interaction.command}"
-        )
+        log_context = f"{log_interaction(interaction)} - Command: {interaction.command}"
 
         send = (
             interaction.followup.send

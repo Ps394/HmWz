@@ -4,8 +4,8 @@ import logging
 
 from discord import Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.interactions import log_interaction
 
 from .common import command_description, get_member_context
 
@@ -67,7 +67,7 @@ async def account_add(interaction: Interaction, account: str) -> None:
     except Exception:
         logger.exception(
             "%s Failed to link game account %r.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             account,
         )
         await interaction.followup.send(

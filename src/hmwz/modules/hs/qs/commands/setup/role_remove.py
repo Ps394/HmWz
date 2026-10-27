@@ -3,9 +3,9 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.utils import log_interaction
+from hmwz.utils.fetchers import fetch_member
+from hmwz.utils.interactions import log_interaction
 
 from .common import get_setup_context
 
@@ -59,7 +59,7 @@ async def role_remove(interaction: discord.Interaction, role: discord.Role) -> N
         for registration in registrations or ():
             if registration.role != role.id or registration.member is None:
                 continue
-            member = await utils.fetch_member(context.guild, registration.member)
+            member = await fetch_member(context.guild, registration.member)
             if member is None or role not in member.roles:
                 continue
             try:

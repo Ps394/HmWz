@@ -5,9 +5,10 @@ import logging
 import discord
 from discord import app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.modules.hs.ephemeral_view import EphemeralView
+from hmwz.utils.fetchers import fetch_channel, fetch_member
+from hmwz.utils.interactions import log_interaction
+from hmwz.ui.components.ephemeral_view import EphemeralView
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
 _logger = logging.getLogger(__name__)
@@ -137,14 +138,14 @@ class RegistrationRemoveConfirmation(EphemeralView):
         except Exception:
             _logger.exception(
                 "%s WZ registration removal failed.",
-                utils.log_interaction(interaction),
+                log_interaction(interaction),
             )
             await self._finish(interaction, "error")
 
     async def _remove_member_roles(self, registrations: set[tuple[int, int]]) -> bool:
         failed = False
         for member_id, role_id in registrations:
-            member = await utils.fetch_member(self.guild, member_id)
+            member = await fetch_member(self.guild, member_id)
             role = self.guild.get_role(role_id)
             if member is None or role is None or role not in member.roles:
                 continue
@@ -163,7 +164,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
     async def _remove_messages(
         self, message_ids: set[int], *, bot_id: int | None
     ) -> bool:
-        channel = await utils.fetch_channel(self.guild, self.channel_id)
+        channel = await fetch_channel(self.guild, self.channel_id)
         if channel is None:
             _logger.warning(
                 "Could not fetch registration channel %s in guild %s to remove "
@@ -315,7 +316,7 @@ async def remove(interaction: discord.Interaction) -> None:
     except Exception:
         _logger.exception(
             "%s WZ setup registration removal prompt failed.",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
         )
         await interaction.response.send_message(
             t(interaction, "wz.setup.registration.remove.error"),

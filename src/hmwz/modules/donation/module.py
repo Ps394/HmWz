@@ -13,6 +13,7 @@ from hmwz.modules.basic_module import BasicModule
 from hmwz.modules.registry import register
 
 from .overview import DonationOverview
+from .responses import send_temporary_response as _send_temporary_response
 from .repository import DonationRepository, DonationType
 from hmwz.modules.snapshots import Snapshot
 from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
@@ -32,15 +33,6 @@ from .views import (
 )
 
 _logger = logging.getLogger(__name__)
-
-
-async def _send_temporary_response(
-    interaction: discord.Interaction, message: str
-) -> None:
-    """Send an ephemeral response and remove it after a short interval."""
-    await interaction.response.send_message(message, ephemeral=True)
-    response = await interaction.original_response()
-    await response.delete(delay=5)
 
 
 @register

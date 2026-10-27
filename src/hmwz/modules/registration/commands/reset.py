@@ -4,8 +4,9 @@ import logging
 import discord
 from discord import HTTPException, Interaction, app_commands
 
-from hmwz import utils
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.utils.fetchers import fetch_channel, fetch_member
+from hmwz.utils.interactions import log_interaction
 
 from hmwz.modules.hs.wz.module import WzRegistrationModule
 
@@ -18,7 +19,7 @@ async def _remove_registration_roles(
     guild: discord.Guild, roles_to_remove: set[tuple[int, int]]
 ) -> None:
     for member_id, role_id in roles_to_remove:
-        member = await utils.fetch_member(guild, member_id)
+        member = await fetch_member(guild, member_id)
         role = guild.get_role(role_id)
         if member is None or role is None:
             continue
@@ -45,7 +46,7 @@ async def _purge_configured_channels(
     channel_ids: set[int],
 ) -> None:
     for channel_id in sorted(channel_ids):
-        channel = await utils.fetch_channel(guild, channel_id)
+        channel = await fetch_channel(guild, channel_id)
         if channel is None:
             continue
         try:
@@ -206,7 +207,7 @@ async def reset(
     except Exception as e:
         logger.exception(
             "%s WZ registration reset failed: %s",
-            utils.log_interaction(interaction),
+            log_interaction(interaction),
             e,
         )
         await send_temporary_followup(
