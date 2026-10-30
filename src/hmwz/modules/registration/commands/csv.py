@@ -4,7 +4,7 @@ import logging
 from discord import File, Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.utils.fetchers import fetch_member
+from hmwz.utils.loaders import fetch_member
 from hmwz.utils.interactions import log_interaction
 
 from hmwz.modules.hs.wz.module import WzRegistrationModule

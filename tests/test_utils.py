@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import discord
 import pytest
 
-from hmwz.utils.fetchers import fetch_message
+from hmwz.utils.loaders import fetch_message
 from hmwz.utils.interactions import log_guild, log_interaction
 
 

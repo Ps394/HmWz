@@ -1,6 +1,6 @@
 # Import built-in modules so decorators register them.
-from . import donation, registration, hs, queue
-from .instance import Module, Modules, ModuleType
+from . import donation, registration, hs, queue, overview
+from .protocols import Module, Modules, ModuleType
 from .manager import Manager
 
 __all__ = [
@@ -12,4 +12,5 @@ __all__ = [
     "hs",
     "queue",
     "registration",
+    "overview",
 ]

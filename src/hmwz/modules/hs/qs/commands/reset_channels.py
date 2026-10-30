@@ -7,7 +7,7 @@ from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.components.ephemeral_view import EphemeralView
-from hmwz.utils.fetchers import fetch_channel
+from hmwz.utils.loaders import fetch_channel
 from hmwz.utils.interactions import log_interaction
 from hmwz.modules.hs.qs.module import QsRegistrationModule
 

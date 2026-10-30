@@ -10,7 +10,7 @@ from hmwz import emojis
 from hmwz.i18n import t
 from hmwz.ui.embeds import create_embed
 from hmwz.ui.messages import delete_message, edit_message, send_message
-from hmwz.utils.fetchers import fetch_member, fetch_message
+from hmwz.utils.loaders import fetch_member, fetch_message
 
 from . import models
 

@@ -7,7 +7,7 @@ from typing import cast
 import discord
 import pytest
 
-from hmwz.hm_client.repositories import ServerRepository
+from hmwz.client.repositories import ServerRepository
 from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.modules.hs.wz.repositories import (
     MemberRegistrationRepository,

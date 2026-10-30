@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz import sqlite_db
-from hmwz.utils.fetchers import fetch_channel
+from hmwz.utils.loaders import fetch_channel
 
 from . import Snapshot
 

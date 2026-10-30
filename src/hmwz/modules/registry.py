@@ -7,7 +7,7 @@ alle hier registrierten Module.
 
 from __future__ import annotations
 
-from .instance import ModuleType
+from .protocols import ModuleType
 
 REGISTRY: list[ModuleType] = []
 """Globale Liste aller registrierten Modulklassen."""

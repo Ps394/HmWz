@@ -12,7 +12,7 @@ from hmwz.configuration import registration_defaults
 from hmwz.i18n import t
 from hmwz.ui.embeds import create_embed
 from hmwz.ui.messages import edit_message, send_message
-from hmwz.utils.fetchers import fetch_channel, fetch_message
+from hmwz.utils.loaders import fetch_channel, fetch_message
 
 from . import models
 from .list_overview import RegistrationListOverview

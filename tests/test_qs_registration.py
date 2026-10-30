@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import discord
 import pytest
 
-from hmwz.hm_client import Client
+from hmwz.client import Client
 from hmwz.i18n.loader import load_translations
 from hmwz.modules.hs.qs.module import QsRegistrationModule
 from hmwz.modules.hs.qs.commands.reset_roles import QsRolesResetConfirmation

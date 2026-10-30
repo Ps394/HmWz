@@ -5,7 +5,7 @@ import sys
 import discord
 from HmLogger import get_logger, logging, setup_logging
 
-from .hm_client import Client
+from .client import Client
 from .token_storage import Token
 
 

@@ -7,7 +7,7 @@ import discord
 
 from hmwz import events
 
-from .instance import Module, Modules, ModuleType
+from .protocols import ModuleProtocol, Modules, ModuleType, ChannelModuleProtocol, MemberModuleProtocol, RoleModuleProtocol, MessageModuleProtocol
 from .registry import REGISTRY
 
 _logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class Manager:
     def __init__(self, client):
         """Erstellt einen Modulmanager fuer einen Discord-Client."""
         self.client = client
-        self._modules_by_guild: dict[int, list[Module]] = {}
+        self._modules_by_guild: dict[int, list[ModuleProtocol]] = {}
 
     async def get_modules(self, guild: discord.Guild) -> Modules:
         """Liefert alle Modulinstanzen fuer eine Guild.
@@ -28,7 +28,7 @@ class Manager:
         erzeugt und zwischengespeichert.
         """
         if guild.id not in self._modules_by_guild:
-            modules: list[Module] = []
+            modules: list[ModuleProtocol] = []
             for factory in REGISTRY:
                 try:
                     modules.append(await factory.create(guild, self.client))
@@ -61,7 +61,8 @@ class Manager:
         for module in modules:
             try:
                 await module.sync(startup=True)
-                await module.ensure()
+                if isinstance(module, MessageModuleProtocol):
+                    await module.ensure()
             except Exception as e:
                 _logger.exception(
                     f"{guild.name} ({guild.id}) - Failed to initialize module {module.__class__.__name__}: {e}"
@@ -74,7 +75,8 @@ class Manager:
         for module in modules:
             try:
                 await module.sync(startup=startup)
-                await module.ensure()
+                if isinstance(module, MessageModuleProtocol):
+                    await module.ensure()
             except Exception as e:
                 _logger.exception(
                     f"{guild.name} ({guild.id}) - Failed to sync module {module.__class__.__name__}: {e}"

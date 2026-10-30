@@ -44,13 +44,6 @@ async def fetch_channel(
             )
         except RateLimited as error:
             await asyncio.sleep(error.retry_after)
-        except (NotFound, HTTPException):
-            _logger.warning(
-                "Unknown channel (%s) for guild %s; unable to find it!",
-                channel_id,
-                log_guild(guild),
-            )
-            return None
         except Forbidden:
             _logger.warning(
                 "Unknown channel (%s) for guild %s; permission denied!",
@@ -58,6 +51,21 @@ async def fetch_channel(
                 log_guild(guild),
             )
             return None
+        except NotFound:
+            _logger.warning(
+                "Unknown channel (%s) for guild %s; unable to find it!",
+                channel_id,
+                log_guild(guild),
+            )
+            return None
+        except HTTPException as error:
+            _logger.warning(
+                "HTTP exception occurred while fetching channel (%s) for guild %s: %s",
+                channel_id,
+                log_guild(guild),
+                error,
+            )
+
     await asyncio.sleep(_DELAY)
     return None
 
@@ -81,7 +89,7 @@ async def fetch_message(
                 return message
         except RateLimited as error:
             await asyncio.sleep(error.retry_after)
-        except (NotFound, HTTPException):
+        except NotFound:
             _logger.warning(
                 "Message %s in channel %s (%s) for guild %s unable to find!",
                 message_id,
@@ -99,6 +107,15 @@ async def fetch_message(
                 log_guild(channel.guild),
             )
             return None
+        except HTTPException as error:
+            _logger.warning(
+                "HTTP exception occurred while fetching message %s in channel %s (%s) for guild %s: %s",
+                message_id,
+                channel.name,
+                channel.id,
+                log_guild(channel.guild),
+                error,
+            )
     await asyncio.sleep(_DELAY)
     return None
 
@@ -134,7 +151,7 @@ async def fetch_member(
                 return member
         except RateLimited as error:
             await asyncio.sleep(error.retry_after)
-        except (NotFound, HTTPException):
+        except NotFound:
             _logger.warning(
                 "Unknown member (%s) for guild %s; unable to find it!",
                 member_id,
@@ -148,6 +165,14 @@ async def fetch_member(
                 log_guild(guild),
             )
             return None
+        except HTTPException as error:
+            _logger.warning(
+                "HTTP exception occurred while fetching member %s for guild %s: %s",
+                member_id,
+                log_guild(guild),
+                error,
+            )
+            
     await asyncio.sleep(_DELAY)
     return None
 

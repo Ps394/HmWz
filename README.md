@@ -38,6 +38,40 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 - Deutsche und englische Command-Lokalisierungen.
 - Optionales Ressourcenmonitoring mit `psutil`; Messwerte und Schwellwertüberschreitungen erscheinen im Log.
 
+## Wiederverwendbare Overviews
+
+`hmwz.modules.overview.OverviewModule` verwaltet eigenständige Embed-Nachrichten
+pro Guild. Andere Module können über `Manager.get_module` eine Übersicht
+veröffentlichen oder aktualisieren und ihre Schaltflächen über stabile IDs mit
+asynchronen Handlern verbinden:
+
+```python
+from hmwz.modules.overview import OverviewButton, OverviewModule
+
+overview = await self.client.module_manager.get_module(
+    self.guild, OverviewModule
+)
+overview.register_handler(
+    overview_id="my_feature",
+    button_id="action",
+    handler=self.handle_action,
+)
+await overview.publish(
+    overview_id="my_feature",
+    channel_id=channel_id,
+    title="Meine Übersicht",
+    description="Beschreibung der Übersicht",
+    buttons=(OverviewButton(button_id="action", label="Ausführen"),),
+)
+```
+
+`publish` legt die Nachricht an oder aktualisiert die vorhandene; `delete`
+entfernt Nachricht und Konfiguration. Die Übersicht und ihre Schaltflächen
+werden beim Start aus SQLite wiederhergestellt. Handler werden vom
+bereitstellenden Modul beim Initialisieren erneut registriert. Beim Verlassen
+einer Guild versucht das Overview-Modul, die verwalteten Nachrichten zu löschen
+und bereinigt anschließend deren gespeicherte Konfiguration.
+
 ## Voraussetzungen
 
 - Python **3.12 oder neuer**.
