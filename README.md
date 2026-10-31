@@ -389,6 +389,12 @@ Die Etappen können einzeln ausgeführt werden:
 
 Die Dienstinstallation unter Linux benötigt `systemd` und `sudo`; führe das Installationsskript als Bot-Benutzer aus, nicht als root. Sie aktiviert den gewählten Dienst beim Systemstart und startet ihn. Verwende `scripts/linux/start_bot_service.bash` zum Neustart und `scripts/linux/stop_bot_service.bash` zum Stoppen; optional kannst du den Dienstnamen als erstes Argument übergeben. Der Dienst bleibt nach dem Stoppen für den nächsten Systemstart aktiviert.
 
+Bei `WorkingDirectory= path is not absolute` durch einen in Anführungszeichen
+geschriebenen Pfad kannst du die Unit mit dem korrigierten Skript neu installieren:
+`HMWZ_SERVICE_NAME=discordbot bash scripts/linux/install_service.bash`.
+Verwende dabei den Namen des betroffenen Dienstes. Das Skript schreibt die Unit
+neu, lädt die systemd-Konfiguration und aktiviert und startet den Dienst.
+
 ### Manuelle Installation
 
 **Windows (PowerShell):**

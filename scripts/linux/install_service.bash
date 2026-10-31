@@ -39,6 +39,16 @@ systemd_quote() {
     printf '"%s"' "$value"
 }
 
+systemd_path() {
+    local value="$1"
+    if [[ "$value" != /* || "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+        echo "Error: systemd paths must be absolute and must not contain line breaks." >&2
+        return 1
+    fi
+    # Path directives retain quotes literally, unlike ExecStart arguments.
+    printf '%s' "${value//%/%%}"
+}
+
 current_service_name="$(hmwz_resolve_service_name)"
 service_name_input="${HMWZ_SERVICE_NAME:-}"
 if [[ -z "$service_name_input" && -t 0 ]]; then
@@ -62,7 +72,7 @@ if [[ -n "${HMWZ_TOKEN_FILE:-}" ]]; then
         echo "Error: HMWZ_TOKEN_FILE must be an absolute path to a readable file: $HMWZ_TOKEN_FILE" >&2
         exit 1
     fi
-    token_file_directive="EnvironmentFile=$(systemd_quote "$HMWZ_TOKEN_FILE")"
+    token_file_directive="EnvironmentFile=$(systemd_path "$HMWZ_TOKEN_FILE")"
 fi
 
 unit_file="$(mktemp)"
@@ -86,7 +96,7 @@ if [[ -n "$token_file_directive" ]]; then
 fi
 
 cat >> "$unit_file" <<EOF
-WorkingDirectory=$(systemd_quote "$PROJECT_DIR")
+WorkingDirectory=$(systemd_path "$PROJECT_DIR")
 ExecStart=$(systemd_quote "$python_path") $(systemd_quote "$entry_path")
 Restart=on-failure
 RestartSec=5
