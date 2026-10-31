@@ -86,6 +86,7 @@ class EntitySelectionView(EphemeralView):
 
     Native pickers show guild entities, not a filtered application-specific list.
     Explicit options instead show only allowed entities, with 25 per page.
+    Filtered pickers may retain more than 25 selected entities across pages.
     Disallowed selections are rejected as a whole without changing the preview.
     Callers must revalidate permissions and configuration before committing.
     """
@@ -107,9 +108,13 @@ class EntitySelectionView(EphemeralView):
         self.owner_id = owner_id
         self.kind = kind
         self.allowed_ids = frozenset(allowed_ids)
-        if not self.allowed_ids or not 1 <= max_selected <= 25:
+        if (
+            not self.allowed_ids
+            or max_selected < 1
+            or (options is None and max_selected > 25)
+        ):
             raise ValueError(
-                "A picker needs allowed entities and a limit from 1 to 25."
+                "A picker needs allowed entities and a positive limit; native pickers allow at most 25."
             )
         self.max_selected = min(max_selected, len(self.allowed_ids))
         self.owner_message = owner_message
@@ -146,7 +151,7 @@ class EntitySelectionView(EphemeralView):
             return
         self.entity_select.options = self.options[self.page * 25 : (self.page + 1) * 25]
         self.entity_select.max_values = min(
-            self.max_selected, len(self.entity_select.options)
+            25, self.max_selected, len(self.entity_select.options)
         )
         for option in self.options:
             option.default = int(option.value) in self.selected_ids

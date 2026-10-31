@@ -6,7 +6,8 @@ import discord
 from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.ui.components.entity_selection import EntitySelectionView
+from hmwz.ui.embeds import create_embed
 from hmwz.ui.messages import (
     edit_interaction_response,
     send_followup,
@@ -17,7 +18,7 @@ from hmwz.utils.loaders import fetch_channel
 from hmwz.modules.hs.wz.module import WzModule
 
 _logger = logging.getLogger(__name__)
-_MAX_PREVIEW_LENGTH = 1400
+_MAX_PREVIEW_LENGTH = 700
 
 
 def _channel_names(channel_ids: list[int], context: discord.Interaction) -> str:
@@ -40,7 +41,7 @@ def _channel_names(channel_ids: list[int], context: discord.Interaction) -> str:
     )
 
 
-class CleanChannelsConfirmation(EphemeralView):
+class CleanChannelsConfirmation(EntitySelectionView):
     def __init__(
         self,
         *,
@@ -49,7 +50,28 @@ class CleanChannelsConfirmation(EphemeralView):
         channel_ids: list[int],
         context: discord.Interaction,
     ) -> None:
-        super().__init__(timeout=120)
+        options = []
+        for channel_id in channel_ids:
+            channel = guild.get_channel(channel_id)
+            options.append(
+                discord.SelectOption(
+                    label=channel.name[:100]
+                    if isinstance(channel, discord.TextChannel)
+                    else str(channel_id),
+                    value=str(channel_id),
+                )
+            )
+        super().__init__(
+            owner_id=owner_id,
+            kind="channel",
+            allowed_ids=channel_ids,
+            max_selected=len(channel_ids),
+            options=options,
+            placeholder=t(context, "wz.clean_channels.select_exceptions"),
+            owner_message=t(context, "wz.clean_channels.confirmation_owner"),
+            invalid_message=t(context, "wz.reset.invalid_exceptions"),
+            timeout=120,
+        )
         self.guild = guild
         self.owner_id = owner_id
         self.channel_ids = channel_ids
@@ -60,7 +82,7 @@ class CleanChannelsConfirmation(EphemeralView):
                     item.label = t(context, "wz.clean_channels.confirm_button")
                 elif item.custom_id == "wz_clean_channels_cancel":
                     item.label = t(context, "wz.clean_channels.cancel_button")
-                else:
+                elif item.custom_id == "wz_clean_channels_toggle_pinned":
                     item.label = t(
                         context,
                         "wz.clean_channels.pinned_toggle_include"
@@ -68,31 +90,57 @@ class CleanChannelsConfirmation(EphemeralView):
                         else "wz.clean_channels.pinned_toggle_exclude",
                     )
 
-    def confirmation_content(self, context: discord.Interaction) -> str:
-        return t(
-            context,
-            "wz.clean_channels.confirmation",
-            channel_names=_channel_names(self.channel_ids, context),
-            pinned_status=t(
+    def confirmation_embed(self, context: discord.Interaction) -> discord.Embed:
+        """Preview cleanup targets, ignored channels and pinned-message behavior."""
+        reset_ids = [
+            channel_id
+            for channel_id in self.channel_ids
+            if channel_id not in self.selected_ids
+        ]
+        embed = create_embed(
+            title=t(context, "wz.clean_channels.preview_title"),
+            description=t(context, "wz.reset.preview_instructions")
+            + "\n\n"
+            + t(context, "wz.clean_channels.warning"),
+        )
+        embed.add_field(
+            name=t(context, "wz.clean_channels.affected", count=len(reset_ids)),
+            value=_channel_names(reset_ids, context) or t(context, "wz.reset.none"),
+            inline=False,
+        )
+        embed.add_field(
+            name=t(context, "wz.reset.ignored", count=len(self.selected_ids)),
+            value=_channel_names(sorted(self.selected_ids), context)
+            or t(context, "wz.reset.none"),
+            inline=False,
+        )
+        embed.add_field(
+            name=t(context, "wz.clean_channels.pinned_label"),
+            value=t(
                 context,
                 "wz.clean_channels.pinned_excluded"
                 if self.ignore_pinned
                 else "wz.clean_channels.pinned_included",
             ),
+            inline=False,
         )
+        return embed
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
-            return True
-        await self.send_temporary_response(
-            interaction, t(interaction, "wz.clean_channels.confirmation_owner")
+    async def on_selection_changed(self, interaction: discord.Interaction) -> None:
+        """Refresh the preview and prevent confirming an empty cleanup."""
+        self.confirm.disabled = not (self.allowed_ids - self.selected_ids)
+        await edit_interaction_response(
+            interaction,
+            content=None,
+            embed=self.confirmation_embed(interaction),
+            view=self,
         )
-        return False
 
     @discord.ui.button(
         label="Pinned messages excluded",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_clean_channels_toggle_pinned",
+        row=1,
     )
     async def toggle_pinned(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -105,13 +153,17 @@ class CleanChannelsConfirmation(EphemeralView):
             else "wz.clean_channels.pinned_toggle_exclude",
         )
         await edit_interaction_response(
-            interaction, content=self.confirmation_content(interaction), view=self
+            interaction,
+            content=None,
+            embed=self.confirmation_embed(interaction),
+            view=self,
         )
 
     @discord.ui.button(
         label="Confirm cleanup",
         style=discord.ButtonStyle.danger,
         custom_id="wz_clean_channels_confirm",
+        row=1,
     )
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -132,6 +184,7 @@ class CleanChannelsConfirmation(EphemeralView):
                     channel_id
                     for channel_id in self.channel_ids
                     if channel_id in configured_ids
+                    and channel_id not in self.selected_ids
                 ]
                 if not selected_ids:
                     content = t(interaction, "wz.clean_channels.no_channels")
@@ -186,6 +239,7 @@ class CleanChannelsConfirmation(EphemeralView):
         label="Cancel",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_clean_channels_cancel",
+        row=1,
     )
     async def cancel(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -233,7 +287,7 @@ async def clean_channels(interaction: discord.Interaction) -> None:
         )
         message = await send_followup(
             interaction,
-            view.confirmation_content(interaction),
+            embed=view.confirmation_embed(interaction),
             view=view,
             ephemeral=True,
             wait=True,

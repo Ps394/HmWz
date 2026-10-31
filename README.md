@@ -493,6 +493,13 @@ Account-Modul weiterhin über das allgemeine Registrierungsmodul verwaltet.
 | `/qs reset-channels` | Bereinigt nach Bestätigung die konfigurierten QS-Kanäle. |
 | `/qs reset-roles` | Entfernt nach Bestätigung die im aktuellen QS-Kanal konfigurierten Rollen von Servermitgliedern. |
 
+Bei beiden WZ-Reset-Befehlen lassen sich konfigurierte Rollen beziehungsweise
+Kanäle als Ausnahmen auswählen. Die Embed-Vorschau trennt betroffene und
+ignorierte Elemente mit Zählern; sind alle Elemente ausgenommen, ist die
+Bestätigung deaktiviert. Ausnahmen gelten nur für den aktuellen Reset und
+ändern die gespeicherte Konfiguration nicht. Beim Kanal-Reset bleiben
+angepinnte Nachrichten standardmäßig ausgenommen; dies ist separat umschaltbar.
+
 Verknüpfe Accounts mit `account-add`, bevor du sie anmeldest. Registrierungen über die Übersichtsschaltflächen bleiben Discord-Mitglied-bezogen; die Commands `register` und `deregister` verwalten gezielt den angegebenen Ingame-Account. Vorhandene Registrierungen bleiben beim Datenbank-Upgrade erhalten.
 
 ### Einrichtung

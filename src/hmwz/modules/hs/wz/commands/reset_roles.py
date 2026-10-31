@@ -6,7 +6,8 @@ import discord
 from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.ui.components.entity_selection import EntitySelectionView
+from hmwz.ui.embeds import create_embed
 from hmwz.ui.messages import (
     edit_interaction_response,
     send_followup,
@@ -47,7 +48,7 @@ def _role_names(
     return "\n".join(visible_names)
 
 
-class ResetRolesConfirmation(EphemeralView):
+class ResetRolesConfirmation(EntitySelectionView):
     def __init__(
         self,
         *,
@@ -56,13 +57,27 @@ class ResetRolesConfirmation(EphemeralView):
         role_ids: list[int],
         context: discord.Interaction,
     ) -> None:
-        super().__init__(timeout=180)
+        roles = [guild.get_role(role_id) for role_id in role_ids]
+        options = [
+            discord.SelectOption(
+                label=role.name[:100] if role is not None else str(role_id),
+                value=str(role_id),
+            )
+            for role_id, role in zip(role_ids, roles)
+        ]
+        super().__init__(
+            owner_id=owner_id,
+            kind="role",
+            allowed_ids=role_ids,
+            max_selected=len(role_ids),
+            options=options,
+            placeholder=t(context, "wz.reset_roles.select_exceptions"),
+            owner_message=t(context, "wz.reset_roles.confirmation_owner"),
+            invalid_message=t(context, "wz.reset.invalid_exceptions"),
+        )
         self.guild = guild
         self.owner_id = owner_id
         self.role_ids = role_ids
-        self.exception_ids: set[int] = set()
-        self.page = 0
-        self.select: _RoleExceptionSelect | None = None
         self.confirm_button: discord.ui.Button[ResetRolesConfirmation] | None = None
         for item in self.children:
             if not isinstance(item, discord.ui.Button):
@@ -72,116 +87,54 @@ class ResetRolesConfirmation(EphemeralView):
                 self.confirm_button = item
             elif item.custom_id == "wz_reset_roles_cancel":
                 item.label = t(context, "wz.reset_roles.cancel_button")
-            elif item.custom_id == "wz_reset_roles_previous":
-                item.label = t(context, "wz.reset_roles.previous_page")
-            elif item.custom_id == "wz_reset_roles_next":
-                item.label = t(context, "wz.reset_roles.next_page")
-        self._refresh_components(context)
+        self._update_confirm_button()
 
-    def confirmation_content(self, context: discord.Interaction) -> str:
+    def confirmation_embed(self, context: discord.Interaction) -> discord.Embed:
         reset_ids = [
-            role_id for role_id in self.role_ids if role_id not in self.exception_ids
+            role_id for role_id in self.role_ids if role_id not in self.selected_ids
         ]
-        return t(
-            context,
-            "wz.reset_roles.confirmation",
-            role_names=_role_names(
+        embed = create_embed(
+            title=t(context, "wz.reset_roles.preview_title"),
+            description=t(context, "wz.reset.preview_instructions"),
+        )
+        embed.add_field(
+            name=t(context, "wz.reset_roles.affected", count=len(reset_ids)),
+            value=_role_names(
                 self.guild, reset_ids, context, "wz.reset_roles.no_roles_to_reset"
             ),
-            excluded_role_names=_role_names(
+            inline=False,
+        )
+        embed.add_field(
+            name=t(context, "wz.reset.ignored", count=len(self.selected_ids)),
+            value=_role_names(
                 self.guild,
-                sorted(self.exception_ids),
+                sorted(self.selected_ids),
                 context,
                 "wz.reset_roles.no_exceptions",
             ),
+            inline=False,
         )
+        return embed
 
-    def _refresh_components(self, context: discord.Interaction) -> None:
-        if self.select is not None:
-            self.remove_item(self.select)
-        page_roles = self.role_ids[self.page * 25 : (self.page + 1) * 25]
-        roles = [
-            role
-            for role_id in page_roles
-            if (role := self.guild.get_role(role_id)) is not None
-        ]
-        if roles:
-            self.select = _RoleExceptionSelect(
-                view=self,
-                roles=roles,
-                selected_ids=self.exception_ids,
-                placeholder=t(context, "wz.reset_roles.select_exceptions"),
-            )
-            self.add_item(self.select)
-        else:
-            self.select = None
+    def _update_confirm_button(self) -> None:
+        if self.confirm_button is not None:
+            self.confirm_button.disabled = not (self.allowed_ids - self.selected_ids)
 
-        for item in self.children:
-            if not isinstance(item, discord.ui.Button):
-                continue
-            if item.custom_id == "wz_reset_roles_previous":
-                item.disabled = self.page == 0
-            elif item.custom_id == "wz_reset_roles_next":
-                item.disabled = (self.page + 1) * 25 >= len(self.role_ids)
-            elif item.custom_id == "wz_reset_roles_confirm":
-                item.disabled = not any(
-                    role_id not in self.exception_ids for role_id in self.role_ids
-                )
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
-            return True
-        await self.send_temporary_response(
-            interaction, t(interaction, "wz.reset_roles.confirmation_owner")
-        )
-        return False
-
-    async def update_exceptions(
-        self, interaction: discord.Interaction, selected_ids: list[int]
-    ) -> None:
-        page_ids = set(self.role_ids[self.page * 25 : (self.page + 1) * 25])
-        self.exception_ids.difference_update(page_ids)
-        self.exception_ids.update(selected_ids)
-        self._refresh_components(interaction)
+    async def on_selection_changed(self, interaction: discord.Interaction) -> None:
+        """Show ignored roles separately and disable resets with no targets."""
+        self._update_confirm_button()
         await edit_interaction_response(
-            interaction, content=self.confirmation_content(interaction), view=self
-        )
-
-    @discord.ui.button(
-        label="Previous",
-        style=discord.ButtonStyle.secondary,
-        custom_id="wz_reset_roles_previous",
-        row=1,
-    )
-    async def previous_page(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        self.page -= 1
-        self._refresh_components(interaction)
-        await edit_interaction_response(
-            interaction, content=self.confirmation_content(interaction), view=self
-        )
-
-    @discord.ui.button(
-        label="Next",
-        style=discord.ButtonStyle.secondary,
-        custom_id="wz_reset_roles_next",
-        row=1,
-    )
-    async def next_page(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        self.page += 1
-        self._refresh_components(interaction)
-        await edit_interaction_response(
-            interaction, content=self.confirmation_content(interaction), view=self
+            interaction,
+            content=None,
+            embed=self.confirmation_embed(interaction),
+            view=self,
         )
 
     @discord.ui.button(
         label="Reset roles",
         style=discord.ButtonStyle.danger,
         custom_id="wz_reset_roles_confirm",
-        row=2,
+        row=1,
     )
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -200,7 +153,7 @@ class ResetRolesConfirmation(EphemeralView):
                     role
                     for role_id in self.role_ids
                     if role_id in configured_ids
-                    and role_id not in self.exception_ids
+                    and role_id not in self.selected_ids
                     and (role := self.guild.get_role(role_id)) is not None
                     and not role.is_default()
                     and not role.managed
@@ -271,44 +224,13 @@ class ResetRolesConfirmation(EphemeralView):
         label="Cancel",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_reset_roles_cancel",
-        row=2,
+        row=1,
     )
     async def cancel(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
         await self.finish(interaction, t(interaction, "wz.reset_roles.cancelled"))
-
-
-class _RoleExceptionSelect(discord.ui.Select):
-    def __init__(
-        self,
-        *,
-        view: ResetRolesConfirmation,
-        roles: list[discord.Role],
-        selected_ids: set[int],
-        placeholder: str,
-    ) -> None:
-        super().__init__(
-            placeholder=placeholder,
-            min_values=0,
-            max_values=len(roles),
-            options=[
-                discord.SelectOption(
-                    label=role.name[:100],
-                    value=str(role.id),
-                    default=role.id in selected_ids,
-                )
-                for role in roles
-            ],
-            row=0,
-        )
-        self.reset_view = view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.reset_view.update_exceptions(
-            interaction, [int(value) for value in self.values]
-        )
 
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
@@ -358,7 +280,7 @@ async def reset_roles(interaction: discord.Interaction) -> None:
         )
         message = await send_followup(
             interaction,
-            view.confirmation_content(interaction),
+            embed=view.confirmation_embed(interaction),
             view=view,
             ephemeral=True,
             wait=True,
