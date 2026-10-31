@@ -1,0 +1,42 @@
+Mit dem Bot könnt ihr Ingame-Accounts – zum Beispiel Zweitaccounts (Alts) –
+mit eurem Discord-Konto verknüpfen und für verfügbare Rollen anmelden.
+Ein Account muss zuerst hinzugefügt werden.
+
+### ACCOUNTS ANZEIGEN
+```
+  /account account-list
+```
+Zeigt die mit eurem Discord-Konto verknüpften Accounts an.
+
+### ACCOUNT HINZUFÜGEN
+```
+  /account account-add account:<Account>
+```
+Verknüpft einen Ingame-Account mit eurem Discord-Konto. Ein Account kann pro
+Server nur einem Discord-Mitglied zugeordnet sein.
+
+### ACCOUNT ENTFERNEN
+```
+  /account account-remove account:<Account>
+```
+Hebt die Verknüpfung auf und entfernt die Anmeldungen dieses Accounts. Eine
+Discord-Rolle wird nur entfernt, wenn sie nicht für eine andere Anmeldung
+eures Discord-Mitglieds benötigt wird.
+
+### FÜR EINE ROLLE ANMELDEN
+```
+  /registration register account:<Account> role:<Anmeldungsrolle>
+```
+Meldet einen eurer verknüpften Accounts im aktuellen Kanal für eine dort
+eingerichtete Rolle an.
+
+### ANMELDUNG ENTFERNEN
+```
+  /registration deregister account:<Account>
+```
+Meldet den ausgewählten Account im aktuellen Kanal ab.
+
+HINWEIS
+Verwendet beim Hinzufügen den jeweiligen Ingame-Namen. Haupt- und
+Zweitaccounts können separat angemeldet werden. Achtet darauf, dass ihr euch
+im richtigen Anmeldungskanal befindet.
