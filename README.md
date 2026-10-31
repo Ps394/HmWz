@@ -147,6 +147,8 @@ Dienst in dessen eigener Umgebung.
 
 Alle Befehle werden in Discord als Slash-Commands angeboten. Ein Teil der
 Antworten und Einrichtungsdialoge ist nur für die aufrufende Person sichtbar.
+Eine ausführliche Anleitung zur Konfiguration von Anmeldungen und Spenden für
+Moderatoren steht in der [Moderator-Anleitung](moderator-anleitung.txt).
 
 ### Allgemeine Befehle
 
@@ -182,6 +184,13 @@ Die Konfiguration kann mehrere Anmeldungen pro Server verwalten. Eine Rolle
 kann innerhalb der Registrierungen nur einer Anmeldung zugeordnet werden.
 Registrierungsbefehle wirken im aktuellen Kanal; prüfe daher den Kanal vor
 Reset- oder Entfernen-Aktionen sorgfältig.
+
+Unveränderte Übersichten und Mitgliederlisten werden nicht erneut an Discord
+gesendet; der automatisch erzeugte Zeitstempel zählt nicht als Inhaltsänderung.
+Gleichzeitige Aktualisierungen werden je Anmeldungskanal zusammengefasst.
+Änderungen während einer laufenden Synchronisierung werden in einem gemeinsamen
+Nachlauf berücksichtigt. Nicht erzwungene Aktualisierungen innerhalb des
+Mindestintervalls werden verzögert ausgeführt, statt verworfen zu werden.
 
 ### WZ-Verwaltung
 

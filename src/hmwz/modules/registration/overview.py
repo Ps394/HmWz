@@ -52,7 +52,9 @@ class RegistrationOverview:
         self.registration_handler = registration_handler
         self.overview_module = overview_module
         self.overview_id = f"{module_key}-{channel_id}"
-        self._compose_lock = asyncio.Lock()
+        self._compose_task: asyncio.Task[bool] | None = None
+        self._compose_requested = False
+        self._compose_force = asyncio.Event()
         self._last_compose_at = 0.0
         self._compose_min_interval_seconds = 1.5
         self._list_overview = RegistrationListOverview(
@@ -333,40 +335,46 @@ class RegistrationOverview:
         return tuple(name for name in required if not getattr(permissions, name))
 
     async def compose(self, force: bool = False) -> bool:
-        """Synchronize this channel's overview, optionally bypassing debounce.
+        """Synchronize this channel, coalescing requests into a shared task.
 
         Args:
-            force: Whether to bypass the minimum interval between updates.
+            force: Bypass the minimum interval, but still coalesce pending updates.
 
         Returns:
-            Whether the overview was synchronized successfully.
+            Whether every synchronization in the shared task succeeded.
         """
-        now = time.monotonic()
-        if (
-            not force
-            and now - self._last_compose_at < self._compose_min_interval_seconds
-        ):
-            _logger.debug(
-                "%s (%s) - Debounced registration overview compose request.",
+        self._compose_requested = True
+        if force:
+            self._compose_force.set()
+        if self._compose_task is None or self._compose_task.done():
+            self._compose_task = asyncio.create_task(self._run_compose())
+            self._compose_task.add_done_callback(self._compose_done)
+        return await asyncio.shield(self._compose_task)
+
+    def _compose_done(self, task: asyncio.Task[bool]) -> None:
+        if not task.cancelled() and (error := task.exception()) is not None:
+            _logger.error(
+                "%s (%s) - Registration overview synchronization failed.",
                 self.guild.name,
                 self.guild.id,
+                exc_info=(type(error), error, error.__traceback__),
             )
-            return True
 
-        async with self._compose_lock:
-            now = time.monotonic()
-            if (
-                not force
-                and now - self._last_compose_at < self._compose_min_interval_seconds
-            ):
-                _logger.debug(
-                    "%s (%s) - Debounced registration overview compose request (locked).",
-                    self.guild.name,
-                    self.guild.id,
-                )
-                return True
-
+    async def _run_compose(self) -> bool:
+        status = True
+        while self._compose_requested:
+            delay = self._compose_min_interval_seconds - (
+                time.monotonic() - self._last_compose_at
+            )
+            if delay > 0 and not self._compose_force.is_set():
+                try:
+                    await asyncio.wait_for(self._compose_force.wait(), timeout=delay)
+                except TimeoutError:
+                    pass
+            self._compose_requested = False
+            self._compose_force.clear()
             result = await self._compose()
+            status = result and status
             if result:
                 self._last_compose_at = time.monotonic()
-            return result
+        return status

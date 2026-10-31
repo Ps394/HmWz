@@ -1,0 +1,140 @@
+Diese Anleitung beschreibt die Einrichtung und Verwaltung von Anmeldungen und
+Spendenübersichten. Die Befehle werden jeweils in dem Kanal ausgeführt, für den
+die Konfiguration gelten soll. Die Einrichtungsdialoge sind privat und können
+nur von der Person bedient werden, die sie geöffnet hat.
+
+### ANMELDUNG EINRICHTEN
+```
+  /registration setup
+```
+Öffnet die Konfiguration für den aktuellen Kanal. Eine Anmeldung kann Titel,
+Beschreibung und Anmelderollen enthalten. Änderungen an Titel und Beschreibung
+werden direkt gespeichert; „Übernehmen“ schließt den Dialog.
+
+* **Titel bearbeiten:** Überschrift der Anmeldungsübersicht. Ein leerer Titel
+  verwendet den Standardtitel.
+* **Text bearbeiten:** Erklärung oberhalb der Anmeldeschaltflächen. Ein leerer
+  Text verwendet den Standardtext.
+* **Rolle hinzufügen:** Wählt eine Discord-Rolle und deren Verhalten:
+  * 🔒 **Dauerhaft:** Die Rolle bleibt auch nach einem Anmeldungs-Reset bestehen.
+  * 🔓 **Bis zum Zurücksetzen:** Die Rolle wird beim Reset entfernt, sofern das
+    Mitglied sie nicht weiterhin für eine andere Anmeldung benötigt.
+* **Rolle entfernen:** Entfernt ausgewählte Rollen aus dieser Anmeldung.
+  Mindestens eine Rolle muss eingerichtet bleiben. Bereits vergebene Discord-
+  Rollen werden dabei ebenfalls entfernt, sofern sie nicht anderweitig benötigt
+  werden.
+* **JSON-Exportkanal:** Optionaler Textkanal für Registrierungs-Snapshots.
+  Der Bot benötigt dort die Rechte „Nachrichten senden“ und „Dateien anhängen“.
+
+Pro Anmeldung können bis zu vier Rollen eingerichtet werden. Eine Rolle kann
+nicht gleichzeitig mehreren Anmeldungen zugeordnet sein. Die Bot-Rolle muss in
+der Discord-Rollenhierarchie über den Anmelderollen stehen, damit der Bot diese
+vergeben und entfernen kann.
+
+### ANMELDUNG ZURÜCKSETZEN
+```
+  /registration reset
+```
+Setzt im aktuellen Kanal die Anmeldungen mit nicht permanenten Rollen zurück.
+Dauerhafte Anmeldungen bleiben bestehen. Eine Rolle wird einem Mitglied nur
+entzogen, wenn sie nicht für eine andere Anmeldung benötigt wird.
+
+Optional kann beim Befehl `purge` aktiviert werden. Dann bereinigt der Bot im
+aktuellen Kanal bis zu 500 passende Nachrichten; angepinnte Nachrichten und
+Nachrichten des Bots werden übersprungen. Ohne diese Option bleiben die
+Nachrichten erhalten. Prüft vor dem Ausführen immer den aktuellen Kanal.
+
+### ANMELDUNGEN EXPORTIEREN
+```
+  /registration snapshot
+```
+Exportiert die Registrierungen des aktuellen Kanals als JSON in den zuvor
+konfigurierten JSON-Exportkanal. Der Export setzt keine Anmeldungen zurück.
+
+### ANMELDUNG ENTFERNEN
+```
+  /registration remove
+```
+Entfernt nach einer Bestätigung die Anmeldung des aktuellen Kanals, alle
+zugehörigen Teilnahmen, vergebene und nicht anderweitig benötigte Rollen sowie
+die Bot-Nachrichten und Konfiguration. Diese Aktion ist nicht mit einem Reset
+gleichzusetzen.
+
+### SPENDENÜBERSICHT EINRICHTEN
+```
+  /donation setup
+```
+Richtet im aktuellen Textkanal eine Spendenübersicht ein oder bearbeitet sie.
+Wählt zuerst eine Spendenart:
+
+* **Einfache Spende:** Für Credits oder andere Ressourcen. Unter „Spendenwerte“
+  könnt ihr eine Einheit und optionale feste Auswahlwerte eintragen. Trennt
+  mehrere Zahlen mit Semikolon, zum Beispiel `100; 500; 1000`. Ein leeres
+  Auswahlfeld erlaubt freie Betragseingaben. Die Einheit sollte vor den ersten
+  Spenden feststehen; sie kann nach vorhandenen Spenden nicht mehr geändert
+  werden.
+* **Rush-Spende:** Für Kristallspenden, die die Rush-Zeit verkürzen. Mitglieder
+  können verfügbare Optionen von 1, 8 oder 24 Stunden auswählen. Preis und
+  verfügbare Optionen werden anhand der bereits gespendeten Beschleunigung und
+  des verbleibenden Zeitraums berechnet.
+
+Im Setup-Menü stehen folgende Einstellungen zur Verfügung:
+
+* **Titel & Text:** Titel und Beschreibung der öffentlichen Übersicht.
+* **Spendenwerte:** Einheit und optionale Auswahlwerte für einfache Spenden.
+* **Zeitzone:** Bei Rush-Spenden die Zeitzone für die Datums- und Zeiteingabe.
+  Die Anzeige von Discord-Zeitstempeln richtet sich anschließend nach der
+  lokalen Zeitzone der jeweiligen Person.
+* **Rush-Start:** Startdatum und -uhrzeit des Rush-Zyklus.
+* **Zielzeit:** Optionaler frühester Endzeitpunkt. Spenden können die Rush-Zeit
+  nicht über dieses Ziel hinaus verkürzen. Das Ziel muss nach dem Start und
+  mindestens 24 Stunden vor dem ursprünglichen Ende liegen.
+* **Spendenhistorie:** Blendet die Liste der Spenden des aktuellen Zyklus ein
+  oder aus.
+* **All-Time-Spendencharts:** Blendet das kanalbezogene Ranking über mehrere
+  Zyklen ein oder aus.
+* **Spendenstatus:** Aktiviert oder pausiert neue Spenden in diesem Kanal.
+* **JSON-Exportkanal:** Optionaler Textkanal, in den der aktuelle Zyklus
+  exportiert wird. Der Bot benötigt dort die Rechte „Nachrichten senden“ und
+  „Dateien anhängen“.
+* **Speichern:** Übernimmt die Einstellungen und aktualisiert die öffentlichen
+  Übersichts- und Spendenmeldungen.
+
+Eine Rush-Periode dauert neun Tage. Spenden sind nur möglich, solange sie
+innerhalb des Zeitraums liegen und weder die verbleibende Zeit noch eine
+konfigurierte Zielzeit überschreiten. Änderungen im Einrichtungsdialog werden
+erst mit „Speichern“ übernommen.
+
+### NEUEN SPENDENZYKLUS STARTEN
+```
+  /donation reset
+```
+Startet im aktuellen Kanal einen neuen Spendenzyklus. Bei einer Rush-Spende
+öffnet sich ein Dialog für den Startzeitpunkt und optional eine Zielzeit; bei
+einfachen Spenden muss der Reset bestätigt werden. Ist ein JSON-Exportkanal
+konfiguriert, exportiert der Bot die bisherigen Spenden vor dem Wechsel.
+Schlägt dieser Export fehl, wird der Zyklus nicht zurückgesetzt. Das
+All-Time-Ranking bleibt erhalten.
+
+### SPENDEN EXPORTIEREN
+```
+  /donation snapshot
+```
+Exportiert die Spenden des aktuellen Zyklus in den konfigurierten
+JSON-Exportkanal, ohne den Zyklus zurückzusetzen. Dafür muss ein Exportkanal
+eingerichtet sein.
+
+### SPENDENÜBERSICHT ENTFERNEN
+```
+  /donation remove
+```
+Entfernt nach einer Bestätigung die Einrichtung, öffentlichen Nachrichten und
+alle bisherigen Spenden des aktuellen Kanals dauerhaft. Diese Aktion ist nicht
+mit einem Zyklus-Reset gleichzusetzen.
+
+HINWEIS
+Die Befehle `/registration` und `/donation` wirken auf den aktuellen Kanal.
+Prüft vor Zurücksetzen oder Entfernen sorgfältig, ob ihr euch im richtigen
+Kanal befindet. Für die Moderationsbefehle muss eure Discord-Rolle einen der
+folgenden Namen haben: `Offiziere`, `offiziere`, `Moderator`, `moderator`,
+`officier` oder `Officier`.

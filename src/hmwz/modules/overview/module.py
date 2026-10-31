@@ -275,12 +275,44 @@ class OverviewModule(Module):
             ):
                 await delete_message(message)
                 return False
-        elif await edit_message(message, embed=embed, view=view) is None:
+        elif (
+            not self._message_matches(message, embed, view)
+            and await edit_message(message, embed=embed, view=view) is None
+        ):
             return False
 
         if view is not None:
             self.client.add_view(view, message_id=message.id)
         return True
+
+    @staticmethod
+    def _component_content(component: discord.Component) -> dict[str, object]:
+        # Discord assigns numeric component IDs that are not part of our layout.
+        content: dict[str, object] = {
+            key: value for key, value in component.to_dict().items() if key != "id"
+        }
+        if isinstance(component, discord.ActionRow):
+            content["components"] = [
+                OverviewModule._component_content(child) for child in component.children
+            ]
+        return content
+
+    @classmethod
+    def _message_matches(
+        cls,
+        message: discord.Message,
+        embed: discord.Embed,
+        view: OverviewView | None,
+    ) -> bool:
+        if len(message.embeds) != 1:
+            return False
+        existing_embed = message.embeds[0].to_dict()
+        desired_embed = embed.to_dict()
+        existing_embed.pop("timestamp", None)
+        desired_embed.pop("timestamp", None)
+        return existing_embed == desired_embed and [
+            cls._component_content(component) for component in message.components
+        ] == (view.to_components() if view is not None else [])
 
     async def _delete_message(self, overview: Overview) -> bool:
         if overview.message_id is None:
