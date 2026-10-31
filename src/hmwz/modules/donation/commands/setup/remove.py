@@ -19,7 +19,8 @@ from hmwz.ui.messages import send_temporary_response as _send_temporary_response
         key="donation.remove.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_channels=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+
 @app_commands.checks.bot_has_permissions(manage_messages=True)
 async def remove(interaction: discord.Interaction) -> None:
     """Permanently remove all donation data from the current channel."""

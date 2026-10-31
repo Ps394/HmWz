@@ -248,7 +248,7 @@ class CleanChannelsConfirmation(EntitySelectionView):
         await self.finish(interaction, t(interaction, "wz.clean_channels.cancelled"))
 
 
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
+
 @app_commands.command(
     name="reset-channels",
     description=app_commands.locale_str(
@@ -258,6 +258,7 @@ class CleanChannelsConfirmation(EntitySelectionView):
         key="wz.reset_channels.description",
     ),
 )
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
 @app_commands.checks.bot_has_permissions(manage_messages=True)
 async def clean_channels(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)

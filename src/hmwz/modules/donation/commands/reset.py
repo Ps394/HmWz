@@ -23,7 +23,8 @@ from ..type.rush.reset import DonationRushResetModal
         key="donation.reset.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_channels=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+
 async def reset(interaction: discord.Interaction) -> None:
     """Reset current-cycle views while retaining the channel's all-time ranking."""
     guild = interaction.guild

@@ -75,8 +75,7 @@ async def _purge_configured_channels(
         key="wz.registration.reset.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
-@app_commands.default_permissions(manage_messages=True, manage_roles=True)
+
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
@@ -89,6 +88,7 @@ async def _purge_configured_channels(
         key="wz.registration.reset.purge.description",
     ),
 )
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
 @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild_id)
 async def reset(
     interaction: Interaction, ephemeral: bool = False, purge: bool = False

@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
         key="wz.registration.snapshot.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
-@app_commands.default_permissions(manage_messages=True, manage_roles=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+
 @app_commands.checks.cooldown(1, 60, key=lambda i: i.guild_id)
 async def snapshot(interaction: Interaction) -> None:
     """Export the current registrations without changing any of them.

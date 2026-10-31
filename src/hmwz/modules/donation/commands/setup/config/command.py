@@ -26,7 +26,8 @@ from .configuration_message import donation_setup_panel
         key="donation.setup.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_channels=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+
 @app_commands.checks.bot_has_permissions(
     view_channel=True,
     send_messages=True,

@@ -21,8 +21,8 @@ from ..module import DonationModule
         key="donation.snapshot.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_channels=True)
-@app_commands.default_permissions(manage_channels=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+
 async def snapshot(interaction: discord.Interaction) -> None:
     """Export all current-cycle donations without resetting the cycle."""
     guild = interaction.guild

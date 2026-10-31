@@ -29,8 +29,7 @@ logger = logging.getLogger(__name__)
         key="wz.registration.setup.description",
     ),
 )
-@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
-@app_commands.default_permissions(manage_messages=True, manage_roles=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
 async def setup(interaction: discord.Interaction) -> None:
     """Open the guided setup panel for the current channel."""
     guild = interaction.guild

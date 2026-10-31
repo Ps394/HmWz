@@ -289,8 +289,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
 
 #@app_commands.checks.has_any_role("Offiziere", "Moderator")
 
-@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
-@app_commands.default_permissions(manage_messages=True, manage_roles=True)
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
 @app_commands.command(
     name="remove",
     description=app_commands.locale_str(

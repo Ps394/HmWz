@@ -215,7 +215,7 @@ class WzSetupMenu(EphemeralView):
         key="wz.setup.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
 async def setup(interaction: discord.Interaction) -> None:
     view = WzSetupMenu(owner_id=interaction.user.id, context=interaction)
     try:

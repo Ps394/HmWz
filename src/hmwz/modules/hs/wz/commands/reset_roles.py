@@ -232,8 +232,6 @@ class ResetRolesConfirmation(EntitySelectionView):
         self.stop()
         await self.finish(interaction, t(interaction, "wz.reset_roles.cancelled"))
 
-
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
     name="reset-roles",
     description=app_commands.locale_str(
@@ -243,6 +241,7 @@ class ResetRolesConfirmation(EntitySelectionView):
         key="wz.reset_roles.description",
     ),
 )
+@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
 @app_commands.checks.bot_has_permissions(manage_roles=True)
 async def reset_roles(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)
