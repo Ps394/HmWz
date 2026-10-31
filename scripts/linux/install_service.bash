@@ -49,6 +49,7 @@ systemd_path() {
     printf '%s' "${value//%/%%}"
 }
 
+working_directory="$(systemd_path "$PROJECT_DIR")"
 current_service_name="$(hmwz_resolve_service_name)"
 service_name_input="${HMWZ_SERVICE_NAME:-}"
 if [[ -z "$service_name_input" && -t 0 ]]; then
@@ -96,7 +97,7 @@ if [[ -n "$token_file_directive" ]]; then
 fi
 
 cat >> "$unit_file" <<EOF
-WorkingDirectory=$(systemd_path "$PROJECT_DIR")
+WorkingDirectory=$working_directory
 ExecStart=$(systemd_quote "$python_path") $(systemd_quote "$entry_path")
 Restart=on-failure
 RestartSec=5

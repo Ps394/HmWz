@@ -13,7 +13,9 @@ import pytest
     shutil.which("bash") is None or shutil.which("systemd-analyze") is None,
     reason="Requires Bash and systemd-analyze",
 )
-@pytest.mark.parametrize("directory", ["bot", "bot with spaces", 'bot%with"quotes\\'])
+@pytest.mark.parametrize(
+    "directory", ["bot", "bot with spaces", "bot%specifier", "bot\npath", "bot\rpath"]
+)
 @pytest.mark.parametrize("with_token_file", [False, True])
 def test_generated_systemd_unit(
     tmp_path: Path, directory: str, with_token_file: bool
@@ -66,14 +68,19 @@ def test_generated_systemd_unit(
         token_file.write_text("WZ_BOT_TOKEN=test\n")
         env["HMWZ_TOKEN_FILE"] = str(token_file)
 
-    subprocess.run(
+    installation = subprocess.run(
         ["bash", str(scripts / "install_service.bash")],
         env=env,
         stdin=subprocess.DEVNULL,
-        check=True,
         capture_output=True,
         text=True,
     )
+    if "\n" in directory or "\r" in directory:
+        assert installation.returncode != 0
+        assert "must not contain line breaks" in installation.stderr
+        assert not unit_file.exists()
+        return
+    assert installation.returncode == 0, installation.stderr
     unit = unit_file.read_text()
     assert f"WorkingDirectory={str(project).replace('%', '%%')}\n" in unit
     if with_token_file:
