@@ -22,6 +22,7 @@ from ....type.rush.setup import (
 )
 from ....type.rush.pricing import RUSH_DURATIONS_HOURS
 from ....type.rush.pricing import validate_rush_target
+from ....type.rush.validation import COMMON_DONATION_TIMEZONES, donation_timezone
 from .configuration_message import donation_setup_panel
 from .draft import DonationSetupDraft
 
@@ -116,7 +117,7 @@ class DonationSetupKindSelect(discord.ui.Select):
             else None
         )
         if kind == "time_reduction" and rush_start_at is None:
-            rush_start_at = datetime.now(UTC)
+            rush_start_at = datetime.now(UTC).replace(second=0, microsecond=0)
         return DonationSetupDraft(
             module=self.module,
             channel_id=self.channel_id,
@@ -371,17 +372,21 @@ class DonationSetupView(DonationSetupOwnerView):
     def _build_controls(self) -> None:
         self.clear_items()
         draft = self.draft
-        self.add_item(DonationSetupButton(self, "content", row=0))
+        row = 0
+        if draft.kind == "time_reduction":
+            self.add_item(DonationTimezoneSelect(self))
+            row = 1
+        self.add_item(DonationSetupButton(self, "content", row=row))
         if draft.kind == "simple":
             self.add_item(DonationSetupButton(self, "values", row=0))
         if draft.kind == "time_reduction":
-            self.add_item(DonationSetupButton(self, "start", row=0))
-            self.add_item(DonationSetupButton(self, "target", row=0))
-        self.add_item(DonationSetupButton(self, "ranking", row=1))
-        self.add_item(DonationSetupButton(self, "visibility", row=1))
-        self.add_item(DonationSetupButton(self, "donations", row=1))
-        self.add_item(DonationSetupButton(self, "export", row=2))
-        self.add_item(DonationSetupButton(self, "save", row=2))
+            self.add_item(DonationSetupButton(self, "start", row=row))
+            self.add_item(DonationSetupButton(self, "target", row=row))
+        self.add_item(DonationSetupButton(self, "ranking", row=row + 1))
+        self.add_item(DonationSetupButton(self, "visibility", row=row + 1))
+        self.add_item(DonationSetupButton(self, "donations", row=row + 1))
+        self.add_item(DonationSetupButton(self, "export", row=row + 2))
+        self.add_item(DonationSetupButton(self, "save", row=row + 2))
 
     async def handle_action(
         self, interaction: discord.Interaction, action: DonationSetupAction
@@ -492,6 +497,48 @@ async def _save_setup(
         await _send_setup_followup_error(interaction, "donation.error.setup_save")
         return False
     return True
+
+
+class DonationTimezoneSelect(discord.ui.Select):
+    """Choose the setup's input timezone without shifting saved absolute instants."""
+
+    def __init__(self, setup_view: DonationSetupView) -> None:
+        self.setup_view = setup_view
+        draft = setup_view.draft
+        options = [
+            discord.SelectOption(
+                label=t(draft.module.guild, key),
+                value=name,
+                description=name,
+                default=name == draft.timezone_name,
+            )
+            for name, key in COMMON_DONATION_TIMEZONES
+        ]
+        if draft.timezone_name not in {option.value for option in options}:
+            options.append(
+                discord.SelectOption(
+                    label=draft.timezone_name,
+                    value=draft.timezone_name,
+                    default=True,
+                )
+            )
+        super().__init__(
+            placeholder=t(draft.module.guild, "donation.setup.timezone"),
+            options=options,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        timezone_name = self.values[0]
+        try:
+            donation_timezone(timezone_name)
+        except ValueError:
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.invalid_timezone")
+            )
+            return
+        self.setup_view.draft.timezone_name = timezone_name
+        await self.setup_view.refresh(interaction)
 
 
 async def _send_setup_followup_error(

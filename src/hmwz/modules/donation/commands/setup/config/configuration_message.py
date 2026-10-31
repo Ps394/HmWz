@@ -65,6 +65,13 @@ def donation_setup_panel(
         )
     else:
         embed.add_field(
+            name=t(interaction, "donation.setup.input_timezone"),
+            value=draft.timezone_name
+            + "\n"
+            + t(interaction, "donation.setup.input_timezone_hint"),
+            inline=False,
+        )
+        embed.add_field(
             name=t(interaction, "donation.setup.rush_options"),
             value=", ".join(draft.time_reductions),
             inline=True,

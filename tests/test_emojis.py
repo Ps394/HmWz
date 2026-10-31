@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,8 +22,14 @@ from hmwz.modules.donation.models import (
     DonationType,
 )
 from hmwz.modules.donation.overview import DonationOverview
-from hmwz.modules.donation.type.credit.views import DonationAmountOptionButton
-from hmwz.modules.donation.type.rush.views import DonationTimeReductionButton
+from hmwz.modules.donation.type.credit.views import (
+    DonationAmountOptionButton,
+    DonationRecordButton,
+)
+from hmwz.modules.donation.type.rush.views import (
+    DonationTimeReductionButton,
+    DonationRushConfirmationView,
+)
 from hmwz.ui.messages import send_temporary_followup, send_temporary_response
 
 
@@ -278,8 +285,34 @@ async def test_donation_buttons_use_emoji_properties_not_labels(
     donation_type = DonationType("Credits", "simple", "credits", "free", (), ())
     credit = DonationAmountOptionButton(module, 1, donation_type, Decimal("500"), 0)
     rush = DonationTimeReductionButton(module, 1, "1h", Decimal("10"))
+    free_credit = DonationRecordButton(module, 1)
+    start = datetime(2026, 10, 31, tzinfo=UTC)
+    confirmation = DonationRushConfirmationView(
+        module,
+        1,
+        DonationType("Rush", "time_reduction", "crystals", "choice", (), ("1h",)),
+        1,
+        Decimal("28"),
+        1,
+        start,
+        start,
+        123,
+    )
+    confirm = next(
+        item
+        for item in confirmation.children
+        if item.custom_id == "donation_rush_confirm"
+    )
+    cancel = next(
+        item
+        for item in confirmation.children
+        if item.custom_id == "donation_rush_cancel"
+    )
     assert credit.emoji is not None and credit.emoji.id == 123456789012345678
+    assert free_credit.emoji is not None and free_credit.emoji.id == 123456789012345678
     assert rush.emoji is not None and rush.emoji.id == 987654321098765432
+    assert confirm.emoji is not None and confirm.emoji.id == 987654321098765432
+    assert cancel.emoji is None
     assert "<:" not in (credit.label or "")
     assert "<:" not in (rush.label or "")
 

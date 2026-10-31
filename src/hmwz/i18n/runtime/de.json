@@ -1,4 +1,6 @@
 {
+  "ui.timestamp.placeholder": "TT.MM.JJJJ HH:MM oder JJJJ-MM-TT HH:MM; auch Discord-/Unix-Zeitstempel",
+  "ui.timestamp.invalid": "Bitte gib Datum und Uhrzeit als TT.MM.JJJJ HH:MM oder JJJJ-MM-TT HH:MM in der angezeigten Zeitzone ein (Sekunden optional). Discord-/Unix-Zeitstempel sind ebenfalls möglich. Nicht existierende Ortszeiten bei der Sommerzeitumstellung sind ungültig; für doppelt vorkommende Ortszeiten verwende einen eindeutigen Discord-/Unix-Zeitstempel.",
   "command.error.generic": "❌ Es ist ein Fehler bei der Ausführung des Befehls aufgetreten.",
   "command.error.permissions": "⚠️ Du hast nicht die erforderlichen Berechtigungen, um diesen Befehl auszuführen.",
   "command.error.cooldown": "❌ Warte {retry_after} Sekunden, bevor du diesen Befehl erneut verwenden kannst.",

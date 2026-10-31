@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
-from .validation import parse_rush_timestamp
+from hmwz.ui.components.timestamp_input import TimestampInput
 from .setup import start_timestamp_input
 from .pricing import validate_rush_target
 from hmwz.ui.messages import send_temporary_response as _send_temporary_response
@@ -27,20 +27,23 @@ class DonationRushResetModal(discord.ui.Modal):
         module: DonationModule,
         channel_id: int,
         owner_id: int,
+        timezone_name: str = "UTC",
     ) -> None:
         super().__init__(title=t(module.guild, "donation.reset.start_modal_title")[:45])
         self.module = module
         self.channel_id = channel_id
         self.owner_id = owner_id
-        self.timestamp_input = start_timestamp_input(module.guild, datetime.now(UTC))
+        self.timestamp_input = start_timestamp_input(
+            module.guild,
+            datetime.now(UTC).replace(second=0, microsecond=0),
+            timezone_name,
+        )
         self.add_item(self.timestamp_input)
-        self.target_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(module.guild, "donation.setup.target_timestamp")[:45],
-            placeholder=t(module.guild, "donation.setup.start_timestamp_placeholder")[
-                :100
-            ],
+        self.target_input = TimestampInput(
+            module.guild,
+            label=t(module.guild, "donation.setup.target_timestamp"),
+            timezone_name=timezone_name,
             required=False,
-            max_length=64,
         )
         self.add_item(self.target_input)
 
@@ -51,12 +54,16 @@ class DonationRushResetModal(discord.ui.Modal):
             )
             return
         try:
-            rush_start_at = parse_rush_timestamp(self.timestamp_input.value)
-            target_at = (
-                parse_rush_timestamp(self.target_input.value)
-                if self.target_input.value.strip()
-                else None
+            rush_start_at = self.timestamp_input.parse()
+            if rush_start_at is None:
+                raise ValueError("A start is required.")
+            target_at = self.target_input.parse()
+        except ValueError:
+            await _send_temporary_response(
+                interaction, t(interaction, "ui.timestamp.invalid")
             )
+            return
+        try:
             if target_at is not None:
                 validate_rush_target(rush_start_at, target_at)
         except ValueError:

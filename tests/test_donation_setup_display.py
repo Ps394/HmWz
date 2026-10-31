@@ -18,6 +18,8 @@ from hmwz.modules.donation.commands.setup.config.view import (
     DonationSetupKindView,
     DonationSetupKindSelect,
     DonationSetupView,
+    DonationSetupButton,
+    DonationTimezoneSelect,
 )
 from hmwz.modules.donation.models import DonationChannel, DonationType
 from hmwz.modules.donation.module import DonationModule
@@ -93,7 +95,7 @@ def test_timestamp_input_rejects_invalid_or_out_of_range_values(value: str) -> N
         parse_rush_timestamp(value)
 
 
-def test_embed_shows_content_and_accelerated_end_without_timezone(
+def test_embed_shows_content_accelerated_end_and_input_timezone(
     draft: DonationSetupDraft,
 ) -> None:
     embed = donation_setup_panel(
@@ -108,7 +110,7 @@ def test_embed_shows_content_and_accelerated_end_without_timezone(
         draft.rush_start_at + timedelta(hours=216 - 50), "F"
     )
     assert fields["All-Time-Spendencharts"] == "deaktiviert"
-    assert not any("Zeitzone" in name for name in fields)
+    assert fields["Zeitzone der Zeiteingabe"].startswith("UTC\n")
     assert not any("Auswahlwerte" in name for name in fields)
 
 
@@ -195,13 +197,21 @@ async def test_toggle_refreshes_button_labels_and_clears_old_content(
     interaction = Mock(spec=discord.Interaction)
     interaction.response.edit_message = AsyncMock()
     await view.handle_action(interaction, "ranking")
-    button = next(item for item in view.children if item.action == "ranking")
+    button = next(
+        item
+        for item in view.children
+        if isinstance(item, DonationSetupButton) and item.action == "ranking"
+    )
     assert button.label == "All-Time-Charts ausblenden"
     response = interaction.response.edit_message.await_args.kwargs
     assert response["content"] is None
     assert isinstance(response["embed"], discord.Embed)
     await view.handle_action(interaction, "ranking")
-    button = next(item for item in view.children if item.action == "ranking")
+    button = next(
+        item
+        for item in view.children
+        if isinstance(item, DonationSetupButton) and item.action == "ranking"
+    )
     assert button.label == "All-Time-Charts einblenden"
 
 
@@ -212,7 +222,9 @@ async def test_setup_start_modal_uses_single_timestamp_input(
     view = DonationSetupView(draft)
     modal = DonationRushStartModal(view)
     assert len(modal.children) == 1
-    assert parse_rush_timestamp(modal.timestamp_input.default) == draft.rush_start_at
+    assert modal.timestamp_input.default == "2026-10-31 12:00"
+    modal.timestamp_input._value = modal.timestamp_input.default
+    assert modal.timestamp_input.parse() == draft.rush_start_at
     modal.timestamp_input._value = "<t:1793448000:F>"
     view.refresh = AsyncMock()
     interaction = Mock(spec=discord.Interaction)
@@ -260,6 +272,149 @@ async def test_invalid_timestamp_notifies_without_saving(
     notify.assert_awaited_once()
     view.refresh.assert_not_awaited()
     assert draft.rush_start_at == original
+
+
+@pytest.mark.asyncio
+async def test_timezone_selection_changes_input_zone_not_saved_instants(
+    draft: DonationSetupDraft,
+) -> None:
+    view = DonationSetupView(draft)
+    interaction = Mock(spec=discord.Interaction)
+    interaction.response.edit_message = AsyncMock()
+    start = draft.rush_start_at
+    draft.target_at = rush_end_at(start, 51)
+    target = draft.target_at
+    select = next(
+        item for item in view.children if isinstance(item, DonationTimezoneSelect)
+    )
+    assert len(select.options) <= 25
+    assert next(option.value for option in select.options if option.default) == "UTC"
+    select._values = ["Europe/Berlin"]
+    await select.callback(interaction)
+    assert draft.timezone_name == "Europe/Berlin"
+    assert draft.rush_start_at == start and draft.target_at == target
+    modal = DonationRushStartModal(view)
+    assert modal.timestamp_input.default == "2026-10-31 13:00"
+    modal.timestamp_input._value = "31.10.2026 14:00"
+    await modal.on_submit(interaction)
+    assert draft.rush_start_at == datetime(2026, 10, 31, 13, tzinfo=UTC)
+    assert draft.target_at == target
+    current = next(
+        item for item in view.children if isinstance(item, DonationTimezoneSelect)
+    )
+    assert (
+        next(option.value for option in current.options if option.default)
+        == "Europe/Berlin"
+    )
+    fields = interaction.response.edit_message.await_args.kwargs["embed"].fields
+    assert next(
+        f.value for f in fields if f.name == "Zeitzone der Zeiteingabe"
+    ).startswith("Europe/Berlin\n")
+
+
+@pytest.mark.asyncio
+async def test_stored_custom_timezone_is_preserved_in_setup(
+    draft: DonationSetupDraft,
+) -> None:
+    draft.timezone_name = "UTC+1"
+    view = DonationSetupView(draft)
+    select = next(
+        item for item in view.children if isinstance(item, DonationTimezoneSelect)
+    )
+    assert next(option.value for option in select.options if option.default) == "UTC+1"
+    assert DonationRushStartModal(view).timestamp_input.default == "2026-10-31 13:00"
+
+
+@pytest.mark.asyncio
+async def test_timezone_and_parsed_instants_survive_save_and_reopening(
+    tmp_path: Path,
+) -> None:
+    guild = cast(discord.Guild, SimpleNamespace(id=123, name="Test", locale="de"))
+    repository = DonationRepository(
+        Database(folder=str(tmp_path), filename="timezones.db")
+    )
+    assert await repository.ensure_schema()
+    module = cast(DonationModule, SimpleNamespace(guild=guild))
+    interaction = cast(discord.Interaction, SimpleNamespace(locale="de"))
+    selector = DonationSetupKindSelect(module, 456, 789, None, None)
+    draft = selector.create_draft("time_reduction", interaction)
+    assert draft.rush_start_at.second == draft.rush_start_at.microsecond == 0
+    draft.timezone_name = "Europe/Berlin"
+    view = DonationSetupView(draft)
+    view.refresh = AsyncMock()
+    start_modal = DonationRushStartModal(view)
+    start_modal.timestamp_input._value = "31.10.2026 12:00"
+    await start_modal.on_submit(interaction)
+    target_modal = DonationRushTargetModal(view)
+    target_modal.target_input._value = "08.11.2026 12:00"
+    await target_modal.on_submit(interaction)
+    assert await repository.configure_channel(
+        guild=guild,
+        channel_id=456,
+        title="Rush",
+        description="",
+        timezone_name=draft.timezone_name,
+        rush_start_at=draft.rush_start_at,
+        target_at=draft.target_at,
+    )
+    stored = await repository.get_channel(guild=guild, channel_id=456)
+    assert stored is not None
+    reopened = DonationSetupKindSelect(module, 456, 789, stored, None).create_draft(
+        "time_reduction",
+        interaction,
+    )
+    assert reopened.timezone_name == "Europe/Berlin"
+    assert reopened.rush_start_at == datetime(2026, 10, 31, 11, tzinfo=UTC)
+    assert reopened.target_at == datetime(2026, 11, 8, 11, tzinfo=UTC)
+    reset_modal = DonationRushResetModal(Mock(guild=guild), 456, 789, "Europe/Berlin")
+    reset_modal.timestamp_input._value = reset_modal.timestamp_input.default
+    suggested = reset_modal.timestamp_input.parse()
+    assert suggested is not None and suggested.second == suggested.microsecond == 0
+
+
+@pytest.mark.asyncio
+async def test_reset_command_uses_configured_timezone_and_local_input(
+    draft: DonationSetupDraft,
+) -> None:
+    from hmwz.modules.donation.commands.reset import reset
+
+    module = Mock(spec=DonationModule)
+    module.guild = draft.module.guild
+    module.donations = Mock(spec=DonationRepository)
+    module.donations.get_channel = AsyncMock(
+        return_value=SimpleNamespace(timezone_name="Europe/Berlin")
+    )
+    module.donations.get_type = AsyncMock(
+        return_value=SimpleNamespace(kind="time_reduction")
+    )
+    module.reset_cycle = AsyncMock(return_value=(True, True, False))
+    interaction = Mock(spec=discord.Interaction)
+    interaction.guild = module.guild
+    interaction.channel_id = 456
+    interaction.user.id = 789
+    interaction.client = SimpleNamespace(
+        module_manager=SimpleNamespace(get_module=AsyncMock(return_value=module))
+    )
+    interaction.response.send_modal = AsyncMock()
+    await reset.callback(interaction)
+    modal = interaction.response.send_modal.await_args.args[0]
+    assert (
+        modal.timestamp_input.timezone_name
+        == modal.target_input.timezone_name
+        == "Europe/Berlin"
+    )
+    modal.timestamp_input._value = "31.10.2026 12:00"
+    modal.target_input._value = "08.11.2026 12:00"
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock(
+        return_value=SimpleNamespace(delete=AsyncMock())
+    )
+    await modal.on_submit(interaction)
+    module.reset_cycle.assert_awaited_once_with(
+        456,
+        rush_start_at=datetime(2026, 10, 31, 11, tzinfo=UTC),
+        target_at=datetime(2026, 11, 8, 11, tzinfo=UTC),
+    )
 
 
 @pytest.mark.asyncio

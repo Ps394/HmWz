@@ -42,7 +42,7 @@ class DonationTimeReductionButton(discord.ui.Button):
                 unit=t(module.guild, "donation.setup.crystals_unit"),
             )[:80],
             style=discord.ButtonStyle.primary,
-            emoji=emojis.get("crystal", module.guild),
+            emoji=emojis.get("cristall", module.guild),
             custom_id=f"donation:time:{channel_id}:{time_reduction.removesuffix('h')}",
         )
         self.module = module
@@ -122,6 +122,8 @@ class DonationRushConfirmationView(EphemeralView):
                     if item.custom_id == "donation_rush_confirm"
                     else "donation.delete.cancel",
                 )
+                if item.custom_id == "donation_rush_confirm":
+                    item.emoji = emojis.get("cristall", module.guild)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:

@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, time, timedelta, timezone, tzinfo
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import datetime, tzinfo
+
+from hmwz.ui.components.timestamp_input import (
+    parse_timestamp,
+    parse_local_datetime,
+    resolve_timezone,
+)
 
 UTC_OFFSET_PATTERN = re.compile(r"UTC([+-])(\d{1,2})")
 COMMON_DONATION_TIMEZONES = (
@@ -67,36 +72,12 @@ COMMON_DONATION_TIMEZONE_NAMES = tuple(
 
 def parse_rush_timestamp(raw: str) -> datetime:
     """Parse a Discord timestamp token or integer Unix seconds as an UTC instant."""
-    value = raw.strip()
-    match = re.fullmatch(r"<t:(-?\d+)(?::[tTdDfFR])?>", value)
-    if match is not None:
-        value = match.group(1)
-    elif re.fullmatch(r"-?\d+", value) is None:
-        raise ValueError("Enter a Discord timestamp or integer Unix seconds.")
-    try:
-        return datetime.fromtimestamp(int(value), timezone.utc)
-    except (ValueError, OverflowError, OSError) as error:
-        raise ValueError(
-            "The timestamp is outside the supported date range."
-        ) from error
+    return parse_timestamp(raw)
 
 
 def donation_timezone(timezone_name: str) -> tzinfo:
     """Resolve a stored fixed UTC offset or a legacy IANA timezone."""
-    match = UTC_OFFSET_PATTERN.fullmatch(timezone_name)
-    if match is not None:
-        offset = int(match.group(2))
-        if match.group(1) == "-":
-            offset = -offset
-        if not -12 <= offset <= 14 or (offset == 0 and match.group(1) == "-"):
-            raise ValueError("UTC offset must be between UTC-12 and UTC+14.")
-        return timezone(timedelta(hours=offset), name=timezone_name)
-    if timezone_name == "UTC":
-        return timezone.utc
-    try:
-        return ZoneInfo(timezone_name)
-    except (ValueError, ZoneInfoNotFoundError) as error:
-        raise ValueError("Select a valid timezone.") from error
+    return resolve_timezone(timezone_name)
 
 
 def normalize_donation_timezone(timezone_name: str) -> str:
@@ -138,20 +119,4 @@ def parse_rush_start(
         raise ValueError("Rush start date must use YYYY-MM-DD.")
     if re.fullmatch(r"\d{2}:\d{2}", time_value) is None:
         raise ValueError("Rush start time must use HH:MM.")
-    try:
-        local_date = date.fromisoformat(date_value)
-        local_time = time.fromisoformat(time_value)
-    except ValueError as error:
-        raise ValueError("Enter a date as YYYY-MM-DD and time as HH:MM.") from error
-    if local_time.second or local_time.microsecond or local_time.tzinfo is not None:
-        raise ValueError("Rush start time must use HH:MM.")
-
-    zone = donation_timezone(timezone_name)
-
-    local_start = datetime.combine(local_date, local_time, tzinfo=zone)
-    round_trip = local_start.astimezone(ZoneInfo("UTC")).astimezone(zone)
-    if round_trip.replace(tzinfo=None) != local_start.replace(tzinfo=None):
-        raise ValueError(f"The selected local time does not exist in {timezone_name}.")
-    if local_start.replace(fold=1).utcoffset() != local_start.utcoffset():
-        raise ValueError(f"The selected local time is ambiguous in {timezone_name}.")
-    return local_start.astimezone(ZoneInfo("UTC"))
+    return parse_local_datetime(f"{date_value} {time_value}", timezone_name)

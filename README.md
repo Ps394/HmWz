@@ -236,10 +236,23 @@ können im Setup angepasst werden; ohne feste Werte bleibt die freie Eingabe
 verfügbar.
 
 Rush-Spenden verwenden fest die Optionen **1h**, **8h** und **24h** sowie
-Kristalle als Einheit. Im Setup und beim Reset wird der Start als
-**Discord-Zeitstempel** (zum Beispiel `<t:1793448000:F>`) oder
-**Unix-Zeitstempel in Sekunden** (`1793448000`) eingegeben.
-Eine Zeitzonenauswahl gibt es nicht mehr. Setup und öffentliche Spendenübersicht
+Kristalle als Einheit. Im Rush-Setup wählst du einmal die **Zeitzone der Zeiteingabe**
+aus dem Dropdown (z. B. Berlin); sie wird pro Einrichtung gespeichert und auch
+beim Reset verwendet. Bestehende Einstellungen bleiben erhalten; ohne Auswahl
+gilt UTC. Eine Änderung der Eingabezeitzone verschiebt keine gespeicherten Zeitpunkte.
+Der gemeinsame UI-Helper nimmt Start und Ziel bequem als **Datum und Uhrzeit**
+entgegen, z. B. `31.10.2026 12:30` oder `2026-10-31 12:30`.
+Die Felder zeigen ihre Zeitzone an und sind mit dem aktuellen Wert vorbelegt.
+Neue Startvorschläge verwenden volle Minuten, damit Zielzeiten bequem auf dem
+Ganzstundenraster liegen. Sekunden sind optional; vorhandene genaue Zeitpunkte
+(einschließlich Sekundenbruchteilen) bleiben erhalten. Alternativ funktionieren weiterhin **Discord-Zeitstempel**
+(zum Beispiel `<t:1793448000:F>`) und **Unix-Sekunden** (`1793448000`);
+diese absoluten Zeitstempel werden nicht durch die Eingabezeitzone umgerechnet.
+Regionale Zeitzonen berücksichtigen Sommerzeit automatisch. Nicht existierende
+Ortszeiten werden abgewiesen; bei doppelt vorkommenden Ortszeiten muss ein
+eindeutiger Discord-/Unix-Zeitstempel eingegeben werden.
+Der Helper erzeugt Discord-Zeitstempel im Format `<t:1793403130:F>`.
+Setup und öffentliche Spendenübersicht
 zeigen Start und beschleunigtes Ende als Discord-Zeitstempel an; Discord stellt
 diese automatisch in der lokalen Zeitzone jedes Nutzers dar. Bereits gespeicherte
 Startzeitpunkte bleiben unverändert. Ein Rush-Zeitraum dauert
@@ -249,7 +262,7 @@ beschleunigten Rush-Ende verbleiben. Die Preise richten sich ausschließlich
 nach den bereits gespendeten Beschleunigungsstunden des aktuellen Zyklus,
 nicht nach der seit dem Start vergangenen Zeit.
 
-Über **Zielzeit** kannst du im Rush-Setup einen optionalen Discord-/Unix-Zeitstempel
+Über **Zielzeit** kannst du im Rush-Setup einen optionalen Zeitpunkt
 festlegen; ein leeres Feld entfernt das Ziel. Die Zielzeit wird in Setup und
 öffentlicher Übersicht gesondert **hervorgehoben**. Sie muss nach dem Start und
 spätestens am bereits beschleunigten Ende liegen; ihr Abstand vom ursprünglichen

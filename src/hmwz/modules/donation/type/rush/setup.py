@@ -9,10 +9,10 @@ import discord
 
 from hmwz.i18n import t
 from hmwz.ui.messages import send_temporary_response
+from hmwz.ui.components.timestamp_input import TimestampInput
 
 from ...models import DonationType
 from .pricing import RUSH_DURATIONS_HOURS, validate_rush_target
-from .validation import parse_rush_timestamp
 
 if TYPE_CHECKING:
     from ...commands.setup.config.view import DonationSetupView
@@ -32,14 +32,14 @@ def configured_type(draft: DonationSetupDraft) -> DonationType:
 
 
 def start_timestamp_input(
-    context: discord.Guild, started_at: datetime
-) -> discord.ui.TextInput:
-    """Create the shared input for a Discord token or integer Unix seconds."""
-    return discord.ui.TextInput(
-        label=t(context, "donation.setup.start_timestamp")[:45],
-        placeholder=t(context, "donation.setup.start_timestamp_placeholder")[:100],
-        default=discord.utils.format_dt(started_at, "F"),
-        max_length=64,
+    context: discord.Guild, started_at: datetime, timezone_name: str = "UTC"
+) -> TimestampInput:
+    """Create the shared local date/time picker with absolute timestamp support."""
+    return TimestampInput(
+        context,
+        label=t(context, "donation.setup.edit_start"),
+        timezone_name=timezone_name,
+        value=started_at,
     )
 
 
@@ -52,13 +52,23 @@ class DonationRushStartModal(discord.ui.Modal):
         self.draft = draft
         self.setup_view = setup_view
         self.timestamp_input = start_timestamp_input(
-            draft.module.guild, draft.rush_start_at or datetime.now(UTC)
+            draft.module.guild,
+            draft.rush_start_at or datetime.now(UTC).replace(second=0, microsecond=0),
+            draft.timezone_name,
         )
         self.add_item(self.timestamp_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
-            started_at = parse_rush_timestamp(self.timestamp_input.value)
+            started_at = self.timestamp_input.parse()
+            if started_at is None:
+                raise ValueError("A start is required.")
+        except ValueError:
+            await send_temporary_response(
+                interaction, t(interaction, "ui.timestamp.invalid")
+            )
+            return
+        try:
             if self.draft.target_at is not None:
                 validate_rush_target(
                     started_at, self.draft.target_at, self.draft.accelerated_hours
@@ -81,28 +91,24 @@ class DonationRushTargetModal(discord.ui.Modal):
         super().__init__(
             title=t(self.draft.module.guild, "donation.setup.target_title")[:45]
         )
-        self.target_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(self.draft.module.guild, "donation.setup.target_timestamp")[:45],
-            placeholder=t(
-                self.draft.module.guild, "donation.setup.start_timestamp_placeholder"
-            )[:100],
-            default=(
-                discord.utils.format_dt(self.draft.target_at, "F")
-                if self.draft.target_at is not None
-                else None
-            ),
+        self.target_input = TimestampInput(
+            self.draft.module.guild,
+            label=t(self.draft.module.guild, "donation.setup.target_timestamp"),
+            timezone_name=self.draft.timezone_name,
+            value=self.draft.target_at,
             required=False,
-            max_length=64,
         )
         self.add_item(self.target_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
-            target_at = (
-                parse_rush_timestamp(self.target_input.value)
-                if self.target_input.value.strip()
-                else None
+            target_at = self.target_input.parse()
+        except ValueError:
+            await send_temporary_response(
+                interaction, t(interaction, "ui.timestamp.invalid")
             )
+            return
+        try:
             if target_at is not None:
                 if self.draft.rush_start_at is None:
                     raise ValueError("A target requires a Rush start.")

@@ -1,4 +1,6 @@
 {
+  "ui.timestamp.placeholder": "YYYY-MM-DD HH:MM or DD.MM.YYYY HH:MM; Discord/Unix timestamps also accepted",
+  "ui.timestamp.invalid": "Enter YYYY-MM-DD HH:MM or DD.MM.YYYY HH:MM in the displayed timezone (seconds optional). Discord/Unix timestamps are also accepted. Local times skipped by daylight saving time are invalid; for repeated local times, use an unambiguous Discord/Unix timestamp.",
   "command.error.generic": "❌ An error occurred while executing the command.",
   "command.error.permissions": "⚠️ You do not have the required permissions to execute this command.",
   "command.error.cooldown": "❌ Please wait {retry_after} seconds before using this command again.",
