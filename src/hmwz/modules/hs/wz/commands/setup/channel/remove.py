@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 import logging
 
 from discord import Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.ui.messages import send_followup, send_temporary_followup
 from hmwz.utils.interactions import log_interaction
 
-from ....models import PurgeChannel
-from ....module import WzRegistrationModule
-from .selection import PurgeChannelSelection, get_selectable_channels
+from ....models import Channel
+from ....module import WzModule
+from .selection import ChannelSelection, get_selectable_channels
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
@@ -26,56 +29,47 @@ async def remove(interaction: Interaction) -> None:
     await interaction.response.defer(ephemeral=True)
     try:
         guild = interaction.guild
-        channel_id = interaction.channel_id
         manager = getattr(interaction.client, "module_manager", None)
-        if guild is None or channel_id is None or manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.channel.error"), ephemeral=True
+        if guild is None or manager is None:
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.setup.channel.error")
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
-        if await module.registration.get(guild=guild, channel_id=channel_id) is None:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.channel.error"), ephemeral=True
-            )
-            return
+        module: WzModule = await manager.get_module(guild, WzModule)
         channels = await get_selectable_channels(
             guild=guild,
             module=module,
             action="remove",
-            registration_channel_id=channel_id,
         )
         if not channels:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.channel.no_channels"),
-                ephemeral=True,
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.setup.channel.no_channels")
             )
             return
 
-        view = PurgeChannelSelection(
+        view = ChannelSelection(
             guild=guild,
             module=module,
             owner_id=interaction.user.id,
             action="remove",
             channels=channels,
-            max_values=min(len(channels), PurgeChannel.MAX_PER_REGISTRATION),
-            registration_channel_id=channel_id,
+            max_values=min(len(channels), Channel.MAX_PER_GUILD),
+            context=interaction,
         )
-        view.message = await interaction.followup.send(
-            t(interaction, "wz.setup.channel.select.remove"),
+        view.message = await send_followup(
+            interaction,
+            embed=view.selection_embed(interaction),
             view=view,
             ephemeral=True,
             wait=True,
         )
     except Exception as error:
-        logger.exception(
+        _logger.exception(
             "%s WZ setup channel remove failed: %s",
             log_interaction(interaction),
             error,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.setup.channel.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.setup.channel.error")
         )

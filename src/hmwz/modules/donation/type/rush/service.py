@@ -101,18 +101,9 @@ async def start_donation(
         now,
         interaction.user.id,
     )
-    if replace_prompt:
-        await interaction.response.edit_message(
-            content=response_content, view=confirmation_view
-        )
-        confirmation_view.message = interaction.message
-    else:
-        await interaction.response.send_message(
-            response_content,
-            view=confirmation_view,
-            ephemeral=True,
-        )
-        confirmation_view.message = await interaction.original_response()
+    await module.show_donation_confirmation(
+        interaction, confirmation_view, response_content, replace_prompt=replace_prompt
+    )
 
 
 async def record_donation(

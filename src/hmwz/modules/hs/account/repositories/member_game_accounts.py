@@ -13,7 +13,7 @@ _logger = logging.getLogger(__name__)
 class MemberGameAccountRepository(sqlite_db.Base):
     """Stores game accounts linked to Discord members in each guild."""
 
-    table_name = "WzGameAccounts"
+    table_name = "GameAccounts"
 
     def __init__(self, database: sqlite_db.Database) -> None:
         super().__init__(database)

@@ -5,7 +5,7 @@ from discord import Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations
 
-from ...wz.module import WzRegistrationModule
+from hmwz.modules.registration import RegistrationModule
 
 
 def command_description(key: str, fallback: str) -> app_commands.locale_str:
@@ -17,11 +17,11 @@ def command_description(key: str, fallback: str) -> app_commands.locale_str:
 
 async def get_member_context(
     interaction: Interaction,
-) -> tuple[discord.Guild, discord.Member, WzRegistrationModule] | None:
+) -> tuple[discord.Guild, discord.Member, RegistrationModule] | None:
     guild = interaction.guild
     member = interaction.user
     manager = getattr(interaction.client, "module_manager", None)
     if guild is None or not isinstance(member, discord.Member) or manager is None:
         return None
-    module: WzRegistrationModule = await manager.get_module(guild, WzRegistrationModule)
+    module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
     return guild, member, module

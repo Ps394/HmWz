@@ -51,6 +51,7 @@ async def record_donation(
     amount: Decimal,
     *,
     time_reduction: str | None,
+    expected_cycle: int | None = None,
 ) -> tuple[bool, bool]:
     """Validate a credit donation, save it, and refresh shared public messages."""
     guild = interaction.guild
@@ -68,15 +69,23 @@ async def record_donation(
     ):
         return False, False
 
-    current_type = await module.donations.get_type(
-        guild=module.guild, channel_id=channel_id
-    )
-    configuration = await module.donations.get_channel(
-        guild=module.guild, channel_id=channel_id
-    )
-    if current_type != donation_type or configuration is None:
-        return False, False
     async with module._cycle_lock(channel_id):
+        current_type = await module.donations.get_type(
+            guild=module.guild, channel_id=channel_id
+        )
+        configuration = await module.donations.get_channel(
+            guild=module.guild, channel_id=channel_id
+        )
+        if (
+            current_type != donation_type
+            or configuration is None
+            or not configuration.donations_enabled
+            or (
+                expected_cycle is not None
+                and configuration.current_cycle != expected_cycle
+            )
+        ):
+            return False, False
         if not await module.donations.add_donation(
             guild=guild,
             channel_id=channel_id,

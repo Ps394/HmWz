@@ -1,15 +1,6 @@
-from .purge_channels import PurgeChannelRepository
-from hmwz.modules.registration.repositories import (
-    MemberRegistrationRepository,
-    RegistrationMessageRepository,
-    RegistrationRoleRepository,
-    RegistrationSettingsRepository,
-)
+"""Repositories for independent WZ settings."""
 
-__all__ = [
-    "MemberRegistrationRepository",
-    "PurgeChannelRepository",
-    "RegistrationMessageRepository",
-    "RegistrationRoleRepository",
-    "RegistrationSettingsRepository",
-]
+from .channels import ChannelRepository
+from .roles import RoleRepository
+
+__all__ = ["ChannelRepository", "RoleRepository"]

@@ -10,9 +10,7 @@ import discord
 
 from hmwz.emojis import emojis
 from hmwz.i18n import t
-from hmwz.ui.components.ephemeral_view import EphemeralView
-from hmwz.ui.messages import send_temporary_response as _send_temporary_response
-
+from ...confirmation import DonationConfirmationView
 from ...models import DonationType
 from ...overview import DonationOverview
 from .pricing import RUSH_BUTTON_DURATIONS_HOURS
@@ -89,7 +87,7 @@ class DonationTimeReductionView(discord.ui.View):
             )
 
 
-class DonationRushConfirmationView(EphemeralView):
+class DonationRushConfirmationView(DonationConfirmationView):
     """Confirm a fixed-price Rush option before recording the donation."""
 
     def __init__(
@@ -104,8 +102,7 @@ class DonationRushConfirmationView(EphemeralView):
         quoted_at: datetime,
         owner_id: int,
     ) -> None:
-        super().__init__(timeout=180)
-        self.module = module
+        super().__init__(module, owner_id)
         self.channel_id = channel_id
         self.donation_type = donation_type
         self.duration_hours = duration_hours
@@ -113,36 +110,16 @@ class DonationRushConfirmationView(EphemeralView):
         self.expected_cycle = expected_cycle
         self.expected_start_at = expected_start_at
         self.quoted_at = quoted_at
-        self.owner_id = owner_id
         for item in self.children:
             if isinstance(item, discord.ui.Button):
-                item.label = t(
-                    module.guild,
-                    "donation.rush.confirm_button"
-                    if item.custom_id == "donation_rush_confirm"
-                    else "donation.delete.cancel",
-                )
-                if item.custom_id == "donation_rush_confirm":
+                if item.custom_id == "donation_confirm":
+                    item.custom_id = "donation_rush_confirm"
                     item.emoji = emojis.get("cristall", module.guild)
+                else:
+                    item.custom_id = "donation_rush_cancel"
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
-            return True
-        await _send_temporary_response(
-            interaction, t(interaction, "donation.setup.owner_only")
-        )
-        return False
-
-    @discord.ui.button(
-        label="Confirm donation",
-        style=discord.ButtonStyle.success,
-        custom_id="donation_rush_confirm",
-    )
-    async def confirm(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        await interaction.response.defer(ephemeral=True)
-        saved, messages_updated = await self.module.record_rush_donation(
+    async def record(self, interaction: discord.Interaction) -> tuple[bool, bool]:
+        return await self.module.record_rush_donation(
             interaction,
             self.channel_id,
             self.donation_type,
@@ -152,33 +129,6 @@ class DonationRushConfirmationView(EphemeralView):
             self.expected_start_at,
             self.quoted_at,
         )
-        result_key = (
-            "donation.error.save"
-            if not saved
-            else (
-                "donation.success.saved"
-                if messages_updated
-                else "donation.success.saved_overview_failed"
-            )
-        )
-        self.stop()
-        await interaction.delete_original_response()
-        result_message = await interaction.followup.send(
-            t(interaction, result_key), ephemeral=True, wait=True
-        )
-        await result_message.delete(delay=5)
-
-    @discord.ui.button(
-        label="Cancel",
-        style=discord.ButtonStyle.secondary,
-        custom_id="donation_rush_cancel",
-    )
-    async def cancel(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
-        self.stop()
-        await interaction.response.defer()
-        await interaction.delete_original_response()
 
 
 def add_overview_controls(

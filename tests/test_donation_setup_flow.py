@@ -416,6 +416,7 @@ async def test_confirmed_rush_donation_deletes_confirmation_message() -> None:
         SimpleNamespace(
             guild=SimpleNamespace(locale="de"),
             record_rush_donation=record_rush_donation,
+            _pending_donations={},
         ),
     )
     donation_type = DonationType(
@@ -438,6 +439,8 @@ async def test_confirmed_rush_donation_deletes_confirmation_message() -> None:
         789,
     )
     interaction = Mock(spec=discord.Interaction)
+    interaction.user.id = 789
+    module._pending_donations[789] = view
     interaction.response.defer = AsyncMock()
     interaction.delete_original_response = AsyncMock()
     result_message = SimpleNamespace(delete=AsyncMock())
@@ -463,7 +466,7 @@ async def test_confirmed_rush_donation_deletes_confirmation_message() -> None:
 async def test_cancelled_rush_donation_deletes_confirmation_message() -> None:
     module = cast(
         DonationModule,
-        SimpleNamespace(guild=SimpleNamespace(locale="de")),
+        SimpleNamespace(guild=SimpleNamespace(locale="de"), _pending_donations={}),
     )
     donation_type = DonationType(
         name="Rush donation",
@@ -491,6 +494,8 @@ async def test_cancelled_rush_donation_deletes_confirmation_message() -> None:
         button for button in view.children if button.custom_id == "donation_rush_cancel"
     )
 
+    interaction.user.id = 789
+    module._pending_donations[789] = view
     await cancel_button.callback(interaction)
 
     interaction.response.defer.assert_awaited_once()
@@ -619,13 +624,21 @@ def test_new_simple_setup_defaults_to_four_credit_choices() -> None:
 
 
 @pytest.mark.asyncio
-async def test_credit_amount_button_records_its_fixed_value() -> None:
+async def test_credit_amount_button_requests_confirmation_of_its_fixed_value() -> None:
     record_donation = AsyncMock(return_value=(True, True))
     module = cast(
         DonationModule,
         SimpleNamespace(
             guild=SimpleNamespace(locale="de"),
             record_donation=record_donation,
+            donations=SimpleNamespace(
+                get_channel=AsyncMock(
+                    return_value=SimpleNamespace(
+                        donations_enabled=True, current_cycle=1
+                    )
+                )
+            ),
+            show_donation_confirmation=AsyncMock(),
         ),
     )
     donation_type = DonationType(
@@ -649,14 +662,11 @@ async def test_credit_amount_button_records_its_fixed_value() -> None:
 
     await button.callback(interaction)
 
-    record_donation.assert_awaited_once_with(
-        interaction,
-        456,
-        donation_type,
-        Decimal("100000"),
-        time_reduction=None,
-    )
-    interaction.followup.send.assert_awaited_once()
+    record_donation.assert_not_awaited()
+    args = module.show_donation_confirmation.await_args
+    assert args.args[1].amount == Decimal("100000")
+    assert args.kwargs["replace_prompt"] is False
+    interaction.followup.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -667,6 +677,14 @@ async def test_fixed_amount_selection_dismisses_its_prompt() -> None:
         SimpleNamespace(
             guild=SimpleNamespace(locale="de"),
             record_donation=record_donation,
+            donations=SimpleNamespace(
+                get_channel=AsyncMock(
+                    return_value=SimpleNamespace(
+                        donations_enabled=True, current_cycle=1
+                    )
+                )
+            ),
+            show_donation_confirmation=AsyncMock(),
         ),
     )
     donation_type = DonationType(
@@ -686,5 +704,6 @@ async def test_fixed_amount_selection_dismisses_its_prompt() -> None:
 
     await view.children[0].callback(interaction)
 
-    interaction.delete_original_response.assert_awaited_once()
-    result_message.delete.assert_awaited_once_with(delay=5)
+    assert module.show_donation_confirmation.await_args.kwargs["replace_prompt"] is True
+    record_donation.assert_not_awaited()
+    interaction.delete_original_response.assert_not_awaited()

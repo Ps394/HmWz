@@ -178,9 +178,6 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             )
             return
 
-        await module.export_registration_snapshot(
-            channel_id, "registration_change" if is_update else "registration"
-        )
         if current is not None and current.role is not None:
             all_member_registrations = await module.registrations.get(
                 guild=guild, member=member.id

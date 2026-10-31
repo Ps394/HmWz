@@ -19,10 +19,12 @@ from hmwz.modules.protocols import (
 from hmwz.modules.registry import register
 
 from .overview import DonationOverview
+from .confirmation import DonationConfirmationView
 from hmwz.ui.messages import send_temporary_response as _send_temporary_response
+from hmwz.ui.messages import delete_temporary_message
 from .models import DonationType
 from .repositories import DonationRepository
-from .snapshot import DonationSnapshotExporter
+from .snapshot import DonationEventType, DonationSnapshotExporter
 from .type.credit import service as credit_service
 from .type.rush import service as rush_service
 from .type.rush.pricing import (
@@ -61,6 +63,40 @@ class DonationModule(
         ] = {}
         self._maintenance_task: asyncio.Task[None] | None = None
         self._cycle_locks: dict[int, asyncio.Lock] = {}
+        self._pending_donations: dict[int, DonationConfirmationView] = {}
+        self._confirmation_locks: dict[int, asyncio.Lock] = {}
+
+    async def clear_donation_confirmation(self, owner_id: int) -> None:
+        """Invalidate and remove this user's previous unconfirmed donation."""
+        async with self._confirmation_locks.setdefault(owner_id, asyncio.Lock()):
+            previous = self._pending_donations.pop(owner_id, None)
+            if previous is not None:
+                previous.stop()
+                await delete_temporary_message(previous.message)
+
+    async def show_donation_confirmation(
+        self,
+        interaction: discord.Interaction,
+        view: DonationConfirmationView,
+        content: str,
+        *,
+        replace_prompt: bool = False,
+    ) -> None:
+        """Replace any pending donation with a single active confirmation."""
+        async with self._confirmation_locks.setdefault(view.owner_id, asyncio.Lock()):
+            previous = self._pending_donations.pop(view.owner_id, None)
+            if previous is not None:
+                previous.stop()
+                await delete_temporary_message(previous.message)
+            if replace_prompt:
+                await interaction.response.edit_message(content=content, view=view)
+                view.message = interaction.message
+            else:
+                await interaction.response.send_message(
+                    content, view=view, ephemeral=True
+                )
+                view.message = await interaction.original_response()
+            self._pending_donations[view.owner_id] = view
 
     async def sync(self, startup: bool = False) -> bool:
         """Ensure the donation schema exists."""
@@ -206,6 +242,7 @@ class DonationModule(
         replace_prompt: bool = False,
     ) -> None:
         """Start a configured donation flow."""
+        await self.clear_donation_confirmation(interaction.user.id)
         if channel_id not in await self.donations.get_channels(guild=self.guild):
             await _send_temporary_response(
                 interaction, t(interaction, "donation.error.not_configured")
@@ -258,6 +295,7 @@ class DonationModule(
         amount: Decimal,
         *,
         time_reduction: str | None,
+        expected_cycle: int | None = None,
     ) -> tuple[bool, bool]:
         """Delegate credit validation and recording to the credit workflow."""
         return await credit_service.record_donation(
@@ -267,6 +305,7 @@ class DonationModule(
             donation_type,
             amount,
             time_reduction=time_reduction,
+            expected_cycle=expected_cycle,
         )
 
     async def record_rush_donation(
@@ -305,7 +344,7 @@ class DonationModule(
             try:
                 if rush_start_at is None:
                     raise ValueError("A target requires a Rush start.")
-                validate_rush_target(rush_start_at, target_at)
+                target_at = validate_rush_target(rush_start_at, target_at)
             except ValueError:
                 _logger.exception("Invalid target for Rush reset in %s.", channel_id)
                 return False, False, False
@@ -327,8 +366,18 @@ class DonationModule(
 
     async def export_donation_snapshot(self, channel_id: int) -> bool:
         """Export the active cycle on request without changing any donations."""
+        donation_type = await self.donations.get_type(
+            guild=self.guild, channel_id=channel_id
+        )
+        if donation_type is None:
+            return False
+        event_type: DonationEventType = (
+            "rushed-donation"
+            if donation_type.kind == "time_reduction"
+            else "credit-donation"
+        )
         async with self._cycle_lock(channel_id):
-            return await self._snapshot_exporter.export(channel_id, "snapshot")
+            return await self._snapshot_exporter.export(channel_id, event_type)
 
     def _cycle_lock(self, channel_id: int) -> asyncio.Lock:
         """Return the lock protecting donation writes and cycle resets."""

@@ -49,7 +49,7 @@ def parse_local_datetime(raw: str, timezone_name: str) -> datetime:
     if value.startswith("<t:") or re.fullmatch(r"-?\d+", value):
         return parse_timestamp(value)
     match = re.fullmatch(
-        r"(\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?)",
+        r"(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\.\d{1,2}\.\d{4})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?)",
         value,
     )
     if match is None:
@@ -57,7 +57,9 @@ def parse_local_datetime(raw: str, timezone_name: str) -> datetime:
     date_value = match.group(1)
     if "." in date_value:
         day, month, year = date_value.split(".")
-        date_value = f"{year}-{month}-{day}"
+    else:
+        year, month, day = date_value.split("-")
+    date_value = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
     clock = match.group(2)
     parts = [int(part) for part in clock.split(".")[0].split(":")]
     if parts[0] > 23 or parts[1] > 59 or (len(parts) == 3 and parts[2] > 59):

@@ -8,14 +8,14 @@ from hmwz.i18n import t
 from hmwz.ui.components.ephemeral_view import EphemeralView
 
 if TYPE_CHECKING:
-    from .selection import PurgeChannelSelection
+    from .selection import ChannelSelection
 
 
-class PurgeChannelConfirmation(EphemeralView):
+class ChannelConfirmation(EphemeralView):
     def __init__(
         self,
         *,
-        selection: PurgeChannelSelection,
+        selection: ChannelSelection,
         owner_id: int,
         selected_channel_ids: list[int],
         context: discord.Interaction,
@@ -63,60 +63,3 @@ class PurgeChannelConfirmation(EphemeralView):
         self.stop()
         self.selection.stop()
         await self.finish(interaction, t(interaction, "wz.setup.channel.cancelled"))
-
-
-class _ChannelSelect(discord.ui.Select):
-    def __init__(
-        self,
-        *,
-        view: PurgeChannelSelection,
-        placeholder: str,
-        channels: list[discord.TextChannel],
-        max_values: int,
-        selected_ids: set[int],
-    ) -> None:
-        super().__init__(
-            placeholder=placeholder,
-            min_values=0,
-            max_values=max(1, max_values),
-            options=[
-                discord.SelectOption(
-                    label=channel.name[:100],
-                    value=str(channel.id),
-                    default=channel.id in selected_ids,
-                )
-                for channel in channels
-            ],
-        )
-        self.purge_view = view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.purge_view.select_channels(
-            interaction,
-            [int(channel_id) for channel_id in self.values],
-        )
-
-
-class _ChannelPageButton(discord.ui.Button):
-    def __init__(
-        self,
-        *,
-        view: PurgeChannelSelection,
-        label: str,
-        direction: int,
-    ) -> None:
-        super().__init__(label=label, style=discord.ButtonStyle.secondary)
-        self.selection = view
-        self.direction = direction
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.selection.change_page(interaction, self.direction)
-
-
-class _ChannelReviewButton(discord.ui.Button):
-    def __init__(self, *, view: PurgeChannelSelection, label: str) -> None:
-        super().__init__(label=label, style=discord.ButtonStyle.primary)
-        self.selection = view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.selection.review(interaction)

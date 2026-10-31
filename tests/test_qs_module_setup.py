@@ -87,11 +87,9 @@ async def test_wz_setup_displays_configuration_in_initial_message() -> None:
     guild = Mock(spec=discord.Guild)
     guild.get_role.return_value = None
     module = SimpleNamespace(
-        registration=SimpleNamespace(
-            get_all=AsyncMock(return_value=[SimpleNamespace(channel=20)])
-        ),
+        guild=guild,
         roles=SimpleNamespace(get=AsyncMock(return_value=None)),
-        purge_channels=SimpleNamespace(
+        channels=SimpleNamespace(
             get=AsyncMock(return_value=[SimpleNamespace(channel_id=30)])
         ),
     )
@@ -110,9 +108,9 @@ async def test_wz_setup_displays_configuration_in_initial_message() -> None:
 
     await wz_setup.callback(interaction)
 
-    content = interaction.response.send_message.await_args.args[0]
-    assert "<#20>" in content
-    assert "<#30>" in content
+    embed = interaction.response.send_message.await_args.kwargs["embed"]
+    assert "Anmeldung" not in embed.description
+    assert embed.fields[1].value == "<#30>"
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 import discord
@@ -5,11 +7,16 @@ from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.ui.messages import (
+    edit_interaction_response,
+    send_followup,
+    send_temporary_followup,
+)
+from hmwz.utils.interactions import log_guild, log_interaction
 from hmwz.utils.loaders import fetch_channel
-from hmwz.utils.interactions import log_interaction
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzModule
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 _MAX_PREVIEW_LENGTH = 1400
 
 
@@ -97,8 +104,8 @@ class CleanChannelsConfirmation(EphemeralView):
             if self.ignore_pinned
             else "wz.clean_channels.pinned_toggle_exclude",
         )
-        await interaction.response.edit_message(
-            content=self.confirmation_content(interaction), view=self
+        await edit_interaction_response(
+            interaction, content=self.confirmation_content(interaction), view=self
         )
 
     @discord.ui.button(
@@ -116,10 +123,8 @@ class CleanChannelsConfirmation(EphemeralView):
             if manager is None:
                 content = t(interaction, "wz.clean_channels.error")
             else:
-                module: WzRegistrationModule = await manager.get_module(
-                    self.guild, WzRegistrationModule
-                )
-                configured_channels = await module.purge_channels.get(guild=self.guild)
+                module: WzModule = await manager.get_module(self.guild, WzModule)
+                configured_channels = await module.channels.get(guild=self.guild)
                 configured_ids = {
                     record.channel_id for record in configured_channels or ()
                 }
@@ -136,10 +141,10 @@ class CleanChannelsConfirmation(EphemeralView):
                     for channel_id in selected_ids:
                         channel = await fetch_channel(self.guild, channel_id)
                         if channel is None:
-                            logger.warning(
-                                "Configured WZ clean channel %s is missing or is not a text channel in guild %s.",
+                            _logger.warning(
+                                "%s Configured WZ clean channel %s is missing or is not a text channel.",
+                                log_guild(self.guild),
                                 channel_id,
-                                self.guild.id,
                             )
                             failed_channels.append(f"<#{channel_id}>")
                             continue
@@ -154,11 +159,11 @@ class CleanChannelsConfirmation(EphemeralView):
                             deleted_count += len(deleted)
                         except discord.HTTPException:
                             failed_channels.append(channel.mention)
-                            logger.exception(
-                                "Failed to clean WZ channel %s (%s) in guild %s.",
+                            _logger.exception(
+                                "%s Failed to clean WZ channel %s (%s).",
+                                log_guild(self.guild),
                                 channel.name,
                                 channel.id,
-                                self.guild.id,
                             )
 
                     content = t(
@@ -170,7 +175,7 @@ class CleanChannelsConfirmation(EphemeralView):
                         channel_names=", ".join(failed_channels),
                     )
         except Exception:
-            logger.exception(
+            _logger.exception(
                 "%s WZ clean-channels failed.",
                 log_interaction(interaction),
             )
@@ -206,18 +211,16 @@ async def clean_channels(interaction: discord.Interaction) -> None:
         guild = interaction.guild
         manager = getattr(interaction.client, "module_manager", None)
         if guild is None or manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.clean_channels.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.clean_channels.error")
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
-        configured_channels = await module.purge_channels.get(guild=guild)
+        module: WzModule = await manager.get_module(guild, WzModule)
+        configured_channels = await module.channels.get(guild=guild)
         if not configured_channels:
-            await interaction.followup.send(
-                t(interaction, "wz.clean_channels.no_channels"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.clean_channels.no_channels")
             )
             return
 
@@ -228,7 +231,8 @@ async def clean_channels(interaction: discord.Interaction) -> None:
             channel_ids=channel_ids,
             context=interaction,
         )
-        message = await interaction.followup.send(
+        message = await send_followup(
+            interaction,
             view.confirmation_content(interaction),
             view=view,
             ephemeral=True,
@@ -236,11 +240,11 @@ async def clean_channels(interaction: discord.Interaction) -> None:
         )
         view.message = message
     except Exception as error:
-        logger.exception(
+        _logger.exception(
             "%s WZ clean-channels preparation failed: %s",
             log_interaction(interaction),
             error,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.clean_channels.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.clean_channels.error")
         )

@@ -1,13 +1,7 @@
-from .configuration import Configuration
-from .purge_channel import PurgeChannel
-from .registration import Registration
-from .registration_member import RegistrationMember
-from .registration_role import RegistrationRole
+from .channels import Channel
+from .roles import Role
 
 __all__ = (
-    "Configuration",
-    "PurgeChannel",
-    "Registration",
-    "RegistrationMember",
-    "RegistrationRole",
+    "Channel",
+    "Role",
 )

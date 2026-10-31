@@ -8,9 +8,10 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 
 ## Funktionen
 
-- Mehrere voneinander unabhängige WZ-Anmeldungen pro Server, jeweils mit eigenem
-  Anmeldungskanal, Rollen, Übersicht und Bereinigungskanälen.
-- QS-Anmeldungen auf derselben Registrierungsbasis wie WZ, mit bis zu vier
+- Mehrere voneinander unabhängige Anmeldungen im Registrierungsmodul pro Server,
+  jeweils mit eigenem Anmeldungskanal, Rollen und Übersicht.
+- Eigenständige WZ-Kanal- und Rollenverwaltung pro Server mit bestätigten Resets.
+- QS-Anmeldungen auf der allgemeinen Registrierungsbasis, mit bis zu vier
   nicht permanenten Rollen.
 - Kanalbezogene QS-Übersichten; ein Reset benötigt eine ausdrückliche Bestätigung.
 - Kanalbezogene QS-Phasenqueues mit 24-stündigen Eruptionen und 3 bis 6
@@ -28,7 +29,8 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
   kann nur einer Anmeldung zugeordnet werden.
 - Registrierungsinformationen aller Anmeldungen können bei konfiguriertem
   Ereigniskanal in einen festen Guild-Kanal geteilt werden.
-- Verwaltung der Anmeldungsnachricht und der für einen Reset zusätzlich zu bereinigenden Textkanäle.
+- Verwaltung der Anmeldungsnachricht; unabhängig davon verwaltet WZ seine
+  für einen Reset zu bereinigenden Textkanäle.
 - CSV-Export und Zurücksetzen nicht permanenter Registrierungen.
 - Separate Bereinigungsbefehle für konfigurierte Kanäle und für den aktuellen Textkanal.
 - Speicherung von Servereinstellungen, Ingame-Accounts und Registrierungen in
@@ -234,6 +236,10 @@ neu eingerichtete einfache Spenden verwenden standardmäßig vier Credit-Buttons
 `10.000`, `100.000`, `1.000.000` und `8.000.000` Credits. Die festen Werte
 können im Setup angepasst werden; ohne feste Werte bleibt die freie Eingabe
 verfügbar.
+Auch Credit-Spenden werden erst nach ausdrücklicher Bestätigung gespeichert.
+Ihre Übersicht und Historie zeigen keine Zeitersparnis. Jede neue Spende eines
+Nutzers entfernt und entwertet dessen vorherige offene Bestätigung, auch
+kanalübergreifend innerhalb desselben Servers.
 
 Rush-Spenden verwenden fest die Optionen **1h**, **8h** und **24h** sowie
 Kristalle als Einheit. Im Rush-Setup wählst du einmal die **Zeitzone der Zeiteingabe**
@@ -242,6 +248,8 @@ beim Reset verwendet. Bestehende Einstellungen bleiben erhalten; ohne Auswahl
 gilt UTC. Eine Änderung der Eingabezeitzone verschiebt keine gespeicherten Zeitpunkte.
 Der gemeinsame UI-Helper nimmt Start und Ziel bequem als **Datum und Uhrzeit**
 entgegen, z. B. `31.10.2026 12:30` oder `2026-10-31 12:30`.
+Tag und Monat dürfen auch einstellig sein, z. B. `2026-11-3 22:57`
+oder `3.11.2026 22:57`; dies gilt auch beim Reset und für die Zielzeit im Setup.
 Die Felder zeigen ihre Zeitzone an und sind mit dem aktuellen Wert vorbelegt.
 Neue Startvorschläge verwenden volle Minuten, damit Zielzeiten bequem auf dem
 Ganzstundenraster liegen. Sekunden sind optional; vorhandene genaue Zeitpunkte
@@ -265,9 +273,18 @@ nicht nach der seit dem Start vergangenen Zeit.
 Über **Zielzeit** kannst du im Rush-Setup einen optionalen Zeitpunkt
 festlegen; ein leeres Feld entfernt das Ziel. Die Zielzeit wird in Setup und
 öffentlicher Übersicht gesondert **hervorgehoben**. Sie muss nach dem Start und
-spätestens am bereits beschleunigten Ende liegen; ihr Abstand vom ursprünglichen
-Ende muss eine ganze Anzahl Stunden sein. Dadurch ist sie mit 1h-Spenden exakt
-erreichbar. Die angezeigte Endzeit lautet immer **Start + 216h − gespendete Stunden**.
+spätestens 24 Stunden vor dem ursprünglichen Ende und nicht nach dem bereits
+beschleunigten Ende liegen. Beliebige Minuten und Sekunden sind zulässig:
+Die Wunschzeit wird auf den nächsten erreichbaren Zeitpunkt des Stundenrasters
+der Startzeit **aufgerundet**, niemals auf einen früheren Zeitpunkt.
+Reset und Setup speichern und zeigen diese gerundete Zielzeit. Dadurch ist
+sie mit 1h-Spenden exakt erreichbar. Die angezeigte Endzeit lautet immer
+**Start + 216h − gespendete Stunden**.
+Bei Start `2026-10-31 10:57` wird beispielsweise `2026-11-3 22:00` zu
+`2026-11-3 22:57`; eine bereits passende Zeit bleibt unverändert.
+Bei Zeitzonenübergängen ist der tatsächliche Abstand in UTC maßgeblich.
+Bei Start am **31.10.2026 10:00** liegt die späteste Zielzeit somit am
+**08.11.2026 10:00** (bei gleichbleibendem UTC-Offset).
 Nur Optionen, die das Ende nicht vor die Zielzeit verschieben, bleiben zugänglich.
 Bei Gleichstand erscheint **Ziel erreicht**, und alle Beschleunigungsbuttons
 verschwinden. Auch bereits geöffnete Bestätigungen werden beim Speichern erneut
@@ -423,6 +440,50 @@ Alle Bot-Befehle sind Discord-Slash-Commands. Registrierungen werden unter `/reg
 
 ### WZ- und QS-Module
 
+`hs.wz.WzModule` ist eine eigenständige, beim Modulmanager registrierte
+Kanal- und Rollenverwaltung mit einer gemeinsamen Konfiguration pro Server.
+Es benötigt keine Anmeldung und verwendet weder Tabellen noch Übersichten des
+`registration`-Moduls. Kanäle liegen in `HsWzChannels`, Rollen in `HsWzRoles`.
+Das WZ-Modul verwendet `Channel`, `ChannelRepository` und `module.channels`
+für seine Bereinigungskanäle;
+vorhandene Daten aus `WzPurgeChannels` werden bei der Schemamigration übernommen.
+Die Discord-API-Methode `channel.purge()` bleibt für die Nachrichtenbereinigung
+unverändert.
+
+Es sind höchstens 25 WZ-Kanäle und 25 WZ-Rollen pro Server konfigurierbar.
+WZ-Rollen haben keine Permanenz-Unterscheidung und können vollständig aus der
+Konfiguration entfernt werden. Die frühere `Permanent`-Spalte wird beim
+Schema-Upgrade entfernt; die gespeicherten Rollen bleiben erhalten.
+
+Das private WZ-Setup zeigt WZ-Rollen und Bereinigungskanäle in getrennten
+Embed-Feldern mit Zählern und Limits.
+Die Aktionsschaltflächen sind nach Rollen und Kanälen gruppiert;
+„Aktualisieren“ lädt den aktuellen Stand, „Schließen“ beendet das Menü.
+Beim Hinzufügen verwendet die Rollen- und Kanalauswahl native
+Discord-Auswahlfelder wie das Registrierungs-Setup. Beim Entfernen werden
+ausschließlich konfigurierte Elemente angezeigt; historische Listen mit mehr
+als 25 Einträgen werden seitenweise dargestellt. Eine Vorschau zeigt die
+Auswahl, bevor sie geprüft und bestätigt wird.
+Änderungen werden weiterhin erst nach Bestätigung angewendet.
+
+Der wiederverwendbare UI-Helper
+[`EntitySelectionView`](src/hmwz/ui/components/entity_selection.py) stellt
+native oder gefilterte Rollen- und Textkanalauswahl, Eigentümerprüfung, zulässige IDs,
+Auswahllimits und gespeicherte Auswahlwerte bereit. Native Auswahlfelder können
+auch nicht zulässige Server-Elemente anzeigen; der Helper weist diese ausdrücklich
+ab. Die Modulaktionen prüfen vor dem Speichern erneut den aktuellen Zustand.
+
+Alle WZ-Rückmeldungen und Dialogaktualisierungen verwenden die gemeinsamen
+Helper in `hmwz.ui.messages` beziehungsweise `EphemeralView`. Diese bereiten
+Nachrichteninhalte mit den Projekt-Emojis auf; Ergebnis- und Fehlermeldungen
+werden nur kurzzeitig angezeigt. Discord-Fehler der Dialog-Helper werden an
+die aufrufende Fehlerbehandlung weitergegeben.
+
+Bereits in `Registration_Roles` gespeicherte Rollen werden nicht automatisch
+als WZ-Rollen übernommen, da sie zu unabhängigen Registrierungen gehören.
+WZ-Rollen werden über `/wz setup` konfiguriert. Ingame-Accounts werden vom
+Account-Modul weiterhin über das allgemeine Registrierungsmodul verwaltet.
+
 | Befehl | Beschreibung |
 | --- | --- |
 | `/wz setup` | Öffnet das private WZ-Menü mit direkt sichtbarer Konfiguration und Aktionen zum Hinzufügen und Entfernen von WZ-Rollen und WZ-Kanälen. |
@@ -457,7 +518,7 @@ Die Datei [`configuration.json`](./configuration.json) liegt im Projektstamm. Fe
 | `wz_registration` | `max_registration_roles`, `min_registration_roles`, `default_title`, `default_description` | Grenzwerte und Standardtexte der WZ-Registrierung. Standardmäßig sind höchstens vier und mindestens eine Registrierungsrolle vorgesehen. |
 | `hs.qs` | `max_registration_roles`, `default_title`, `default_description` | Standardwerte der QS-Registrierung. Maximal vier Rollen sind zulässig. |
 
-Die einzelnen WZ-Anmeldungen mit ihren Kanälen, Rollen, Anmeldungen und Bereinigungskanälen werden in SQLite gespeichert, nicht in `configuration.json`. Neue Standardwerte liegen in `hs.wz`; der bisherige Schlüssel `wz_registration` wird für vorhandene Konfigurationsdateien weiterhin gelesen. Verändere die Datei bei gestopptem Bot und sichere vor Änderungen oder Upgrades sowohl sie als auch `data/data.db`.
+Anmeldungen und ihre Einstellungen werden vom Registrierungsmodul in SQLite gespeichert. Die unabhängigen WZ-Kanäle und -Rollen liegen in eigenen Tabellen, nicht in `configuration.json`. Neue Standardwerte liegen in `hs.wz`; der bisherige Schlüssel `wz_registration` wird für vorhandene Konfigurationsdateien weiterhin gelesen. Verändere die Datei bei gestopptem Bot und sichere vor Änderungen oder Upgrades sowohl sie als auch `data/data.db`.
 
 ## Daten, Logs und Betrieb
 
@@ -514,7 +575,7 @@ pyproject.toml                  Paket-, Hatch-Build- und optionale Entwicklungsa
 configuration.json              Laufzeitkonfiguration
 ```
 
-`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. Das botweite `registration`-Modul stellt gemeinsame Registrierungsbefehle, Modelle und Logik bereit; QS-spezifische Commands und Datenzugriff liegen bei `hs.qs`. WZ und QS speichern ihre Registrierungen weiterhin in getrennten Tabellen.
+`src/bot.py` ist ein schlanker Kompatibilitätseinstiegspunkt, der das Paket `hmwz` startet. Er verändert den Python-Importpfad nicht. Das Paket kann außerdem installiert und mit dem Kommando `hmwz` gestartet werden. `hs.wz`, `hs.qs` und `hs.account` sind getrennte Submodule. Das botweite `registration`-Modul stellt Registrierungsbefehle, Modelle und Logik bereit; QS-spezifische Commands liegen bei `hs.qs`. `hs.wz.WzModule` erbt nur von der Modulbasis und verwaltet ausschließlich seine eigenen Kanal- und Rollentabellen.
 
 ## Entwicklung und Tests
 

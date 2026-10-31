@@ -9,9 +9,12 @@ import pytest
 
 from hmwz.client.repositories import ServerRepository
 from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
+from hmwz.modules.hs.wz.models import Channel
 from hmwz.modules.hs.wz.repositories import (
+    ChannelRepository,
+)
+from hmwz.modules.registration.repositories import (
     MemberRegistrationRepository,
-    PurgeChannelRepository,
     RegistrationMessageRepository,
     RegistrationRoleRepository,
     RegistrationSettingsRepository,
@@ -27,7 +30,7 @@ async def initialize_database(database: Database) -> None:
         MemberRegistrationRepository(database),
         MemberGameAccountRepository(database),
         RegistrationMessageRepository(database),
-        PurgeChannelRepository(database),
+        ChannelRepository(database),
     )
     for repository in repositories:
         assert await database.execute(repository.table)
@@ -148,20 +151,19 @@ async def test_repositories_create_read_update_and_remove_records(
     assert await messages.remove(guild=guild, message=101112)
     assert await messages.get(guild=guild) is None
 
-    purge_channels = PurgeChannelRepository(database)
-    assert await purge_channels.add(guild=guild, channel_id=456)
-    purge_records = await purge_channels.get(guild=guild)
-    assert purge_records is not None
-    assert purge_records[0].channel_id == 456
-    saved_purge_channel = await database.fetch_one(
-        "SELECT Guild, RegistrationChannel, Channel FROM WzPurgeChannels "
-        "WHERE Guild = ? AND Channel = ?",
+    channels = ChannelRepository(database)
+    assert await channels.add(guild=guild, channel_id=456)
+    channel_records = await channels.get(guild=guild)
+    assert channel_records is not None
+    assert channel_records[0].channel_id == 456
+    saved_channel = await database.fetch_one(
+        "SELECT Guild, Channel FROM HsWzChannels WHERE Guild = ? AND Channel = ?",
         (123, 456),
     )
-    assert saved_purge_channel is not None
-    assert tuple(saved_purge_channel) == (123, 0, 456)
-    assert await purge_channels.remove(guild=guild, channel_id=456)
-    assert await purge_channels.get(guild=guild) is None
+    assert saved_channel is not None
+    assert tuple(saved_channel) == (123, 456)
+    assert await channels.remove(guild=guild, channel_id=456)
+    assert await channels.get(guild=guild) is None
 
     assert await servers.remove(guild=guild)
     assert await servers.count_all() == 0
@@ -247,23 +249,40 @@ async def test_wz_registrations_are_isolated_by_channel(tmp_path: Path) -> None:
     assert first_members[0].role_name == "WZ Role"
     assert second_members is not None and second_members[0].role == 790
 
-    purge_channels = PurgeChannelRepository(database)
-    assert await purge_channels.add(
-        guild=guild, channel_id=800, registration_channel_id=456
+    channels = ChannelRepository(database)
+    assert await channels.add(guild=guild, channel_id=800)
+    assert await channels.add(guild=guild, channel_id=801)
+    records = await channels.get(guild=guild)
+    assert records is not None
+    assert [record.channel_id for record in records] == [800, 801]
+
+
+@pytest.mark.asyncio
+async def test_wz_channel_limit_is_enforced_per_guild(tmp_path: Path) -> None:
+    database = Database(folder=str(tmp_path), filename="channel-limit.db")
+    await initialize_database(database)
+    guild = cast(
+        discord.Guild,
+        SimpleNamespace(
+            id=123,
+            name="test guild",
+            get_channel_or_thread=lambda _channel_id: None,
+        ),
     )
-    assert await purge_channels.add(
-        guild=guild, channel_id=801, registration_channel_id=457
+    assert await ServerRepository(database).add(guild=guild)
+    repository = ChannelRepository(database)
+    assert Channel.MAX_PER_GUILD == 25
+    for channel_id in range(800, 825):
+        assert await repository.add(guild=guild, channel_id=channel_id)
+    assert not await repository.add(guild=guild, channel_id=825)
+    assert await repository.count(guild=guild) == 25
+    other_guild = cast(
+        discord.Guild,
+        SimpleNamespace(
+            id=124, name="other guild", get_channel_or_thread=lambda _channel_id: None
+        ),
     )
-    assert not await purge_channels.add(
-        guild=guild, channel_id=800, registration_channel_id=457
-    )
-    first_purge_channels = await purge_channels.get(
-        guild=guild, registration_channel_id=456
-    )
-    second_purge_channels = await purge_channels.get(
-        guild=guild, registration_channel_id=457
-    )
-    assert first_purge_channels is not None
-    assert [record.channel_id for record in first_purge_channels] == [800]
-    assert second_purge_channels is not None
-    assert [record.channel_id for record in second_purge_channels] == [801]
+    assert await ServerRepository(database).add(guild=other_guild)
+    assert await repository.add(guild=other_guild, channel_id=825)
+    records = await repository.get(guild=other_guild)
+    assert records == (Channel(guild_id=124, channel_id=825),)

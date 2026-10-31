@@ -5,132 +5,123 @@ import logging
 import discord
 
 from hmwz.i18n import t
-from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.ui.components.entity_selection import EntitySelectionView
+from hmwz.ui.embeds import create_embed
+from hmwz.ui.messages import edit_interaction_response
 from hmwz.utils.interactions import log_interaction
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzModule
 
-from .components import (
-    SetupRoleConfirmation,
-    _PageButton,
-    _ReviewButton,
-    _RoleSelect,
-)
+from .components import SetupRoleConfirmation
 from .operations import RoleAction, RoleSetupOperations
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
-class SetupRoleSelection(EphemeralView):
+class SetupRoleSelection(EntitySelectionView):
+    """Preview WZ role selections before confirmation."""
+
     def __init__(
         self,
         *,
         guild: discord.Guild,
-        module: WzRegistrationModule,
+        module: WzModule,
         owner_id: int,
         action: RoleAction,
-        channel_id: int,
         roles: list[discord.Role],
         max_selected: int,
-        permanent: bool,
         context: discord.Interaction,
     ) -> None:
-        super().__init__(timeout=180)
+        super().__init__(
+            owner_id=owner_id,
+            kind="role",
+            allowed_ids=(role.id for role in roles),
+            max_selected=min(max_selected, 25),
+            placeholder=t(context, f"wz.setup.role.select.{action}"),
+            owner_message=t(context, "wz.setup.role.selection_owner"),
+            invalid_message=t(context, "wz.setup.role.invalid_selection"),
+            options=[
+                discord.SelectOption(label=role.name[:100], value=str(role.id))
+                for role in roles
+            ]
+            if action == "remove"
+            else None,
+        )
         self.guild = guild
         self.module = module
         self.owner_id = owner_id
         self.action = action
-        self.channel_id = channel_id
         self.roles = roles
-        self.max_selected = max_selected
-        self.permanent = permanent
-        self.page = 0
-        self.selected_role_ids: set[int] = set()
-        self._update_components(context)
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
-            return True
-        await self.send_temporary_response(
-            interaction, t(interaction, "wz.setup.role.selection_owner")
-        )
-        return False
-
-    def _update_components(self, context: discord.Interaction) -> None:
-        self.clear_items()
-        start = self.page * 25
-        page_roles = self.roles[start : start + 25]
-        page_role_ids = {role.id for role in page_roles}
-        selected_on_page = self.selected_role_ids & page_role_ids
-        remaining = self.max_selected - len(self.selected_role_ids - page_role_ids)
-        select = _RoleSelect(
-            view=self,
-            roles=page_roles,
-            max_values=min(len(page_roles), remaining),
-            selected_ids=selected_on_page,
-            context=context,
-        )
-        select.disabled = remaining <= 0
-        self.add_item(select)
-        if self.page > 0:
-            self.add_item(
-                _PageButton(
-                    view=self,
-                    label=t(context, "wz.setup.role.previous_page"),
-                    direction=-1,
-                )
-            )
-        if start + 25 < len(self.roles):
-            self.add_item(
-                _PageButton(
-                    view=self,
-                    label=t(context, "wz.setup.role.next_page"),
-                    direction=1,
-                )
-            )
-        review = _ReviewButton(
-            view=self,
-            label=t(context, "wz.setup.role.review"),
-        )
-        review.disabled = not self.selected_role_ids
-        self.add_item(review)
-
-    async def select_roles(
-        self, interaction: discord.Interaction, selected_ids: list[int]
-    ) -> None:
-        page_role_ids = {
-            role.id for role in self.roles[self.page * 25 : self.page * 25 + 25]
+        labels = {
+            "wz_role_select_review": "wz.setup.role.review",
+            "wz_role_select_cancel": "wz.setup.role.cancel_button",
         }
-        self.selected_role_ids.difference_update(page_role_ids)
-        self.selected_role_ids.update(selected_ids)
-        self._update_components(interaction)
-        await interaction.response.edit_message(
-            content=t(
-                interaction,
+        for item in list(self.children):
+            if not isinstance(item, discord.ui.Button) or item.custom_id not in labels:
+                continue
+            item.label = t(context, labels[item.custom_id])
+            item.disabled = item.custom_id != "wz_role_select_cancel"
+
+    def selection_embed(self, context: discord.Interaction) -> discord.Embed:
+        """Show the selected roles, limit, and next step."""
+        embed = create_embed(
+            title=t(context, f"wz.setup.role.title.{self.action}"),
+            description=t(
+                context,
                 "wz.setup.role.selection_count",
-                selected=len(self.selected_role_ids),
+                selected=len(self.selected_ids),
                 maximum=self.max_selected,
-            ),
+            )
+            + "\n"
+            + t(context, f"wz.setup.role.selection_rules.{self.action}"),
+        )
+        embed.add_field(
+            name=t(context, "wz.setup.selection.preview"),
+            value="\n".join(f"<@&{role_id}>" for role_id in sorted(self.selected_ids))
+            or t(context, "wz.setup.selection.empty"),
+            inline=False,
+        )
+        return embed
+
+    async def on_selection_changed(self, interaction: discord.Interaction) -> None:
+        """Enable role actions once a valid selection is present."""
+        for item in self.children:
+            if (
+                isinstance(item, discord.ui.Button)
+                and item.custom_id == "wz_role_select_review"
+            ):
+                item.disabled = not self.selected_ids
+        await edit_interaction_response(
+            interaction,
+            content=None,
+            embed=self.selection_embed(interaction),
             view=self,
         )
 
-    async def change_page(
-        self, interaction: discord.Interaction, direction: int
+    @discord.ui.button(
+        label="Review",
+        style=discord.ButtonStyle.primary,
+        custom_id="wz_role_select_review",
+        row=1,
+    )
+    async def review_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        self.page += direction
-        self._update_components(interaction)
-        await interaction.response.edit_message(
-            content=t(
-                interaction,
-                "wz.setup.role.select.add"
-                if self.action == "add"
-                else "wz.setup.role.select.remove",
-            ),
-            view=self,
-        )
+        await self.review(interaction)
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.secondary,
+        custom_id="wz_role_select_cancel",
+        row=1,
+    )
+    async def cancel_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await self.finish(interaction, t(interaction, "wz.setup.role.cancelled"))
 
     async def review(self, interaction: discord.Interaction) -> None:
         selected = [
-            self.guild.get_role(role_id) for role_id in sorted(self.selected_role_ids)
+            self.guild.get_role(role_id) for role_id in sorted(self.selected_ids)
         ]
         selected_roles = [role for role in selected if role is not None]
         if not selected_roles:
@@ -160,18 +151,14 @@ class SetupRoleSelection(EphemeralView):
         )
         confirmation.message = interaction.message
         self.stop()
-        await interaction.response.edit_message(
+        await edit_interaction_response(
+            interaction,
             content=t(
                 interaction,
                 action_label,
                 role_names="\n".join(role_names),
-                permanent=t(
-                    interaction,
-                    "wz.setup.role.permanent_yes"
-                    if self.permanent
-                    else "wz.setup.role.permanent_no",
-                ),
             ),
+            embed=None,
             view=confirmation,
         )
 
@@ -180,17 +167,12 @@ class SetupRoleSelection(EphemeralView):
     ) -> None:
         await interaction.response.defer()
         try:
-            registration = await self.module.registration.get(
-                guild=self.guild, channel_id=self.channel_id
-            )
-            if registration is None:
-                content = t(interaction, "wz.setup.role.registration_required")
-            elif self.action == "add":
+            if self.action == "add":
                 content = await self._add_roles(interaction, selected_role_ids)
             else:
                 content = await self._remove_roles(interaction, selected_role_ids)
         except Exception:
-            logger.exception(
+            _logger.exception(
                 "%s WZ setup role selection failed.",
                 log_interaction(interaction),
             )
@@ -214,6 +196,4 @@ class SetupRoleSelection(EphemeralView):
         return RoleSetupOperations(
             guild=self.guild,
             module=self.module,
-            channel_id=self.channel_id,
-            permanent=self.permanent,
         )

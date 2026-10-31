@@ -73,7 +73,7 @@ async def test_added_registration_role_is_recorded_and_published(
         member_display_name="Member",
         role_name="Player",
     )
-    module.export_registration_snapshot.assert_awaited_once_with(40, "sync")
+    module.export_registration_snapshot.assert_not_awaited()
     module.compose_registration_overview.assert_awaited_once_with(
         force=True, channel_id=40
     )
@@ -119,7 +119,7 @@ async def test_removed_registration_role_is_unlinked_and_published(
         channel_id=40,
     )
     module.registrations.add.assert_not_awaited()
-    module.export_registration_snapshot.assert_awaited_once_with(40, "sync")
+    module.export_registration_snapshot.assert_not_awaited()
     module.compose_registration_overview.assert_awaited_once_with(
         force=True, channel_id=40
     )

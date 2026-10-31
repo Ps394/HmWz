@@ -11,7 +11,6 @@
   "command.description.wz.channel.add": "Fügt Kanäle zur WZ-Bereinigungsliste hinzu",
   "command.description.wz.channel.remove": "Entfernt Kanäle aus der WZ-Bereinigungsliste",
   "command.description.wz.role.add": "Fügt WZ-Anmeldungsrollen hinzu",
-  "parameter.description.wz.role.add.permanent": "Legt fest, ob die ausgewählten Rollen permanent sind",
   "command.description.wz.role.remove": "Entfernt WZ-Anmeldungsrollen",
   "command.description.wz.setup": "Öffnet das WZ-Menü zum Definieren von Kanälen und Rollen",
   "command.description.wz.reset_channels": "Bereinigt alle konfigurierten WZ-Kanäle",

@@ -26,17 +26,27 @@ def rush_end_at(started_at: datetime, accelerated_hours: int = 0) -> datetime:
 
 def validate_rush_target(
     started_at: datetime, target_at: datetime, accelerated_hours: int = 0
-) -> None:
-    """Require an attainable whole-hour target between start and current end."""
+) -> datetime:
+    """Validate the target range and round up to the next attainable UTC time.
+
+    Returns:
+        The target on the start's whole-hour grid, never before the input.
+
+    Raises:
+        ValueError: If timestamps or the target range are invalid.
+    """
     if target_at.utcoffset() is None:
         raise ValueError("Rush target must be timezone-aware.")
     end = rush_end_at(started_at, accelerated_hours)
-    if target_at <= started_at or target_at > end:
+    latest_target = min(end, rush_end_at(started_at) - timedelta(hours=24))
+    if target_at <= started_at or target_at > latest_target:
         raise ValueError(
-            "Rush target must be after start and no later than current end."
+            "Rush target must be after start, no later than current end, "
+            "and at least 24 hours before the nominal end."
         )
-    if (rush_end_at(started_at) - target_at).total_seconds() % 3600:
-        raise ValueError("Rush target must differ from the nominal end by whole hours.")
+    nominal_end = rush_end_at(started_at)
+    reduction_hours = (nominal_end - target_at) // timedelta(hours=1)
+    return nominal_end - timedelta(hours=reduction_hours)
 
 
 def available_rush_durations(

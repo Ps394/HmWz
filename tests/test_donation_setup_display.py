@@ -153,7 +153,7 @@ async def test_target_modal_sets_highlights_clears_and_rejects_invalid_targets(
         if f.name == "ZIELZEIT"
     )
     modal.target_input._value = discord.utils.format_dt(
-        target - timedelta(minutes=30), "F"
+        target + timedelta(minutes=30), "F"
     )
     with patch(
         "hmwz.modules.donation.type.rush.setup.send_temporary_response",
@@ -253,6 +253,62 @@ async def test_reset_start_modal_uses_the_same_timestamp_parser(
     module.reset_cycle.assert_awaited_once_with(
         456, rush_start_at=datetime.fromtimestamp(1793448000, UTC), target_at=None
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reset", [False, True])
+@pytest.mark.parametrize("minutes", ["00", "57"])
+async def test_unpadded_target_date_in_reset_and_setup(
+    draft: DonationSetupDraft, reset: bool, minutes: str
+) -> None:
+    draft.rush_start_at = datetime(2026, 10, 31, 10, 57, tzinfo=UTC)
+    draft.accelerated_hours = 0
+    interaction = Mock(spec=discord.Interaction)
+    interaction.user.id = 789
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock(
+        return_value=SimpleNamespace(delete=AsyncMock())
+    )
+    if reset:
+        module = Mock(spec=DonationModule)
+        module.guild = draft.module.guild
+        module.reset_cycle = AsyncMock(return_value=(True, True, False))
+        modal = DonationRushResetModal(module, 456, 789)
+        modal.timestamp_input._value = "2026-10-31 10:57"
+        notify_path = "hmwz.modules.donation.type.rush.reset._send_temporary_response"
+    else:
+        view = DonationSetupView(draft)
+        view.refresh = AsyncMock()
+        modal = DonationRushTargetModal(view)
+        notify_path = "hmwz.modules.donation.type.rush.setup.send_temporary_response"
+    modal.target_input._value = f"2026-11-3 22:{minutes}"
+    with patch(notify_path, new_callable=AsyncMock) as notify:
+        await modal.on_submit(interaction)
+    notify.assert_not_awaited()
+    target = datetime(2026, 11, 3, 22, 57, tzinfo=UTC)
+    if reset:
+        module.reset_cycle.assert_awaited_once_with(
+            456, rush_start_at=draft.rush_start_at, target_at=target
+        )
+    else:
+        assert draft.target_at == target
+        view.refresh.assert_awaited_once_with(interaction)
+
+
+@pytest.mark.asyncio
+async def test_start_change_rounds_existing_target_on_new_grid(
+    draft: DonationSetupDraft,
+) -> None:
+    draft.accelerated_hours = 0
+    draft.target_at = datetime(2026, 11, 3, 22, tzinfo=UTC)
+    view = DonationSetupView(draft)
+    view.refresh = AsyncMock()
+    modal = DonationRushStartModal(view)
+    modal.timestamp_input._value = "2026-10-31 10:57"
+    await modal.on_submit(Mock(spec=discord.Interaction))
+    assert draft.rush_start_at == datetime(2026, 10, 31, 10, 57, tzinfo=UTC)
+    assert draft.target_at == datetime(2026, 11, 3, 22, 57, tzinfo=UTC)
+    view.refresh.assert_awaited_once()
 
 
 @pytest.mark.asyncio

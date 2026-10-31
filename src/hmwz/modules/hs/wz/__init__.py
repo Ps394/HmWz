@@ -1,4 +1,4 @@
-from .module import WzRegistrationModule  # noqa: E402
+from .module import WzModule  # noqa: E402
 from . import commands  # noqa: E402
 
-__all__ = ["WzRegistrationModule", "commands"]
+__all__ = ["WzModule", "commands"]

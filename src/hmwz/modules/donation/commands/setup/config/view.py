@@ -460,7 +460,7 @@ async def _save_setup(
         try:
             if draft.rush_start_at is None:
                 raise ValueError("A target requires a Rush start.")
-            validate_rush_target(
+            draft.target_at = validate_rush_target(
                 draft.rush_start_at, draft.target_at, draft.accelerated_hours
             )
         except ValueError:

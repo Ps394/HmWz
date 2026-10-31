@@ -17,7 +17,7 @@ from hmwz.modules.hs.qs.repositories import (
     QSRegistrationRoleRepository,
     QSRegistrationSettingsRepository,
 )
-from hmwz.modules.hs.wz.repositories import (
+from hmwz.modules.registration.repositories import (
     MemberRegistrationRepository,
     RegistrationMessageRepository,
     RegistrationRoleRepository,
@@ -94,6 +94,7 @@ def test_registration_command_group_uses_requested_hierarchy() -> None:
         "deregister",
         "register",
         "reset",
+        "snapshot",
         "setup",
         "remove",
     }

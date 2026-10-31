@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import discord
@@ -137,64 +135,6 @@ async def test_registration_event_sends_required_registration_data(
             "registration_alias": "Display Name",
         },
     ]
-
-
-@pytest.mark.asyncio
-async def test_startup_sync_exports_once_when_wz_and_qs_share_registrations() -> None:
-    registration = SimpleNamespace(
-        get_all=AsyncMock(
-            return_value=[
-                SimpleNamespace(channel=654),
-                SimpleNamespace(channel=987),
-            ]
-        ),
-        get=AsyncMock(return_value=SimpleNamespace(title="Event")),
-    )
-    export = AsyncMock(return_value=True)
-
-    class UnweakrefableGuild:
-        __slots__ = ("id", "name")
-
-        def __init__(self) -> None:
-            self.id = 123
-            self.name = "test guild"
-
-        def get_channel_or_thread(self, channel_id: int) -> SimpleNamespace:
-            return SimpleNamespace(name=f"Event {channel_id}")
-
-    guild = cast(
-        discord.Guild,
-        UnweakrefableGuild(),
-    )
-    client = discord.Client(intents=discord.Intents.none())
-    event_channel = SimpleNamespace(get=AsyncMock(return_value=321))
-    registrations = SimpleNamespace(get=AsyncMock(return_value=()))
-    exporters = [
-        RegistrationSnapshotExporter(
-            client=client,
-            guild=guild,
-            module_key=module_key,
-            event_channel=event_channel,
-            registration=registration,
-            registrations=registrations,
-            exporter=SimpleNamespace(export=export),
-        )
-        for module_key in ("wz", "qs")
-    ]
-
-    await asyncio.gather(
-        *(exporter.export_startup_snapshots() for exporter in exporters)
-    )
-    await asyncio.gather(
-        *(exporter.export_startup_snapshots() for exporter in exporters)
-    )
-
-    snapshots = [call.args[0] for call in export.await_args_list]
-    assert len(snapshots) == 2
-    assert {snapshot.destination_channel_id for snapshot in snapshots} == {321}
-    assert {snapshot.payload["channel-id"] for snapshot in snapshots} == {654, 987}
-    assert all(snapshot.filename.endswith("-sync.json") for snapshot in snapshots)
-    assert all(isinstance(snapshot, Snapshot) for snapshot in snapshots)
 
 
 @pytest.mark.asyncio

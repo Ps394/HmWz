@@ -45,6 +45,8 @@ class DonationOverview:
                 accelerated_hours=accelerated_hours,
                 target_at=channel.target_at,
             )
+        else:
+            embed.timestamp = None
         embed.add_field(
             name=t(guild, "donation.overview.donations_status"),
             value=t(
@@ -76,6 +78,8 @@ class DonationOverview:
             title=t(guild, "donation.ranking.title"),
             color=discord.Color.gold(),
         )
+        if donation_type.kind == "simple":
+            embed.timestamp = None
         lines = []
         for position, donor in enumerate(ranking, start=1):
             line = (
@@ -104,11 +108,15 @@ class DonationOverview:
         """Build a separate embed containing every donation in the active cycle."""
         title = t(
             guild,
-            "donation.overview.history_title",
+            "donation.overview.history_title"
+            if donation_type.kind == "time_reduction"
+            else "donation.overview.credit_history_title",
             count=summary.donation_count,
             duration=DonationOverview._format_duration(summary.time_reduction_hours),
         )
         embed = create_embed(title=title, color=discord.Color.gold())
+        if donation_type.kind == "simple":
+            embed.timestamp = None
         unit = (
             t(guild, "donation.setup.crystals_unit")
             if donation_type.kind == "time_reduction"
@@ -124,7 +132,7 @@ class DonationOverview:
             + (
                 f" · {t(guild, 'donation.overview.time_reduced')}: "
                 f"{DonationOverview._format_reduction(record.time_reduction)}"
-                if record.time_reduction
+                if donation_type.kind == "time_reduction" and record.time_reduction
                 else ""
             )
             for record in reversed(donations)

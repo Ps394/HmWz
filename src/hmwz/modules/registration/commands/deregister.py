@@ -127,7 +127,6 @@ async def deregister(interaction: Interaction, account: str) -> None:
             )
             return
 
-        await module.export_registration_snapshot(channel_id, "deregistration")
         await module.compose_registration_overview(force=True, channel_id=channel_id)
         await send_temporary_followup(
             interaction,

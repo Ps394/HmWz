@@ -180,7 +180,6 @@ class RegistrationModule(
             await self._send_registration_error(interaction)
             return
 
-        await self.export_registration_snapshot(channel_id, "deregistration")
         remaining = await self.registrations.get(
             guild=guild, member=member.id, channel_id=channel_id
         )
@@ -238,10 +237,6 @@ class RegistrationModule(
             return
 
         is_update = current is not None and current.role != role.id
-        event_type: RegistrationEventType = (
-            "registration_change" if is_update else "registration"
-        )
-        await self.export_registration_snapshot(channel_id, event_type)
         if current is not None and current.role is not None and current.role != role.id:
             await self._remove_previous_role(guild, member, current.role, channel_id)
         await member.add_roles(role, reason=f"{self.module_key.upper()} registration")
@@ -282,24 +277,17 @@ class RegistrationModule(
         """Export the current registration snapshot through the shared contract."""
         return await self._registration_snapshot_exporter.export(channel_id, event_type)
 
-    async def export_startup_snapshots(self) -> None:
-        """Export one startup snapshot for each configured registration channel."""
-        await self._registration_snapshot_exporter.export_startup_snapshots()
-
     async def sync(self, startup: bool = False) -> bool:
-        """Migrate registration schemas and optionally export startup snapshots.
+        """Migrate registration schemas to the current version.
 
         Args:
-            startup: Whether to export startup snapshots after migration.
+            startup: Accepted for the shared module contract; snapshots are
+                exported only on explicit commands.
 
         Returns:
             Whether the schema migration succeeded.
         """
-        if not await self.migrate_schema():
-            return False
-        if startup:
-            await self.export_startup_snapshots()
-        return True
+        return await self.migrate_schema()
 
     async def ensure(self) -> bool:
         """Restore overview messages for all configured registration channels.
@@ -592,8 +580,6 @@ class RegistrationModule(
         return changed, changed_channels
 
     async def _publish_registration_changes(self, channel_ids: set[int]) -> None:
-        for channel_id in channel_ids:
-            await self.export_registration_snapshot(channel_id, "sync")
         for channel_id in channel_ids:
             await self.compose_registration_overview(force=True, channel_id=channel_id)
 

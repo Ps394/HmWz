@@ -4,34 +4,31 @@ import discord
 
 from hmwz.i18n import t
 
-from ....models import PurgeChannel
-from ....module import WzRegistrationModule
+from ....models import Channel
+from ....module import WzModule
 
 
 async def add_channels(
     *,
     interaction: discord.Interaction,
     guild: discord.Guild,
-    module: WzRegistrationModule,
+    module: WzModule,
     channels: list[discord.TextChannel],
-    registration_channel_id: int | None,
 ) -> list[str]:
-    configured = await module.purge_channels.get(
+    configured = await module.channels.get(
         guild=guild,
-        registration_channel_id=registration_channel_id,
     )
     configured_ids = {record.channel_id for record in configured or ()}
     added: list[str] = []
     failed: list[str] = []
 
     for channel in channels:
-        if len(configured_ids) >= PurgeChannel.MAX_PER_REGISTRATION:
+        if len(configured_ids) >= Channel.MAX_PER_GUILD:
             failed.append(channel.mention)
             continue
-        if await module.purge_channels.add(
+        if await module.channels.add(
             guild=guild,
             channel_id=channel.id,
-            registration_channel_id=registration_channel_id or 0,
         ):
             configured_ids.add(channel.id)
             added.append(channel.mention)
@@ -62,18 +59,16 @@ async def remove_channels(
     *,
     interaction: discord.Interaction,
     guild: discord.Guild,
-    module: WzRegistrationModule,
+    module: WzModule,
     channels: list[discord.TextChannel],
-    registration_channel_id: int | None,
 ) -> list[str]:
     removed: list[str] = []
     failed: list[str] = []
 
     for channel in channels:
-        if await module.purge_channels.remove(
+        if await module.channels.remove(
             guild=guild,
             channel_id=channel.id,
-            registration_channel_id=registration_channel_id,
         ):
             removed.append(channel.mention)
         else:

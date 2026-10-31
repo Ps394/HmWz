@@ -14,6 +14,7 @@ from hmwz.ui.messages import (
 )
 
 from ...overview import DonationOverview
+from ...confirmation import DonationConfirmationView
 from ...models import DEFAULT_DONATION_CHOICES, DonationType
 from .validation import parse_amount
 
@@ -39,7 +40,7 @@ class DonationRecordButton(discord.ui.Button):
 
 
 class DonationAmountOptionButton(discord.ui.Button):
-    """Record a simple donation using one configured fixed amount."""
+    """Request confirmation of one configured fixed amount."""
 
     def __init__(
         self,
@@ -67,29 +68,14 @@ class DonationAmountOptionButton(discord.ui.Button):
         self.dismiss_prompt = dismiss_prompt
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
-        saved, messages_updated = await self.module.record_donation(
+        await request_confirmation(
+            self.module,
             interaction,
             self.channel_id,
             self.donation_type,
             self.amount,
-            time_reduction=None,
+            replace_prompt=self.dismiss_prompt,
         )
-        if self.dismiss_prompt:
-            await interaction.delete_original_response()
-        result_key = (
-            "donation.error.save"
-            if not saved
-            else (
-                "donation.success.saved"
-                if messages_updated
-                else "donation.success.saved_overview_failed"
-            )
-        )
-        result = await interaction.followup.send(
-            t(interaction, result_key), ephemeral=True, wait=True
-        )
-        await result.delete(delay=5)
 
 
 class DonationAmountChoiceView(discord.ui.View):
@@ -161,7 +147,9 @@ class DonationAmountModal(discord.ui.Modal):
             return
         if not await self._is_valid_choice(interaction, amount):
             return
-        await self._record(interaction, amount)
+        await request_confirmation(
+            self.module, interaction, self.channel_id, self.donation_type, amount
+        )
 
     async def _parse_amount(self, interaction: discord.Interaction) -> Decimal | None:
         try:
@@ -184,29 +172,84 @@ class DonationAmountModal(discord.ui.Modal):
         )
         return False
 
-    async def _record(self, interaction: discord.Interaction, amount: Decimal) -> None:
-        await interaction.response.defer(ephemeral=True)
-        saved, messages_updated = await self.module.record_donation(
+
+class DonationCreditConfirmationView(DonationConfirmationView):
+    """Confirm a credit amount in the cycle in which it was selected."""
+
+    def __init__(
+        self,
+        module: DonationModule,
+        channel_id: int,
+        donation_type: DonationType,
+        amount: Decimal,
+        expected_cycle: int,
+        owner_id: int,
+    ) -> None:
+        super().__init__(module, owner_id)
+        self.channel_id = channel_id
+        self.donation_type = donation_type
+        self.amount = amount
+        self.expected_cycle = expected_cycle
+        for item in self.children:
+            if (
+                isinstance(item, discord.ui.Button)
+                and item.custom_id == "donation_confirm"
+            ):
+                item.emoji = emojis.get("credit", module.guild)
+
+    async def record(self, interaction: discord.Interaction) -> tuple[bool, bool]:
+        return await self.module.record_donation(
             interaction,
             self.channel_id,
             self.donation_type,
-            amount,
-            time_reduction=self.time_reduction,
+            self.amount,
+            time_reduction=None,
+            expected_cycle=self.expected_cycle,
         )
-        result = await interaction.followup.send(
-            t(interaction, self._result_key(saved, messages_updated)),
-            ephemeral=True,
-            wait=True,
-        )
-        await result.delete(delay=5)
 
-    @staticmethod
-    def _result_key(saved: bool, messages_updated: bool) -> str:
-        if not saved:
-            return "donation.error.save"
-        if messages_updated:
-            return "donation.success.saved"
-        return "donation.success.saved_overview_failed"
+
+async def request_confirmation(
+    module: DonationModule,
+    interaction: discord.Interaction,
+    channel_id: int,
+    donation_type: DonationType,
+    amount: Decimal,
+    *,
+    replace_prompt: bool = False,
+) -> None:
+    """Open a confirmation without writing a donation."""
+    configuration = await module.donations.get_channel(
+        guild=module.guild, channel_id=channel_id
+    )
+    if configuration is None:
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.not_configured")
+        )
+        return
+    if not configuration.donations_enabled:
+        await _send_temporary_response(
+            interaction, t(interaction, "donation.error.stopped")
+        )
+        return
+    view = DonationCreditConfirmationView(
+        module,
+        channel_id,
+        donation_type,
+        amount,
+        configuration.current_cycle,
+        interaction.user.id,
+    )
+    await module.show_donation_confirmation(
+        interaction,
+        view,
+        t(
+            interaction,
+            "donation.credit.confirm",
+            amount=DonationOverview._format_amount(amount),
+            unit=donation_type.unit,
+        ),
+        replace_prompt=replace_prompt,
+    )
 
 
 def add_overview_controls(

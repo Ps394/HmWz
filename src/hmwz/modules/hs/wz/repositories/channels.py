@@ -1,29 +1,26 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 
 import discord
 
 from hmwz import sqlite_db
 
-from ..models import PurgeChannel
+from ..models import channels
 
 _logger = logging.getLogger(__name__)
 
 
-class PurgeChannelRepository(sqlite_db.Base):
+class ChannelRepository(sqlite_db.Base):
     """Repository für zusätzliche Bereinigungskanäle je Guild."""
 
-    table_name = "WzPurgeChannels"
-
-    def __init__(self, database: sqlite_db.Database) -> None:
-        super().__init__(database)
+    table_name = "HsWzChannels"
 
     @dataclass(frozen=True)
     class TableCols:
         Guild: str = "Guild"
-        RegistrationChannel: str = "RegistrationChannel"
         Channel: str = "Channel"
 
     @property
@@ -31,7 +28,6 @@ class PurgeChannelRepository(sqlite_db.Base):
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER NOT NULL,
-            {self.TableCols.RegistrationChannel} INTEGER NOT NULL DEFAULT 0,
             {self.TableCols.Channel} INTEGER NOT NULL,
             PRIMARY KEY (
                 {self.TableCols.Guild}, {self.TableCols.Channel}
@@ -41,31 +37,54 @@ class PurgeChannelRepository(sqlite_db.Base):
         """
 
     async def migrate_schema(self) -> bool:
-        """Add registration scope to legacy purge channels and remove cached names."""
-        if not await self.ensure_columns(
-            ((self.TableCols.RegistrationChannel, "INTEGER NOT NULL DEFAULT 0"),)
-        ):
+        """Migrate cleanup channels and remove cached names."""
+        if not await self.database.execute(self.table):
             return False
-        if not await self.database.execute(
-            f"""
-            UPDATE {self.table_name}
-            SET {self.TableCols.RegistrationChannel} = COALESCE(
-                (SELECT Channel FROM Registration_Settings
-                 WHERE Guild = {self.table_name}.Guild
-                 ORDER BY Channel LIMIT 1),
-                0
-            )
-            WHERE {self.TableCols.RegistrationChannel} = 0
-            """
-        ):
+        if not await self.drop_columns(("RegistrationChannel",)):
+            return False
+        if not await self._migrate_legacy_table():
             return False
         return await self.drop_columns(("GuildName", "ChannelName"))
 
-    type Records = tuple[PurgeChannel, ...] | None
+    async def _migrate_legacy_table(self) -> bool:
+        """Move existing channel settings from the former table atomically."""
+        legacy_table_name = "WzPurgeChannels"
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                cursor = await connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                    (legacy_table_name,),
+                )
+                if await cursor.fetchone() is None:
+                    await connection.commit()
+                    return True
+                await connection.execute(
+                    f"""
+                    INSERT INTO "{self.table_name}" (Guild, Channel)
+                    SELECT legacy.Guild, legacy.Channel
+                    FROM "{legacy_table_name}" AS legacy
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM "{self.table_name}" AS current
+                        WHERE current.Guild = legacy.Guild
+                          AND current.Channel = legacy.Channel
+                    )
+                    """
+                )
+                await connection.execute(f'DROP TABLE "{legacy_table_name}"')
+                await connection.commit()
+            return True
+        except sqlite3.Error:
+            _logger.exception(
+                "%s Failed to migrate WZ channel settings from %s.",
+                self.log_prefix(),
+                legacy_table_name,
+            )
+            return False
 
-    async def get(
-        self, *, guild: discord.Guild, registration_channel_id: int | None = None
-    ) -> Records:
+    type Records = tuple[channels.Channel, ...] | None
+
+    async def get(self, *, guild: discord.Guild) -> Records:
         try:
             query = f"""
                 SELECT {self.TableCols.Channel}
@@ -73,43 +92,37 @@ class PurgeChannelRepository(sqlite_db.Base):
                 WHERE {self.TableCols.Guild} = ?
             """
             params: tuple[int, ...] = (guild.id,)
-            if registration_channel_id is not None:
-                query += f" AND {self.TableCols.RegistrationChannel} = ?"
-                params += (registration_channel_id,)
             query += f" ORDER BY {self.TableCols.Channel}"
             rows = await self.database.fetch_all(query, params)
             if not rows:
                 return None
             return tuple(
-                PurgeChannel(guild_id=guild.id, channel_id=row[self.TableCols.Channel])
+                channels.Channel(
+                    guild_id=guild.id, channel_id=row[self.TableCols.Channel]
+                )
                 for row in rows
             )
-        except Exception as e:
+        except Exception:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to get WZ purge channels: {e}"
+                "%s Failed to get WZ cleanup channels.", self.log_prefix(guild)
             )
             return None
 
-    async def count(
-        self, *, guild: discord.Guild, registration_channel_id: int | None = None
-    ) -> int:
+    async def count(self, *, guild: discord.Guild) -> int:
         try:
             query = (
                 f"SELECT COUNT(*) FROM {self.table_name} "
                 f"WHERE {self.TableCols.Guild} = ?"
             )
             params: tuple[int, ...] = (guild.id,)
-            if registration_channel_id is not None:
-                query += f" AND {self.TableCols.RegistrationChannel} = ?"
-                params += (registration_channel_id,)
             row = await self.database.fetch_one(
                 query,
                 params,
             )
             return row[0] if row else 0
-        except Exception as e:
+        except Exception:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to count WZ purge channels: {e}"
+                "%s Failed to count WZ cleanup channels.", self.log_prefix(guild)
             )
             return 0
 
@@ -118,7 +131,6 @@ class PurgeChannelRepository(sqlite_db.Base):
         *,
         guild: discord.Guild,
         channel_id: int,
-        registration_channel_id: int = 0,
     ) -> bool:
         channel_name = f"unknown channel ({channel_id})"
         try:
@@ -128,22 +140,18 @@ class PurgeChannelRepository(sqlite_db.Base):
             executed = await self.database.execute(
                 f"""
                 INSERT OR IGNORE INTO {self.table_name}
-                    ({self.TableCols.Guild}, {self.TableCols.RegistrationChannel},
-                     {self.TableCols.Channel})
-                SELECT ?, ?, ?
+                    ({self.TableCols.Guild}, {self.TableCols.Channel})
+                SELECT ?, ?
                 WHERE (
                     SELECT COUNT(*) FROM {self.table_name}
                     WHERE {self.TableCols.Guild} = ?
-                      AND {self.TableCols.RegistrationChannel} = ?
                 ) < ?
                 """,
                 (
                     guild.id,
-                    registration_channel_id,
                     channel_id,
                     guild.id,
-                    registration_channel_id,
-                    PurgeChannel.MAX_PER_REGISTRATION,
+                    channels.Channel.MAX_PER_GUILD,
                 ),
             )
             if not executed:
@@ -151,30 +159,28 @@ class PurgeChannelRepository(sqlite_db.Base):
 
             row = await self.database.fetch_one(
                 f"""
-                SELECT {self.TableCols.RegistrationChannel} FROM {self.table_name}
+                SELECT {self.TableCols.Channel} FROM {self.table_name}
                 WHERE {self.TableCols.Guild} = ? AND {self.TableCols.Channel} = ?
                 """,
                 (guild.id, channel_id),
             )
-            if (
-                row is None
-                or row[self.TableCols.RegistrationChannel] != registration_channel_id
-            ):
+            if row is None:
                 _logger.warning(
-                    "%s Cannot add purge channel %s: registration limit reached.",
+                    "%s Cannot add cleanup channel %s: guild limit reached.",
                     self.log_prefix(guild),
                     channel_name,
                 )
                 return False
 
             _logger.debug(
-                f"{self.log_prefix(guild)} Added WZ purge channel {channel_name}."
+                "%s Added WZ cleanup channel %s.", self.log_prefix(guild), channel_name
             )
             return True
-        except Exception as e:
+        except Exception:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to add WZ purge channel "
-                f"{channel_name}: {e}"
+                "%s Failed to add WZ cleanup channel %s.",
+                self.log_prefix(guild),
+                channel_name,
             )
             return False
 
@@ -183,7 +189,6 @@ class PurgeChannelRepository(sqlite_db.Base):
         *,
         guild: discord.Guild,
         channel_id: int | None = None,
-        registration_channel_id: int | None = None,
     ) -> bool:
         target = (
             f"channel unknown ({channel_id})" if channel_id is not None else "channels"
@@ -191,9 +196,6 @@ class PurgeChannelRepository(sqlite_db.Base):
         try:
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: tuple[int, ...] = (guild.id,)
-            if registration_channel_id is not None:
-                query += f" AND {self.TableCols.RegistrationChannel} = ?"
-                params += (registration_channel_id,)
             if channel_id is not None:
                 query += f" AND {self.TableCols.Channel} = ?"
                 params += (channel_id,)
@@ -206,10 +208,10 @@ class PurgeChannelRepository(sqlite_db.Base):
                 if channel_id is not None
                 else "channels"
             )
-            _logger.debug(f"{self.log_prefix(guild)} Removed WZ purge {target}.")
+            _logger.debug("%s Removed WZ cleanup %s.", self.log_prefix(guild), target)
             return True
-        except Exception as e:
+        except Exception:
             _logger.exception(
-                f"{self.log_prefix(guild)} Failed to remove WZ purge {target}: {e}"
+                "%s Failed to remove WZ cleanup %s.", self.log_prefix(guild), target
             )
             return False

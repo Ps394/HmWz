@@ -88,7 +88,6 @@ class QsRegistrationModule(RegistrationModule):
         if not await self.migrate_schema():
             return False
         if startup:
-            await self.export_startup_snapshots()
             _logger.debug(
                 "%s (%s) - QS module startup sync done.", self.guild.name, self.guild.id
             )

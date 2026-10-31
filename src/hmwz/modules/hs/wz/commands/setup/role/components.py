@@ -11,61 +11,6 @@ if TYPE_CHECKING:
     from .selection import SetupRoleSelection
 
 
-class _RoleSelect(discord.ui.Select):
-    def __init__(
-        self,
-        *,
-        view: SetupRoleSelection,
-        roles: list[discord.Role],
-        max_values: int,
-        selected_ids: set[int],
-        context: discord.Interaction,
-    ) -> None:
-        super().__init__(
-            placeholder=t(
-                context,
-                "wz.setup.role.select.add"
-                if view.action == "add"
-                else "wz.setup.role.select.remove",
-            ),
-            min_values=0,
-            max_values=max(1, max_values),
-            options=[
-                discord.SelectOption(
-                    label=role.name[:100],
-                    value=str(role.id),
-                    default=role.id in selected_ids,
-                )
-                for role in roles
-            ],
-        )
-        self.selection = view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.selection.select_roles(
-            interaction, [int(role_id) for role_id in self.values]
-        )
-
-
-class _PageButton(discord.ui.Button):
-    def __init__(self, *, view: SetupRoleSelection, label: str, direction: int) -> None:
-        super().__init__(label=label, style=discord.ButtonStyle.secondary)
-        self.selection = view
-        self.direction = direction
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.selection.change_page(interaction, self.direction)
-
-
-class _ReviewButton(discord.ui.Button):
-    def __init__(self, *, view: SetupRoleSelection, label: str) -> None:
-        super().__init__(label=label, style=discord.ButtonStyle.primary)
-        self.selection = view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.selection.review(interaction)
-
-
 class SetupRoleConfirmation(EphemeralView):
     def __init__(
         self,

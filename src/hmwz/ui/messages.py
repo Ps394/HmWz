@@ -74,6 +74,50 @@ async def delete_temporary_message(
         await delete_message(message, delay=delay)
 
 
+async def send_interaction_response(
+    interaction: discord.Interaction, content: str | None = None, **kwargs: Any
+) -> discord.InteractionMessage:
+    """Send a private initial response; propagate failures to the caller."""
+    kwargs.setdefault("ephemeral", True)
+    await interaction.response.send_message(
+        emojis.render(content, interaction) if content is not None else None,
+        **kwargs,
+    )
+    return await interaction.original_response()
+
+
+async def send_followup(
+    interaction: discord.Interaction, content: str | None = None, **kwargs: Any
+) -> discord.WebhookMessage:
+    """Send a private followup with a message handle; propagate Discord failures."""
+    kwargs.setdefault("ephemeral", True)
+    kwargs["wait"] = True
+    if content is None:
+        return await interaction.followup.send(**kwargs)
+    return await interaction.followup.send(
+        emojis.render(content, interaction),
+        **kwargs,
+    )
+
+
+async def edit_interaction_response(
+    interaction: discord.Interaction, **kwargs: Any
+) -> None:
+    """Update a component's dialog, rendering content and propagating failures."""
+    if kwargs.get("content") is not None:
+        kwargs["content"] = emojis.render(kwargs["content"], interaction)
+    await interaction.response.edit_message(**kwargs)
+
+
+async def edit_original_response(
+    interaction: discord.Interaction, **kwargs: Any
+) -> discord.InteractionMessage:
+    """Update an acknowledged dialog, rendering content and propagating failures."""
+    if kwargs.get("content") is not None:
+        kwargs["content"] = emojis.render(kwargs["content"], interaction)
+    return await interaction.edit_original_response(**kwargs)
+
+
 async def send_temporary_followup(
     interaction: discord.Interaction,
     content: str,
@@ -86,9 +130,7 @@ async def send_temporary_followup(
     kwargs: dict[str, Any] = {"ephemeral": ephemeral, "wait": True}
     if file is not None:
         kwargs["file"] = file
-    message = await interaction.followup.send(
-        emojis.render(content, interaction), **kwargs
-    )
+    message = await send_followup(interaction, content, **kwargs)
     if message is None:
         logger.warning("Discord did not return a message for a temporary followup.")
     elif delay is not None:

@@ -67,7 +67,7 @@ async def test_builder_rejects_failed_or_incomplete_reads(
         await builder.build(
             configuration=configuration,
             destination_channel_id=321,
-            event_type="snapshot",
+            event_type="credit-donation",
         )
         is None
     )
@@ -105,12 +105,12 @@ async def test_snapshot_preserves_exact_amounts_and_optional_rush_hours(
     result = await builder.build(
         configuration=configuration,
         destination_channel_id=321,
-        event_type="snapshot",
+        event_type="rushed-donation",
     )
     assert result is not None
-    assert result.filename == "donation-789-cycle-3-snapshot.json"
+    assert result.filename == "donation-789-cycle-3-rushed-donation.json"
     assert result.destination_channel_id == 321
-    assert result.payload["type"] == "snapshot"
+    assert result.payload["type"] == "rushed-donation"
     payload = json.loads(json.dumps(result.payload))
     assert payload["donations"][0]["amount"] == "10000000000000000.50"
     assert "time_reduction" not in payload["donations"][0]
@@ -209,7 +209,7 @@ async def test_empty_cycle_snapshot_is_valid(configuration: DonationChannel) -> 
     result = await builder.build(
         configuration=configuration,
         destination_channel_id=321,
-        event_type="snapshot",
+        event_type="credit-donation",
     )
     assert result is not None and result.payload["donations"] == []
 
@@ -234,7 +234,7 @@ async def test_manual_export_without_destination_is_not_reported_as_success() ->
         donations=repository,
         exporter=delivery,
     )
-    assert not await exporter.export(789, "snapshot")
+    assert not await exporter.export(789, "credit-donation")
     assert await exporter.export(789, "cycle-reset")
     delivery.export.assert_not_awaited()
 
@@ -244,6 +244,9 @@ async def test_manual_snapshot_waits_for_cycle_writes(tmp_path: Path) -> None:
     client = Mock(spec=Client)
     client._database = Database(folder=str(tmp_path), filename="lock.db")
     module = DonationModule(Mock(spec=discord.Guild), client)
+    module.donations.get_type = AsyncMock(
+        return_value=SimpleNamespace(kind="time_reduction")
+    )
     export = AsyncMock(return_value=True)
     module._snapshot_exporter = cast(
         DonationSnapshotExporter, SimpleNamespace(export=export)
@@ -254,7 +257,7 @@ async def test_manual_snapshot_waits_for_cycle_writes(tmp_path: Path) -> None:
         await asyncio.sleep(0)
         export.assert_not_awaited()
     assert await task
-    export.assert_awaited_once_with(789, "snapshot")
+    export.assert_awaited_once_with(789, "rushed-donation")
 
 
 @pytest.mark.asyncio

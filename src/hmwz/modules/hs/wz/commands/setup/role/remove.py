@@ -1,16 +1,18 @@
+from __future__ import annotations
+
 import logging
 
 import discord
 from discord import app_commands
 
-from hmwz.configuration import wz_registration_config
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.ui.messages import send_followup, send_temporary_followup
 from hmwz.utils.interactions import log_interaction
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.modules.hs.wz.module import WzModule
 
 from .selection import SetupRoleSelection
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 @app_commands.checks.has_any_role("Offiziere", "Moderator")
@@ -27,68 +29,48 @@ async def remove(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)
     try:
         guild = interaction.guild
-        channel_id = interaction.channel_id
         manager = getattr(interaction.client, "module_manager", None)
-        if guild is None or channel_id is None or manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.role.error"), ephemeral=True
+        if guild is None or manager is None:
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.setup.role.error")
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
-        if await module.registration.get(guild=guild, channel_id=channel_id) is None:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.role.registration_required"),
-                ephemeral=True,
-            )
-            return
-
-        configured_roles = await module.roles.get(guild=guild, channel_id=channel_id)
+        module: WzModule = await manager.get_module(guild, WzModule)
+        configured_roles = await module.roles.get(guild=guild)
         roles = [
             role
             for record in configured_roles or ()
             if (role := guild.get_role(record.role)) is not None
         ]
-        min_roles = int(wz_registration_config().get("min_registration_roles", 1))
         if not roles:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.role.no_configured_roles"),
-                ephemeral=True,
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.setup.role.no_configured_roles")
             )
             return
-        max_selected = len(roles) - min_roles
-        if max_selected <= 0:
-            await interaction.followup.send(
-                t(interaction, "wz.setup.role.min_roles"), ephemeral=True
-            )
-            return
-
         roles.sort(key=lambda role: (role.name.casefold(), role.id))
         view = SetupRoleSelection(
             guild=guild,
             module=module,
             owner_id=interaction.user.id,
             action="remove",
-            channel_id=channel_id,
             roles=roles,
-            max_selected=max_selected,
-            permanent=False,
+            max_selected=min(len(roles), 25),
             context=interaction,
         )
-        view.message = await interaction.followup.send(
-            t(interaction, "wz.setup.role.select.remove"),
+        view.message = await send_followup(
+            interaction,
+            embed=view.selection_embed(interaction),
             view=view,
             ephemeral=True,
             wait=True,
         )
     except Exception as error:
-        logger.exception(
+        _logger.exception(
             "%s WZ setup role remove failed: %s",
             log_interaction(interaction),
             error,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.setup.role.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.setup.role.error")
         )

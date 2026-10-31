@@ -19,7 +19,7 @@ __all__ = ["WzGroup"]
 )
 @checks.cooldown(1, 10, key=lambda i: (i.guild_id, i.user.id))
 class WzGroup(Group):
-    def __init__(self, bot):
+    def __init__(self) -> None:
         super().__init__(
             name="wz",
             description=locale_str(
@@ -29,7 +29,6 @@ class WzGroup(Group):
                 key="wz.group.description",
             ),
         )
-        self.bot = bot
         self.add_command(setup)
         self.add_command(clean_channels.clean_channels)
         self.add_command(reset_roles.reset_roles)

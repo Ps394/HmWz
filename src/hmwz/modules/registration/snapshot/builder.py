@@ -17,9 +17,7 @@ if TYPE_CHECKING:
         RegistrationSettingsRepository,
     )
 
-RegistrationEventType = Literal[
-    "registration", "registration_change", "deregistration", "sync"
-]
+RegistrationEventType = Literal["registration", "sync"]
 
 _logger = logging.getLogger(__name__)
 

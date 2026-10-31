@@ -65,7 +65,7 @@ class DonationRushResetModal(discord.ui.Modal):
             return
         try:
             if target_at is not None:
-                validate_rush_target(rush_start_at, target_at)
+                target_at = validate_rush_target(rush_start_at, target_at)
         except ValueError:
             await _send_temporary_response(
                 interaction, t(interaction, "donation.error.invalid_rush_schedule")

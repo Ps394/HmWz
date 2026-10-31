@@ -7,10 +7,15 @@ from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.components.ephemeral_view import EphemeralView
-from hmwz.utils.interactions import log_interaction
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.ui.messages import (
+    edit_interaction_response,
+    send_followup,
+    send_temporary_followup,
+)
+from hmwz.utils.interactions import log_guild, log_interaction
+from hmwz.modules.hs.wz.module import WzModule
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 _MAX_ROLE_LIST_LENGTH = 700
 
 
@@ -138,8 +143,8 @@ class ResetRolesConfirmation(EphemeralView):
         self.exception_ids.difference_update(page_ids)
         self.exception_ids.update(selected_ids)
         self._refresh_components(interaction)
-        await interaction.response.edit_message(
-            content=self.confirmation_content(interaction), view=self
+        await edit_interaction_response(
+            interaction, content=self.confirmation_content(interaction), view=self
         )
 
     @discord.ui.button(
@@ -153,8 +158,8 @@ class ResetRolesConfirmation(EphemeralView):
     ) -> None:
         self.page -= 1
         self._refresh_components(interaction)
-        await interaction.response.edit_message(
-            content=self.confirmation_content(interaction), view=self
+        await edit_interaction_response(
+            interaction, content=self.confirmation_content(interaction), view=self
         )
 
     @discord.ui.button(
@@ -168,8 +173,8 @@ class ResetRolesConfirmation(EphemeralView):
     ) -> None:
         self.page += 1
         self._refresh_components(interaction)
-        await interaction.response.edit_message(
-            content=self.confirmation_content(interaction), view=self
+        await edit_interaction_response(
+            interaction, content=self.confirmation_content(interaction), view=self
         )
 
     @discord.ui.button(
@@ -188,9 +193,7 @@ class ResetRolesConfirmation(EphemeralView):
             if manager is None:
                 content = t(interaction, "wz.reset_roles.error")
             else:
-                module: WzRegistrationModule = await manager.get_module(
-                    self.guild, WzRegistrationModule
-                )
+                module: WzModule = await manager.get_module(self.guild, WzModule)
                 configured_roles = await module.roles.get(guild=self.guild)
                 configured_ids = {record.role for record in configured_roles or ()}
                 roles = [
@@ -222,15 +225,15 @@ class ResetRolesConfirmation(EphemeralView):
                                 removed_members += 1
                             except discord.HTTPException:
                                 failed_members += 1
-                                logger.exception(
-                                    "Failed to remove WZ roles %s from member %s in guild %s.",
+                                _logger.exception(
+                                    "%s Failed to remove WZ roles %s from member %s.",
+                                    log_guild(self.guild),
                                     [role.id for role in held_roles],
                                     member.id,
-                                    self.guild.id,
                                 )
                     except discord.HTTPException:
                         member_fetch_failed = True
-                        logger.exception(
+                        _logger.exception(
                             "%s Could not fetch all members for the WZ role reset.",
                             log_interaction(interaction),
                         )
@@ -251,13 +254,13 @@ class ResetRolesConfirmation(EphemeralView):
                             failed_members=failed_members,
                         )
         except discord.HTTPException:
-            logger.exception(
+            _logger.exception(
                 "%s Could not fetch all members for the WZ role reset.",
                 log_interaction(interaction),
             )
             content = t(interaction, "wz.reset_roles.error")
         except Exception:
-            logger.exception(
+            _logger.exception(
                 "%s WZ reset-roles failed.",
                 log_interaction(interaction),
             )
@@ -325,14 +328,12 @@ async def reset_roles(interaction: discord.Interaction) -> None:
         guild = interaction.guild
         manager = getattr(interaction.client, "module_manager", None)
         if guild is None or manager is None:
-            await interaction.followup.send(
-                t(interaction, "wz.reset_roles.error"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.reset_roles.error")
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
+        module: WzModule = await manager.get_module(guild, WzModule)
         configured_roles = await module.roles.get(guild=guild)
         roles = [
             role
@@ -342,8 +343,8 @@ async def reset_roles(interaction: discord.Interaction) -> None:
             and not role.managed
         ]
         if not roles:
-            await interaction.followup.send(
-                t(interaction, "wz.reset_roles.no_roles"), ephemeral=True
+            await send_temporary_followup(
+                interaction, t(interaction, "wz.reset_roles.no_roles")
             )
             return
 
@@ -355,7 +356,8 @@ async def reset_roles(interaction: discord.Interaction) -> None:
             role_ids=role_ids,
             context=interaction,
         )
-        message = await interaction.followup.send(
+        message = await send_followup(
+            interaction,
             view.confirmation_content(interaction),
             view=view,
             ephemeral=True,
@@ -363,11 +365,11 @@ async def reset_roles(interaction: discord.Interaction) -> None:
         )
         view.message = message
     except Exception as error:
-        logger.exception(
+        _logger.exception(
             "%s WZ reset-roles preparation failed: %s",
             log_interaction(interaction),
             error,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.reset_roles.error"), ephemeral=True
+        await send_temporary_followup(
+            interaction, t(interaction, "wz.reset_roles.error")
         )

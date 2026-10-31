@@ -206,7 +206,7 @@ class DonationRepository(sqlite_db.Base):
                 )
                 if summary is None:
                     return False
-                validate_rush_target(
+                target_at = validate_rush_target(
                     rush_start_at, target_at, summary.time_reduction_hours
                 )
             except ValueError:
@@ -813,7 +813,7 @@ class DonationRepository(sqlite_db.Base):
             try:
                 if rush_start_at is None:
                     raise ValueError("A target requires a Rush start.")
-                validate_rush_target(rush_start_at, target_at)
+                target_at = validate_rush_target(rush_start_at, target_at)
             except ValueError:
                 _logger.exception(
                     "Invalid target for new Rush cycle in %s.", channel_id

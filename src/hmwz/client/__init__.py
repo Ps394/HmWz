@@ -331,10 +331,10 @@ class Client(discord.Client):
         """
         Register built-in commands and install the global error handler.
         """
-        #from hmwz.modules.hs.account.commands import AccountGroup
+        from hmwz.modules.hs.account.commands import AccountGroup
         from hmwz.modules.donation.commands import DonationGroup
         #from hmwz.modules.hs.qs.commands import QsGroup
-        #from hmwz.modules.hs.wz.commands import WzGroup
+        from hmwz.modules.hs.wz.commands import WzGroup
         #from hmwz.modules.queue.commands import QueueGroup
         from hmwz.modules.registration.commands import RegistrationGroup
 
@@ -342,8 +342,8 @@ class Client(discord.Client):
 
         self.add_command(commands.AboutBot)
         self.add_command(commands.Purge)
-        #self.add_command(AccountGroup())
-        #self.add_command(WzGroup(self))
+        self.add_command(AccountGroup())
+        self.add_command(WzGroup())
         #self.add_command(QsGroup())
         self.add_command(RegistrationGroup())
         self.add_command(DonationGroup())

@@ -13,7 +13,7 @@ from ..models import DonationChannel
 from ..repositories import DonationRepository
 from ..type.rush.pricing import rush_end_at
 
-DonationEventType = Literal["cycle-reset", "snapshot"]
+DonationEventType = Literal["cycle-reset", "rushed-donation", "credit-donation"]
 _logger = logging.getLogger(__name__)
 
 
@@ -67,8 +67,8 @@ class DonationSnapshotBuilder:
             donations.append(donation)
 
         filename = f"donation-{channel_id}-cycle-{cycle}"
-        if event_type == "snapshot":
-            filename += "-snapshot"
+        if event_type != "cycle-reset":
+            filename += f"-{event_type}"
         payload: dict[str, object] = {
             "type": event_type,
             "name": name,

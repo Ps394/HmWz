@@ -74,7 +74,7 @@ def test_target_preserves_start_and_24_hour_cutoff() -> None:
     )
 
 
-@pytest.mark.parametrize("hours", [0, 217, 49, 50.5])
+@pytest.mark.parametrize("hours", [0, 1, 23, 217, 49])
 def test_invalid_targets_are_rejected(hours: float) -> None:
     start = datetime(2026, 1, 1, tzinfo=UTC)
     with pytest.raises(ValueError):
@@ -88,6 +88,89 @@ def test_targets_accept_equality_and_other_utc_offsets_but_reject_naive_times() 
     validate_rush_target(start, target.astimezone(timezone(timedelta(hours=2))), 50)
     with pytest.raises(ValueError):
         validate_rush_target(start, target.replace(tzinfo=None))
+
+
+@pytest.mark.parametrize(
+    ("offset", "rounded_hours"),
+    [
+        (timedelta(microseconds=1), 1),
+        (timedelta(hours=1), 1),
+        (timedelta(hours=1, microseconds=1), 2),
+        (timedelta(hours=83, minutes=3), 84),
+        (timedelta(hours=191, minutes=59, seconds=59), 192),
+        (timedelta(hours=192), 192),
+    ],
+)
+def test_target_rounds_up_exactly_and_is_idempotent(
+    offset: timedelta, rounded_hours: int
+) -> None:
+    start = datetime(2026, 10, 31, 10, 57, 12, 345678, tzinfo=UTC)
+    requested = start + offset
+    rounded = validate_rush_target(start, requested)
+    assert rounded == start + timedelta(hours=rounded_hours)
+    assert requested <= rounded < requested + timedelta(hours=1)
+    assert validate_rush_target(start, rounded) == rounded
+    assert (
+        validate_rush_target(start, requested.astimezone(timezone(timedelta(hours=2))))
+        == rounded
+    )
+
+
+def test_rounding_preserves_already_accelerated_end_limit() -> None:
+    start = datetime(2026, 10, 31, 10, 57, tzinfo=UTC)
+    end = rush_end_at(start, 60)
+    assert validate_rush_target(start, end - timedelta(minutes=1), 60) == end
+    with pytest.raises(ValueError):
+        validate_rush_target(start, end + timedelta(microseconds=1), 60)
+
+
+@pytest.mark.asyncio
+async def test_repository_persists_rounded_target_for_setup_and_reset(
+    tmp_path: Path,
+) -> None:
+    guild = cast(discord.Guild, SimpleNamespace(id=123, name="Test"))
+    database = Database(folder=str(tmp_path), filename="rounded-target.db")
+    repo = DonationRepository(database)
+    assert await repo.ensure_schema()
+    start = datetime(2026, 10, 31, 10, 57, tzinfo=UTC)
+    requested = datetime(2026, 11, 3, 22, tzinfo=UTC)
+    rounded = requested.replace(minute=57)
+    assert await repo.configure_channel(
+        guild=guild,
+        channel_id=789,
+        title="Rush",
+        description="",
+        rush_start_at=start,
+        target_at=requested,
+    )
+    restored = await DonationRepository(database).get_channel(
+        guild=guild, channel_id=789
+    )
+    assert restored is not None and restored.target_at == rounded
+    new_start = start + timedelta(days=10)
+    new_request = requested + timedelta(days=10)
+    assert await repo.reset_cycle(
+        guild=guild, channel_id=789, rush_start_at=new_start, target_at=new_request
+    )
+    restored = await DonationRepository(database).get_channel(
+        guild=guild, channel_id=789
+    )
+    assert restored is not None and restored.target_at == rounded + timedelta(days=10)
+    assert available_rush_durations(
+        started_at=new_start,
+        now=new_start,
+        accelerated_hours=131,
+        target_at=restored.target_at,
+    ) == (1,)
+    assert (
+        available_rush_durations(
+            started_at=new_start,
+            now=new_start,
+            accelerated_hours=132,
+            target_at=restored.target_at,
+        )
+        == ()
+    )
 
 
 @pytest.mark.asyncio
@@ -159,7 +242,7 @@ async def test_persisted_target_moves_end_exactly_and_caps_stale_and_parallel_do
     snapshot = await DonationSnapshotBuilder(guild=guild, donations=repo).build(
         configuration=restored,
         destination_channel_id=321,
-        event_type="snapshot",
+        event_type="rushed-donation",
     )
     assert snapshot is not None
     assert (
@@ -169,7 +252,7 @@ async def test_persisted_target_moves_end_exactly_and_caps_stale_and_parallel_do
     )
 
     new_start = now + timedelta(days=10)
-    new_target = rush_end_at(new_start, 8)
+    new_target = rush_end_at(new_start, 24)
     assert await repo.reset_cycle(
         guild=guild, channel_id=789, rush_start_at=new_start, target_at=new_target
     )
@@ -187,7 +270,17 @@ async def test_persisted_target_moves_end_exactly_and_caps_stale_and_parallel_do
         title="Rush",
         description="",
         rush_start_at=start,
-        target_at=rush_end_at(start, 1),
+        target_at=rush_end_at(start, 24),
+    )
+    assert await repo.add_donation(
+        guild=guild,
+        channel_id=789,
+        member=member,
+        donation_type=donation_type,
+        amount=Decimal(667),
+        time_reduction="24h",
+        rush_quoted_at=now,
+        cycle=4,
     )
     assert not await repo.add_donation(
         guild=guild,

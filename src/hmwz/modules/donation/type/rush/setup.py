@@ -70,7 +70,7 @@ class DonationRushStartModal(discord.ui.Modal):
             return
         try:
             if self.draft.target_at is not None:
-                validate_rush_target(
+                self.draft.target_at = validate_rush_target(
                     started_at, self.draft.target_at, self.draft.accelerated_hours
                 )
         except ValueError:
@@ -112,7 +112,7 @@ class DonationRushTargetModal(discord.ui.Modal):
             if target_at is not None:
                 if self.draft.rush_start_at is None:
                     raise ValueError("A target requires a Rush start.")
-                validate_rush_target(
+                target_at = validate_rush_target(
                     self.draft.rush_start_at, target_at, self.draft.accelerated_hours
                 )
         except ValueError:

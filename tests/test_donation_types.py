@@ -53,6 +53,14 @@ def module() -> Mock:
     module.donations.get_summary = AsyncMock(return_value=Mock(time_reduction_hours=50))
     module.compose_overview = AsyncMock(return_value=True)
     module._rush_view_states = {}
+    module._pending_donations = {}
+    module._confirmation_locks = {}
+    module.clear_donation_confirmation = (
+        DonationModule.clear_donation_confirmation.__get__(module)
+    )
+    module.show_donation_confirmation = (
+        DonationModule.show_donation_confirmation.__get__(module)
+    )
     return module
 
 

@@ -10,8 +10,10 @@ import pytest
 from hmwz.client.repositories import ServerRepository
 from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.modules.hs.wz.repositories import (
+    ChannelRepository,
+)
+from hmwz.modules.registration.repositories import (
     MemberRegistrationRepository,
-    PurgeChannelRepository,
     RegistrationMessageRepository,
     RegistrationRoleRepository,
     RegistrationSettingsRepository,
@@ -27,7 +29,7 @@ def make_repositories(database: Database) -> tuple[Base, ...]:
         MemberRegistrationRepository(database),
         MemberGameAccountRepository(database),
         RegistrationMessageRepository(database),
-        PurgeChannelRepository(database),
+        ChannelRepository(database),
     )
 
 
@@ -57,9 +59,9 @@ async def test_schema_is_explicit_idempotent_and_referentially_valid(
         "Registration_Roles",
         "Registration_Settings",
         "Registration_Members",
-        "WzGameAccounts",
+        "GameAccounts",
         "Registration_Messages",
-        "WzPurgeChannels",
+        "HsWzChannels",
     }
 
     for table_name in table_names - {"Servers"}:
@@ -183,7 +185,7 @@ async def test_legacy_schema_migrates_without_name_caches_and_keeps_aliases(
         RegistrationSettingsRepository(database),
         RegistrationRoleRepository(database),
         MemberRegistrationRepository(database),
-        PurgeChannelRepository(database),
+        ChannelRepository(database),
     ):
         assert await repository.migrate_schema()
 
@@ -191,21 +193,20 @@ async def test_legacy_schema_migrates_without_name_caches_and_keeps_aliases(
     registrations = await database.fetch_all(
         "SELECT Channel, Alias FROM Registration_Members ORDER BY Alias"
     )
-    purge_channels = await database.fetch_all(
-        "SELECT RegistrationChannel FROM WzPurgeChannels"
-    )
+    channels = await database.fetch_all("SELECT Channel FROM HsWzChannels")
     assert tuple(roles[0]) == (456,)
     assert tuple(tuple(row) for row in registrations) == (
         (456, ""),
         (456, "alt-account"),
     )
-    assert tuple(purge_channels[0]) == (456,)
+    assert tuple(channels[0]) == (321,)
 
     for table_name in (
         "DiscordMembers",
         "DiscordChannels",
         "DiscordRoles",
         "Registrations_Member",
+        "WzPurgeChannels",
     ):
         assert (
             await database.fetch_one(
@@ -218,7 +219,7 @@ async def test_legacy_schema_migrates_without_name_caches_and_keeps_aliases(
         "Registration_Roles",
         "Registration_Members",
         "Registration_Settings",
-        "WzPurgeChannels",
+        "HsWzChannels",
     ):
         columns = await database.fetch_all(f'PRAGMA table_info("{table_name}")')
         column_names = {column["name"] for column in columns}
@@ -247,6 +248,60 @@ async def test_legacy_schema_migrates_without_name_caches_and_keeps_aliases(
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing_scope", [None, 456, 457])
+async def test_wz_channel_table_migration_merges_guild_channels(
+    tmp_path: Path, existing_scope: int | None
+) -> None:
+    database = Database(folder=str(tmp_path), filename="wz-channels.db")
+    assert await database.execute(ServerRepository(database).table)
+    assert await database.execute(
+        "INSERT INTO Servers (Guild, Name) VALUES (?, ?)", (123, "test guild")
+    )
+    assert await database.execute(
+        """
+        CREATE TABLE HsWzChannels (
+            Guild INTEGER NOT NULL, RegistrationChannel INTEGER NOT NULL,
+            Channel INTEGER NOT NULL, PRIMARY KEY (Guild, Channel)
+        ) WITHOUT ROWID
+        """
+    )
+    assert await database.execute(
+        """
+        CREATE TABLE WzPurgeChannels (
+            Guild INTEGER NOT NULL, RegistrationChannel INTEGER NOT NULL,
+            Channel INTEGER NOT NULL, PRIMARY KEY (Guild, Channel)
+        ) WITHOUT ROWID
+        """
+    )
+    assert await database.execute(
+        "INSERT INTO WzPurgeChannels VALUES (?, ?, ?)", (123, 456, 321)
+    )
+    assert await database.execute(
+        "INSERT INTO WzPurgeChannels VALUES (?, ?, ?)", (123, 457, 322)
+    )
+    if existing_scope is not None:
+        assert await database.execute(
+            "INSERT INTO HsWzChannels VALUES (?, ?, ?)", (123, existing_scope, 321)
+        )
+
+    repository = ChannelRepository(database)
+    assert await repository.migrate_schema()
+    assert await repository.migrate_schema()
+    rows = await database.fetch_all(
+        "SELECT Guild, Channel FROM HsWzChannels ORDER BY Channel"
+    )
+    assert [tuple(row) for row in rows] == [(123, 321), (123, 322)]
+    assert (
+        await database.fetch_one(
+            "SELECT 1 FROM sqlite_master WHERE name = 'WzPurgeChannels'"
+        )
+        is None
+    )
+    columns = await database.fetch_all("PRAGMA table_info(HsWzChannels)")
+    assert {row["name"] for row in columns} == {"Guild", "Channel"}
 
 
 @pytest.mark.asyncio

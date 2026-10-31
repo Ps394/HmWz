@@ -16,7 +16,7 @@ from hmwz.modules.hs.wz.commands.reset_roles import (
 
 
 def test_wz_setup_exposes_only_module_commands() -> None:
-    wz = WzGroup(None)
+    wz = WzGroup()
     command_names = {command.name for command in wz.commands}
     assert command_names == {"setup", "reset-channels", "reset-roles"}
 
@@ -28,7 +28,7 @@ def test_wz_setup_exposes_only_module_commands() -> None:
 
 
 def test_wz_maintenance_commands_and_defaults() -> None:
-    wz = WzGroup(None)
+    wz = WzGroup()
     command_names = {command.name for command in wz.commands}
 
     assert "setup" in command_names
@@ -44,7 +44,7 @@ async def test_clean_channels_previews_targets_before_deleting() -> None:
     guild = Mock(spec=discord.Guild)
     guild.id = 10
     module = SimpleNamespace(
-        purge_channels=SimpleNamespace(
+        channels=SimpleNamespace(
             get=AsyncMock(
                 return_value=[
                     SimpleNamespace(channel_id=20),
@@ -102,7 +102,7 @@ async def test_clean_channels_confirmation_applies_pinned_message_exception() ->
         id=20,
     )
     module = SimpleNamespace(
-        purge_channels=SimpleNamespace(
+        channels=SimpleNamespace(
             get=AsyncMock(return_value=[SimpleNamespace(channel_id=20)])
         )
     )

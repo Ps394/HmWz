@@ -11,7 +11,6 @@
   "command.description.wz.channel.add": "Add channels to the WZ cleanup list",
   "command.description.wz.channel.remove": "Remove channels from the WZ cleanup list",
   "command.description.wz.role.add": "Add WZ registration roles",
-  "parameter.description.wz.role.add.permanent": "Whether the selected roles are permanent",
   "command.description.wz.role.remove": "Remove WZ registration roles",
   "command.description.wz.setup": "Open the WZ menu to define channels and roles",
   "command.description.wz.reset_channels": "Clean all configured WZ channels",
