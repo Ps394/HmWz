@@ -1,3 +1,5 @@
+"""Command for registering an in-game account for an event."""
+
 from __future__ import annotations
 
 import logging
@@ -6,6 +8,7 @@ import discord
 from discord import Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.interactions import log_interaction
 
 from .autocomplete import (
@@ -13,8 +16,7 @@ from .autocomplete import (
     linked_accounts,
     registration_roles,
 )
-from hmwz.modules.hs.wz.module import WzRegistrationModule
-from ..responses import send_temporary_followup
+from hmwz.modules.registration.module import RegistrationModule
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,13 @@ logger = logging.getLogger(__name__)
 @app_commands.autocomplete(account=linked_accounts, role=registration_roles)
 @app_commands.checks.cooldown(1, 10, key=lambda interaction: interaction.user.id)
 async def register(interaction: Interaction, account: str, role: str) -> None:
+    """Register the invoking member's account with a role in the current channel.
+
+    Args:
+        interaction: The interaction that invoked the command.
+        account: Linked in-game account or the member's display name.
+        role: Configured registration role identifier.
+    """
     await interaction.response.defer(ephemeral=True)
     account = account.strip()
     role_id = 0
@@ -62,9 +71,7 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
+        module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
         is_display_name = account == DISPLAY_NAME_ACCOUNT_VALUE
         if is_display_name:
             canonical_account = ""

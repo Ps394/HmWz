@@ -10,5 +10,4 @@ bash "$SCRIPT_DIR/configure_token.bash"
 bash "$SCRIPT_DIR/install_service.bash"
 
 echo
-echo "Installation complete. The discordbot.service systemd service is enabled and running."
-echo "Check its status with: sudo systemctl status discordbot.service"
+echo "Installation complete. The configured systemd service is enabled and running."

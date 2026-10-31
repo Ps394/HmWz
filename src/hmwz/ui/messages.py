@@ -1,3 +1,5 @@
+"""Shared Discord message operations with consistent error handling."""
+
 from __future__ import annotations
 
 import asyncio
@@ -5,6 +7,8 @@ import logging
 from typing import Any
 
 import discord
+
+from hmwz.emojis import emojis
 
 logger = logging.getLogger(__name__)
 _delete_tasks: set[asyncio.Task[None]] = set()
@@ -76,13 +80,15 @@ async def send_temporary_followup(
     *,
     ephemeral: bool = True,
     file: discord.File | None = None,
-    delay: float | None = None,
+    delay: float | None = 5,
 ) -> discord.Message | None:
     """Send a followup and optionally schedule its deletion after the given delay."""
     kwargs: dict[str, Any] = {"ephemeral": ephemeral, "wait": True}
     if file is not None:
         kwargs["file"] = file
-    message = await interaction.followup.send(content, **kwargs)
+    message = await interaction.followup.send(
+        emojis.render(content, interaction), **kwargs
+    )
     if message is None:
         logger.warning("Discord did not return a message for a temporary followup.")
     elif delay is not None:
@@ -92,10 +98,12 @@ async def send_temporary_followup(
 
 
 async def send_temporary_response(
-    interaction: discord.Interaction, content: str, *, delay: float
+    interaction: discord.Interaction, content: str, *, delay: float = 5
 ) -> None:
     """Send an ephemeral interaction response and remove it after the given delay."""
-    await interaction.response.send_message(content, ephemeral=True)
+    await interaction.response.send_message(
+        emojis.render(content, interaction), ephemeral=True
+    )
     message = await interaction.original_response()
     await delete_message(message, delay=delay)
 

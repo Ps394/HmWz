@@ -1,5 +1,5 @@
 """
-Modul für Events, die in HsBot verwendet werden.
+Discord event payload types used by the bot.
 """
 
 from discord import (

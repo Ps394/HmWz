@@ -1,3 +1,5 @@
+"""Persistence for registration channel configuration."""
+
 from __future__ import annotations
 
 import logging
@@ -12,7 +14,7 @@ _logger = logging.getLogger(__name__)
 
 
 class RegistrationSettingsRepository(sqlite_db.Base):
-    """Repository fuer Registrierungskanaele und Nachrichten je Guild."""
+    """Store registration channel settings for each guild."""
 
     table_name = "Registration_Settings"
 
@@ -21,6 +23,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
 
     @dataclass(frozen=True)
     class TableCols:
+        """Column names used by the registration settings table."""
+
         Guild: str = "Guild"
         Channel: str = "Channel"
         Message: str = "Message"
@@ -29,6 +33,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
 
     @property
     def table(self) -> str:
+        """Return the SQL statement that creates the settings table."""
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER NOT NULL,
@@ -103,18 +108,22 @@ class RegistrationSettingsRepository(sqlite_db.Base):
 
         @property
         def has_channel(self) -> bool:
+            """Whether this record has a channel assigned."""
             return self.channel is not None
 
         @property
         def has_message(self) -> bool:
+            """Whether this record has a message assigned."""
             return self.message is not None
 
         @property
         def has_title(self) -> bool:
+            """Whether this record has a non-empty title."""
             return self.title is not None and self.title != ""
 
         @property
         def has_description(self) -> bool:
+            """Whether this record has a non-empty description."""
             return self.description is not None and self.description != ""
 
     type Record = _Data | None
@@ -152,6 +161,15 @@ class RegistrationSettingsRepository(sqlite_db.Base):
     async def get(
         self, *, guild: discord.Guild, channel_id: int | None = None
     ) -> Record:
+        """Retrieve one registration configuration for a guild.
+
+        Args:
+            guild: Guild whose configuration should be retrieved.
+            channel_id: Optional registration channel identifier.
+
+        Returns:
+            The matching record, or ``None`` if unavailable.
+        """
         try:
             query = f"""
             SELECT
@@ -193,6 +211,18 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         title: str | None = None,
         description: str | None = None,
     ) -> bool:
+        """Insert or update registration settings for a channel.
+
+        Args:
+            guild: Guild that owns the configuration.
+            channel_id: Registration channel identifier.
+            message_id: Optional overview message identifier.
+            title: Optional overview title.
+            description: Optional overview description.
+
+        Returns:
+            Whether the database write succeeded.
+        """
         try:
             cols = [self.TableCols.Channel]
             vals: list[typing.Any] = [channel_id]
@@ -271,6 +301,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
     async def remove(
         self, *, guild: discord.Guild, channel_id: int | None = None
     ) -> bool:
+        """Remove one channel configuration or all configurations for a guild."""
         try:
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
             params: tuple[int, ...] = (guild.id,)

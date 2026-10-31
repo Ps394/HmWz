@@ -1,3 +1,5 @@
+"""Discord client implementation and command registration."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,6 +10,7 @@ import discord
 
 from hmwz import events, exceptions, modules, sqlite_db
 from hmwz.configuration import config
+from hmwz.emojis import EmojiUploader, emojis
 from hmwz.i18n import CommandTranslator, t
 from hmwz.utils.interactions import log_interaction
 
@@ -26,6 +29,8 @@ __all__ = [
 
 
 class Client(discord.Client):
+    """Discord client that manages persistence, commands, and guild modules."""
+
     registered_commands: int = 0
 
     def __init__(
@@ -36,6 +41,7 @@ class Client(discord.Client):
         **options,
     ):
         super().__init__(intents=intents, **options)
+        self.emoji_uploader = EmojiUploader(self)
         self._database: sqlite_db.Database = sqlite_db.Database(
             folder=config["database"]["folder"], filename=config["database"]["filename"]
         )
@@ -50,7 +56,7 @@ class Client(discord.Client):
 
     async def setup_hook(self):
         """
-        Führt die Einrichtung des Clients durch, einschließlich der Registrierung von Befehlen und der Synchronisierung globaler Befehle.
+        Prepare persistence, translations, commands, and background monitoring.
         """
         if not await self._database.execute(self._servers.table):
             raise RuntimeError("Failed to create the server database table.")
@@ -60,6 +66,7 @@ class Client(discord.Client):
             raise RuntimeError("Failed to migrate legacy server records.")
         await self.CommandTree.set_translator(CommandTranslator())
 
+        await self.emoji_uploader.sync()
         await self.register_commands()
 
         asyncio.create_task(monitoring.resource_monitor_loop())
@@ -68,7 +75,7 @@ class Client(discord.Client):
 
     async def on_ready(self):
         """
-        Wird aufgerufen, wenn der Bot bereit ist. Protokolliert die Anmeldeinformationen und fügt alle Gilden zur Datenbank hinzu.
+        Initialize guild modules after the Discord client becomes ready.
         """
         if self.user is None:
             raise RuntimeError("Client became ready without an authenticated user.")
@@ -97,10 +104,10 @@ class Client(discord.Client):
 
     async def on_guild_join(self, guild: discord.Guild):
         """
-        Wird aufgerufen, wenn der Bot einer neuen Gilde beitritt. Fügt die Gilde zur Datenbank hinzu.
+        Persist a guild and initialize its modules when the bot joins it.
 
-        :param guild: Die Gilde, der der Bot beigetreten ist
-        :type guild: discord.Guild
+        Args:
+            guild: The guild joined by the bot.
         """
         try:
             if not await self._servers.add(guild=guild):
@@ -114,10 +121,10 @@ class Client(discord.Client):
 
     async def on_guild_remove(self, guild: discord.Guild):
         """
-        Wird aufgerufen, wenn der Bot eine Gilde verlässt. Entfernt die Gilde aus der Datenbank.
+        Notify modules and remove a guild when the bot leaves it.
 
-        :param guild: Die Gilde, die der Bot verlassen hat
-        :type guild: discord.Guild
+        Args:
+            guild: The guild left by the bot.
         """
         try:
             await self.module_manager.on_guild_remove(guild)
@@ -129,7 +136,12 @@ class Client(discord.Client):
             )
 
     async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
-        """Persist guild name changes."""
+        """Persist guild name changes and notify guild modules.
+
+        Args:
+            before: The guild state before the update.
+            after: The guild state after the update.
+        """
         if not await self._servers.add(guild=after):
             _logger.error(
                 "%s Failed to update guild name from %s.",
@@ -141,10 +153,10 @@ class Client(discord.Client):
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
         """
-        Wird aufgerufen, wenn ein Kanal in einer Gilde gelöscht wird. Leitet das Ereignis an den Overview-Manager weiter.
+        Notify modules that a guild channel was deleted.
 
-        :param channel: Der gelöschte Kanal
-        :type channel: discord.TextChannel
+        Args:
+            channel: The deleted guild channel.
         """
         _logger.info(
             "%s Channel deleted: %s (%s).",
@@ -158,70 +170,67 @@ class Client(discord.Client):
         self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
     ):
         """
-        Wird aufgerufen, wenn ein Kanal in einer Gilde aktualisiert wird. Leitet das Ereignis an den Overview-Manager weiter.
+        Notify modules that a guild channel was updated.
 
-        :param before: Der Kanal vor der Aktualisierung
-        :type before: discord.TextChannel
-        :param after: Der Kanal nach der Aktualisierung
-        :type after: discord.TextChannel
+        Args:
+            before: The channel state before the update.
+            after: The channel state after the update.
         """
         await self.module_manager.on_guild_channel_update(before, after)
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
         """
-        Wird aufgerufen, wenn ein Kanal in einer Gilde erstellt wird. Leitet das Ereignis an den Overview-Manager weiter.
+        Notify modules that a guild channel was created.
 
-        :param channel: Der erstellte Kanal
-        :type channel: discord.TextChannel
+        Args:
+            channel: The newly created guild channel.
         """
         await self.module_manager.on_guild_channel_create(channel)
 
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
         """
-        Wird aufgerufen, wenn eine Rolle in einer Gilde aktualisiert wird. Synchronisiert die entsprechenden Übersichten, wenn die Rolle registriert ist.
+        Notify modules that a guild role was updated.
 
-        :param before: Die Rolle vor der Aktualisierung
-        :type before: discord.Role
-        :param after: Die Rolle nach der Aktualisierung
-        :type after: discord.Role
+        Args:
+            before: The role state before the update.
+            after: The role state after the update.
         """
         await self.module_manager.on_guild_role_update(before, after)
 
     async def on_guild_role_delete(self, role: discord.Role):
         """
-        Wird aufgerufen, wenn eine Rolle in einer Gilde gelöscht wird. Entfernt die Rolle aus der Registrierung und synchronisiert die Übersichten, wenn sie registriert war.
+        Notify modules that a guild role was deleted.
 
-        :param role: Die gelöschte Rolle
-        :type role: discord.Role
+        Args:
+            role: The deleted guild role.
         """
         await self.module_manager.on_guild_role_delete(role)
 
     async def on_raw_member_remove(self, payload: events.RawMemberRemoveEvent):
         """
-        Wird aufgerufen, wenn ein Mitglied eine Gilde verlässt oder entfernt wird. Entfernt die Registrierung des Mitglieds und synchronisiert die Übersichten, wenn eine Registrierung vorhanden war.
+        Notify modules that a member left or was removed from a guild.
 
-        :param payload: Ereignis Payload des entfernen Benutzers
-        :type payload: events.RawMemberRemoveEvent
+        Args:
+            payload: The raw member-removal event.
         """
         await self.module_manager.on_raw_member_remove(payload)
 
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """
-        Wird aufgerufen, wenn ein Mitglied in einer Gilde aktualisiert wird. Aktualisiert die Registrierung des Mitglieds und synchronisiert die Übersichten, wenn eine Registrierung vorhanden ist.
+        Notify modules that a guild member was updated.
 
-        :param before: Das Mitglied vor der Aktualisierung
-        :type before: discord.Member
-        :param after: Das Mitglied nach der Aktualisierung
-        :type after: discord.Member
+        Args:
+            before: The member state before the update.
+            after: The member state after the update.
         """
         await self.module_manager.on_member_update(before, after)
 
     async def on_raw_message_delete(self, payload: events.RawMessageDeleteEvent):
         """
-        Wird aufgerufen, wenn eine Nachricht gelöscht wird. Leitet das Ereignis an den Overview-Manager weiter.
+        Notify modules that a message was deleted.
 
-        :param payload: Das Ereignis-Payload der gelöschten Nachricht
-        :type payload: events.RawMessageDeleteEvent
+        Args:
+            payload: The raw message-deletion event.
         """
         await self.module_manager.on_raw_message_delete(payload)
 
@@ -229,10 +238,10 @@ class Client(discord.Client):
         self, payload: events.RawBulkMessageDeleteEvent
     ):
         """
-        Wird aufgerufen, wenn mehrere Nachrichten auf einmal gelöscht werden (z. B. durch /purge). Leitet das Ereignis an den Overview-Manager weiter.
+        Notify modules that multiple messages were deleted.
 
-        :param payload: Das Ereignis-Payload der gelöschten Nachrichten
-        :type payload: events.RawBulkMessageDeleteEvent
+        Args:
+            payload: The raw bulk message-deletion event.
         """
         await self.module_manager.on_raw_bulk_message_delete(payload)
 
@@ -242,12 +251,11 @@ class Client(discord.Client):
         error: discord.app_commands.AppCommandError,
     ):
         """
-        Globaler Fehlerhandler für Befehlsfehler. Sendet eine Fehlermeldung an den Benutzer und protokolliert den Fehler.
+        Log an application-command error and send a localized response.
 
-        :param interaction: Die Interaktion, die den Fehler ausgelöst hat
-        :type interaction: discord.Interaction
-        :param error: Der aufgetretene Fehler
-        :type error: discord.app_commands.AppCommandError
+        Args:
+            interaction: Interaction that raised the error.
+            error: Application-command error to handle.
         """
         log_context = f"{log_interaction(interaction)} - Command: {interaction.command}"
 
@@ -274,7 +282,7 @@ class Client(discord.Client):
             else:
                 message = t(interaction, "command.error.unexpected")
                 logger.exception(f"{log_context} - Unexpected error: {error}")
-            await send(message, ephemeral=True)
+            await send(emojis.render(message, self), ephemeral=True)
         except discord.HTTPException as e:
             if e.code in (10062, 40060):
                 logger.warning(
@@ -297,10 +305,10 @@ class Client(discord.Client):
         | discord.app_commands.ContextMenu,
     ) -> None:
         """
-        Fügt einen Befehl zur Befehlsstruktur hinzu.
+        Add a command, group, or context menu to the command tree.
 
-        :param command: Der Befehl, der hinzugefügt werden soll
-        :type command: callable
+        Args:
+            command: Application command to register.
         """
         if isinstance(command, discord.app_commands.Group):
             for subcommand in command.commands:
@@ -321,25 +329,25 @@ class Client(discord.Client):
 
     async def register_commands(self):
         """
-        Registriert die Befehle aus dem Commands-Modul.
+        Register built-in commands and install the global error handler.
         """
-        from hmwz.modules.hs.account.commands import AccountGroup
+        #from hmwz.modules.hs.account.commands import AccountGroup
         from hmwz.modules.donation.commands import DonationGroup
-        from hmwz.modules.hs.qs.commands import QsGroup
-        from hmwz.modules.hs.wz.commands import WzGroup
-        from hmwz.modules.queue.commands import QueueGroup
+        #from hmwz.modules.hs.qs.commands import QsGroup
+        #from hmwz.modules.hs.wz.commands import WzGroup
+        #from hmwz.modules.queue.commands import QueueGroup
         from hmwz.modules.registration.commands import RegistrationGroup
 
         _logger.info("Registering commands...")
 
         self.add_command(commands.AboutBot)
         self.add_command(commands.Purge)
-        self.add_command(AccountGroup())
-        self.add_command(WzGroup(self))
-        self.add_command(QsGroup())
+        #self.add_command(AccountGroup())
+        #self.add_command(WzGroup(self))
+        #self.add_command(QsGroup())
         self.add_command(RegistrationGroup())
         self.add_command(DonationGroup())
-        self.add_command(QueueGroup())
+        #self.add_command(QueueGroup())
 
         @self.CommandTree.error
         async def tree_on_error(
@@ -347,7 +355,11 @@ class Client(discord.Client):
             error: discord.app_commands.AppCommandError,
         ):
             """
-            Globaler Fehlerhandler für Befehlsfehler. Versucht, die Fehlerbehandlung des Clients aufzurufen und protokolliert alle Fehler.
+            Delegate command-tree failures to the client's error handler.
+
+            Args:
+                interaction: Interaction that raised the error.
+                error: Application-command error to handle.
             """
             try:
                 await self.on_application_command_error(interaction, error)
@@ -357,7 +369,7 @@ class Client(discord.Client):
         _logger.info(f"Total commands registered: {self.registered_commands}")
 
     async def sync_commands_global(self):
-        """Synchronisiert die globalen Befehle, wenn global_command_sync aktiviert ist."""
+        """Synchronize application commands globally when configured."""
         if self.global_command_sync is True:
             try:
                 await self.CommandTree.sync()
@@ -367,7 +379,7 @@ class Client(discord.Client):
 
     async def sync_commands_guilds(self):
         """
-        Synchronisiert die Befehle für alle Gilden, wenn global_command_sync deaktiviert ist.
+        Synchronize application commands separately for each guild when configured.
         """
         if self.global_command_sync is False:
             for guild in self.guilds:
@@ -384,7 +396,7 @@ class Client(discord.Client):
 
     async def clear_commands(self):
         """
-        Entfernt alle registrierten Befehle, sowohl global als auch für alle Gilden.
+        Clear global or guild-specific commands before registering current commands.
         """
         try:
             if not self.global_command_sync:

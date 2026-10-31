@@ -1,3 +1,5 @@
+"""Persistence for member registrations within guild channels."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +15,7 @@ _logger = logging.getLogger(__name__)
 
 
 class MemberRegistrationRepository(sqlite_db.Base):
-    """Repository fuer Mitgliederregistrierungen je Guild."""
+    """Store member registrations scoped to a guild and channel."""
 
     table_name = "Registration_Members"
     legacy_table_name: str | None = "Registrations_Member"
@@ -24,6 +26,8 @@ class MemberRegistrationRepository(sqlite_db.Base):
 
     @dataclass(frozen=True)
     class TableCols:
+        """Column names used by the member registration table."""
+
         Guild: str = "Guild"
         Channel: str = "Channel"
         Member: str = "Member"
@@ -36,6 +40,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
 
     @property
     def table(self) -> str:
+        """Return the SQL statement that creates the registration table."""
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER,
@@ -280,10 +285,12 @@ class MemberRegistrationRepository(sqlite_db.Base):
 
         @property
         def has_member(self) -> bool:
+            """Whether this record identifies a member."""
             return self.member is not None
 
         @property
         def has_role(self) -> bool:
+            """Whether this record identifies a role."""
             return self.role is not None
 
     type Record = _Data | None
@@ -297,6 +304,19 @@ class MemberRegistrationRepository(sqlite_db.Base):
         roles: list[int] | None = None,
         channel_id: int | None = None,
     ) -> int:
+        """Count registrations matching the supplied filters.
+
+        Args:
+            guild: Guild whose registrations should be counted.
+            role: Optional role identifier to filter by.
+            roles: Optional role identifiers to filter by.
+            channel_id: Optional channel identifier to filter by.
+
+        Returns:
+            The number of matching registrations, or zero if the query fails.
+
+        Conflicting ``role`` and ``roles`` filters are rejected and logged.
+        """
         try:
             if role is not None and roles:
                 raise ValueError("Cannot provide both role and roles filters.")
@@ -333,6 +353,21 @@ class MemberRegistrationRepository(sqlite_db.Base):
         roles: list[int] | None = None,
         channel_id: int | None = None,
     ) -> Records:
+        """Retrieve registrations matching the supplied filters.
+
+        Args:
+            guild: Guild whose registrations should be retrieved.
+            member: Optional member identifier to filter by.
+            account: Optional account name, valid only with ``member``.
+            role: Optional role identifier to filter by.
+            roles: Optional role identifiers to filter by.
+            channel_id: Optional channel identifier to filter by.
+
+        Returns:
+            Matching registrations, or ``None`` if none are found or the query fails.
+
+        Incompatible filters are rejected and logged.
+        """
         try:
             if member is not None and (role is not None or roles):
                 raise ValueError("Cannot combine member with role or roles filters.")
@@ -368,6 +403,7 @@ class MemberRegistrationRepository(sqlite_db.Base):
             async def resolve_record(
                 rec: typing.Any,
             ) -> MemberRegistrationRepository._Data:
+                """Convert a database row to a registration record."""
                 return self._Data(
                     guild_id=guild.id,
                     channel_id=rec[self.TableCols.Channel],
@@ -402,6 +438,21 @@ class MemberRegistrationRepository(sqlite_db.Base):
         member_display_name: str | None = None,
         role_name: str | None = None,
     ) -> bool:
+        """Insert or replace a member's registration.
+
+        Args:
+            guild: Guild that owns the registration.
+            member: Member identifier.
+            role: Selected role identifier.
+            account: In-game account associated with the registration.
+            channel_id: Registration channel identifier.
+            member_username: Optional username snapshot for exports.
+            member_display_name: Optional display-name snapshot for exports.
+            role_name: Optional role-name snapshot for exports.
+
+        Returns:
+            Whether the database write succeeded.
+        """
         member_name = f"unknown member ({member})"
         try:
             member_names = await self.member_names(guild, member)
@@ -450,6 +501,21 @@ class MemberRegistrationRepository(sqlite_db.Base):
         roles: list[int] | None = None,
         channel_id: int | None = None,
     ) -> bool:
+        """Remove registrations matching the supplied filters.
+
+        Args:
+            guild: Guild whose registrations should be removed.
+            member: Optional member identifier to filter by.
+            account: Optional account name, valid only with ``member``.
+            role: Optional role identifier to filter by.
+            roles: Optional role identifiers to filter by.
+            channel_id: Optional channel identifier to filter by.
+
+        Returns:
+            Whether the database write succeeded.
+
+        Incompatible filters are rejected and logged.
+        """
         target = "registrations"
         try:
             if member is not None and (role is not None or roles):

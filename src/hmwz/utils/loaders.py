@@ -1,7 +1,10 @@
+"""Fetch Discord entities from cache or the API."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Literal, overload
 
 import discord
 
@@ -70,10 +73,37 @@ async def fetch_channel(
     return None
 
 
+@overload
 async def fetch_message(
-    channel: discord.TextChannel, message_id: int, attempts: int = 3
+    channel: discord.TextChannel | discord.Thread,
+    message_id: int,
+    attempts: int = 3,
+    *,
+    raise_on_error: Literal[True],
+) -> discord.Message: ...
+
+
+@overload
+async def fetch_message(
+    channel: discord.TextChannel | discord.Thread,
+    message_id: int,
+    attempts: int = 3,
+    *,
+    raise_on_error: Literal[False] = False,
+) -> discord.Message | None: ...
+
+
+async def fetch_message(
+    channel: discord.TextChannel | discord.Thread,
+    message_id: int,
+    attempts: int = 3,
+    *,
+    raise_on_error: bool = False,
 ) -> discord.Message | None:
-    """Fetch a message from Discord, returning None if it is unavailable."""
+    """Fetch a message, optionally propagating Discord errors to the caller."""
+    if raise_on_error:
+        return await channel.fetch_message(message_id)
+
     for _attempt in range(attempts):
         try:
             message = await channel.fetch_message(message_id)

@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 
 import discord
 
+from hmwz.emojis import emojis
 from hmwz.i18n import t
 from hmwz.ui.embeds import create_embed
 
-from .repository import (
+from .models import (
     DonationChannel,
     DonationRank,
     DonationRecord,
     DonationSummary,
     DonationType,
 )
-from .rush_pricing import RUSH_PERIOD_DURATION
-from .validation import donation_timezone, donation_timezone_translation_key
+from .type.rush.overview import add_time_fields
 
 
 class DonationOverview:
@@ -28,7 +28,6 @@ class DonationOverview:
         channel: DonationChannel,
         *,
         rush_start_at: datetime | None,
-        timezone_name: str = "UTC",
         accelerated_hours: int = 0,
         donations_enabled: bool = True,
     ) -> discord.Embed:
@@ -39,46 +38,13 @@ class DonationOverview:
             color=discord.Color.gold(),
         )
         if rush_start_at is not None:
-            if accelerated_hours < 0:
-                raise ValueError("Accelerated hours cannot be negative.")
-            zone = donation_timezone(timezone_name)
-            start_utc = rush_start_at.astimezone(UTC)
-            end_utc = (
-                start_utc + RUSH_PERIOD_DURATION - timedelta(hours=accelerated_hours)
+            add_time_fields(
+                embed,
+                guild,
+                started_at=rush_start_at,
+                accelerated_hours=accelerated_hours,
+                target_at=channel.target_at,
             )
-            start = start_utc.astimezone(zone)
-            end = end_utc.astimezone(zone)
-            embed.add_field(
-                name=t(
-                    guild,
-                    "donation.overview.rush_start",
-                ),
-                value=f"{start:%d.%m.%Y %H:%M}",
-                inline=True,
-            )
-            embed.add_field(
-                name=t(guild, "donation.overview.rush_duration"),
-                value=t(
-                    guild,
-                    "donation.setup.rush_duration",
-                    days=RUSH_PERIOD_DURATION.days,
-                    hours=int(RUSH_PERIOD_DURATION.total_seconds() // 3600),
-                ),
-                inline=True,
-            )
-            embed.add_field(
-                name=t(
-                    guild,
-                    "donation.overview.rush_end",
-                ),
-                value=f"{end:%d.%m.%Y %H:%M}",
-                inline=True,
-            )
-        embed.add_field(
-            name=t(guild, "donation.overview.timezone"),
-            value=t(guild, donation_timezone_translation_key(timezone_name)),
-            inline=True,
-        )
         embed.add_field(
             name=t(guild, "donation.overview.donations_status"),
             value=t(
@@ -103,6 +69,9 @@ class DonationOverview:
             if donation_type.kind == "time_reduction"
             else donation_type.unit
         )
+        icon = emojis.get(
+            "crystal" if donation_type.kind == "time_reduction" else "credit", guild
+        )
         embed = create_embed(
             title=t(guild, "donation.ranking.title"),
             color=discord.Color.gold(),
@@ -111,7 +80,7 @@ class DonationOverview:
         for position, donor in enumerate(ranking, start=1):
             line = (
                 f"**{position}. {donor.member_name}** — "
-                f"{DonationOverview._format_amount(donor.amount)} {unit}"
+                f"{icon} {DonationOverview._format_amount(donor.amount)} {unit}"
             )
             if donation_type.kind == "time_reduction":
                 line += " · " + t(
@@ -145,8 +114,12 @@ class DonationOverview:
             if donation_type.kind == "time_reduction"
             else donation_type.unit
         )
+        icon = emojis.get(
+            "crystal" if donation_type.kind == "time_reduction" else "credit", guild
+        )
         lines = [
-            f"**{record.member_name}** — {DonationOverview._format_amount(record.amount)} "
+            f"**{record.member_name}** — {icon} "
+            f"{DonationOverview._format_amount(record.amount)} "
             f"{unit}"
             + (
                 f" · {t(guild, 'donation.overview.time_reduced')}: "

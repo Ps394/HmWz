@@ -10,34 +10,36 @@ import pytest
 from hmwz.modules.donation.commands import DonationGroup
 from hmwz.modules.donation.commands.reset import reset as donation_reset
 from hmwz.modules.donation.module import DonationModule
-from hmwz.modules.donation.repository import DonationType
-from hmwz.modules.donation.views import (
+from hmwz.modules.donation.models import DonationType
+from hmwz.modules.donation.type.credit.views import (
     DonationAmountOptionButton,
     DonationAmountChoiceView,
-    DonationOverviewView,
     DonationRecordButton,
+)
+from hmwz.modules.donation.views import DonationOverviewView
+from hmwz.modules.donation.type.rush.views import (
     DonationRushConfirmationView,
     DonationTimeReductionButton,
     DonationTimeReductionView,
 )
-from hmwz.modules.donation.setup_views import (
-    DONATION_TIMEZONES,
+from hmwz.modules.donation.commands.setup.config.view import (
     DonationSetupButton,
-    DonationSetupDraft,
     DonationSetupKindSelect,
     DonationSetupView,
     DonationExportChannelSelect,
     DonationExportChannelView,
     _save_setup,
-    DonationTimezoneSelect,
+)
+from hmwz.modules.donation.commands.setup.config.draft import DonationSetupDraft
+from hmwz.modules.donation.commands.setup.config.configuration_message import (
     donation_setup_panel,
 )
-from hmwz.modules.donation.rush_pricing import (
+from hmwz.modules.donation.type.rush.pricing import (
     RUSH_BUTTON_DURATIONS_HOURS,
     RUSH_DURATIONS_HOURS,
     RUSH_PERIOD_DURATION,
 )
-from hmwz.modules.donation.repository import DEFAULT_DONATION_CHOICES
+from hmwz.modules.donation.models import DEFAULT_DONATION_CHOICES
 
 
 def test_donation_setup_is_a_direct_command() -> None:
@@ -58,6 +60,11 @@ def test_donation_setup_is_a_direct_command() -> None:
     assert donation_group.get_command("delete") is None
     assert donation_group.get_command("record") is None
     assert donation_group.get_command("reset") is not None
+    assert donation_group.get_command("snapshot") is not None
+    assert (
+        donation_group.get_command("snapshot")._locale_description.extras["key"]
+        == "donation.snapshot.description"
+    )
     assert (
         donation_group.get_command("reset")._locale_description.extras["key"]
         == "donation.reset.description"
@@ -132,21 +139,14 @@ async def test_rush_setup_menu_splits_configuration_into_sections() -> None:
     ] == [
         "content",
         "start",
+        "target",
         "ranking",
         "visibility",
         "donations",
         "export",
         "save",
     ]
-    timezone_selects = [
-        item for item in view.children if isinstance(item, DonationTimezoneSelect)
-    ]
-    assert len(timezone_selects) == 1
-    assert tuple(option.value for option in timezone_selects[0].options) == (
-        DONATION_TIMEZONES
-    )
-    assert timezone_selects[0].placeholder == "Zeitzone auswählen"
-    assert timezone_selects[0].options[1].label == "Berlin (Deutschland)"
+    assert not any(isinstance(item, discord.ui.Select) for item in view.children)
     assert draft.time_reductions == tuple(f"{hours}h" for hours in RUSH_DURATIONS_HOURS)
     assert RUSH_BUTTON_DURATIONS_HOURS == (24, 8, 1)
 
@@ -175,13 +175,14 @@ def test_rush_setup_panel_shows_nine_day_stop_time() -> None:
     panel = donation_setup_panel(draft, interaction)
     expected_stop = start + RUSH_PERIOD_DURATION
 
-    assert expected_stop.strftime("%d.%m.%Y %H:%M UTC (+0000)") in panel
-    assert start.strftime("%d.%m.%Y %H:%M UTC (+0000)") in panel
-    assert "9 Tage (216 Stunden)" in panel
-    assert "Rush-Ende" in panel
-    assert "Zeitzone: UTC" in panel
-    assert "Spenden annehmen: aktiviert" in panel
-    assert "Spendenanzeige: aktiviert" in panel
+    assert isinstance(panel, discord.Embed)
+    fields = {field.name: field.value for field in panel.fields}
+    assert fields["Endzeit"] == discord.utils.format_dt(expected_stop, "F")
+    assert fields["Startzeit"] == discord.utils.format_dt(start, "F")
+    assert fields["Dauer"] == "9 Tage (216 Stunden)"
+    assert "Zeitzone" not in fields
+    assert fields["Spendenstatus"] == "aktiviert"
+    assert fields["Spendenhistorie"] == "aktiviert"
 
 
 @pytest.mark.asyncio
@@ -311,11 +312,9 @@ async def test_setup_can_select_a_json_export_channel() -> None:
     assert draft.export_channel_id == export_channel.id
     export_channel.permissions_for.assert_called_once_with(guild.me)
     interaction.response.edit_message.assert_awaited_once()
-    assert (
-        interaction.response.edit_message.await_args.kwargs["content"]
-        .splitlines()[-1]
-        .endswith("<#987>")
-    )
+    response = interaction.response.edit_message.await_args.kwargs
+    assert response["content"] is None
+    assert response["embed"].fields[-1].value == "<#987>"
     assert interaction.response.edit_message.await_args.kwargs["view"] is setup_view
 
 

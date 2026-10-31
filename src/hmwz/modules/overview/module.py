@@ -1,3 +1,5 @@
+"""Reusable service for publishing and maintaining guild overview messages."""
+
 from __future__ import annotations
 
 import logging
@@ -13,9 +15,9 @@ from hmwz.modules.overview.models import Overview, OverviewButton
 from hmwz.modules.overview.protocols import OverviewButtonHandler
 from hmwz.modules.overview.repositories import OverviewRepository
 from hmwz.modules.overview.views import OverviewView
-from hmwz.modules.registry import register
 from hmwz.ui.embeds import create_embed
 from hmwz.ui.messages import delete_message, edit_message, send_message
+from hmwz.utils.loaders import fetch_message
 
 if TYPE_CHECKING:
     from hmwz.client import Client
@@ -24,9 +26,8 @@ _logger = logging.getLogger(__name__)
 _ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-@register
 class OverviewModule(Module):
-    """Reusable, persistent embed overviews scoped to a guild."""
+    """Composable overview service owned directly by another guild module."""
 
     def __init__(self, guild: discord.Guild, client: Client) -> None:
         super().__init__(guild, client)
@@ -34,6 +35,27 @@ class OverviewModule(Module):
             raise RuntimeError("Overview module requires a database.")
         self.overviews = OverviewRepository(self.database)
         self._handlers: dict[tuple[str, str], OverviewButtonHandler] = {}
+
+    @property
+    def client_color(self) -> discord.Color:
+        """Return the bot member's highest role color or Discord's default blurple."""
+        member = (
+            self.guild.get_member(self.client.user.id)
+            if self.client.user is not None
+            else None
+        )
+        if member and member.roles:
+            return max(member.roles, key=lambda role: role.position).color
+        return discord.Color.blurple()
+
+    @property
+    def client_avatar(self) -> discord.Asset | None:
+        """Return the guild icon or bot avatar for overview embeds."""
+        guild_icon = self.guild.icon
+        if isinstance(guild_icon, discord.Asset):
+            return guild_icon
+        user_avatar = self.client.user.avatar if self.client.user is not None else None
+        return user_avatar if isinstance(user_avatar, discord.Asset) else None
 
     async def sync(self, startup: bool = False) -> bool:
         """Ensure the overview repository schema exists."""
@@ -219,7 +241,9 @@ class OverviewModule(Module):
         message: discord.Message | None = None
         if overview.message_id is not None:
             try:
-                message = await channel.fetch_message(overview.message_id)
+                message = await fetch_message(
+                    channel, overview.message_id, raise_on_error=True
+                )
             except discord.NotFound:
                 if not await self.overviews.set_message(
                     guild=self.guild,
@@ -278,7 +302,9 @@ class OverviewModule(Module):
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return False
         try:
-            message = await channel.fetch_message(overview.message_id)
+            message = await fetch_message(
+                channel, overview.message_id, raise_on_error=True
+            )
         except discord.NotFound:
             return True
         except discord.HTTPException:

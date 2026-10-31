@@ -1,3 +1,5 @@
+"""Data model for persisted guild overview content."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

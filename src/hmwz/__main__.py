@@ -1,3 +1,5 @@
+"""Application entry point for running the bot as a package."""
+
 from __future__ import annotations
 
 import sys
@@ -10,6 +12,7 @@ from .token_storage import Token
 
 
 def main() -> None:
+    """Configure logging and start the bot."""
     setup_logging(
         log_file="bot.log", level=logging.INFO, file_logging=True, async_logging=True
     )

@@ -1,3 +1,5 @@
+"""Formatting helpers for interaction and guild log context."""
+
 from __future__ import annotations
 
 import discord

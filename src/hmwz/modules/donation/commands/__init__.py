@@ -2,7 +2,8 @@ from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import manage, reset, setup
+from . import reset, setup, snapshot
+from .setup.remove import remove
 
 __all__ = ["DonationGroup"]
 
@@ -28,5 +29,6 @@ class DonationGroup(Group):
             ),
         )
         self.add_command(setup.setup)
-        self.add_command(manage.remove)
+        self.add_command(remove)
         self.add_command(reset.reset)
+        self.add_command(snapshot.snapshot)

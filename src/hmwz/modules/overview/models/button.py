@@ -1,3 +1,5 @@
+"""Data model for buttons configured on an overview."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,5 @@
+"""Asynchronous SQLite access and shared repository helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,36 +16,34 @@ _logger = logging.getLogger(__name__)
 
 class Base:
     """
-    Basisklasse für Datenbank-Repositories mit gemeinsamem Zugriff, Logging und Tabellenzählung.
-    Jedes Repository deklariert seinen Tabellennamen explizit und implementiert die Tabelleigenschaft.
+    Base class for repositories with shared database and logging helpers.
 
-    :param database: Eine Instanz der Database-Klasse, die für den Zugriff auf die Datenbank verwendet wird.
-    :type database: Database
-    :param table_name: Expliziter Name der Tabelle, die von diesem Repository verwendet wird.
-    :type table_name: str
-    :param logger: Gibt einen Logger zurück, der für das Logging in diesem Service verwendet wird.
-    :type logger: logging.Logger
-    :param log_prefix: Gibt einen Log-Prefix zurück, der den Namen und die ID des Guilds enthält, wenn ein Guild-Objekt übergeben wird. Andernfalls ist der Prefix leer.
-    :type log_prefix: str
+    Subclasses define ``table_name`` and implement the ``table`` property.
 
-    :raises NotImplementedError: Wenn die TABLE-Eigenschaft nicht von einer Unterklasse implementiert wird.
+    Args:
+        database: Database used by the repository.
     """
 
     table_name: ClassVar[str]
 
     def __init__(self, database: Database):
+        """Initialize the repository with its database.
+
+        Args:
+            database: Database used for repository operations.
+        """
         self.database: Database = database
 
     @classmethod
     def log_prefix(cls, guild: Guild | None = None) -> str:
         """
-        Gibt einen Log-Prefix zurück, der den Namen und die ID des Guilds enthält, wenn ein Guild-Objekt übergeben wird. Andernfalls ist der Prefix leer.
+        Format a guild name and ID prefix for log messages.
 
-        :param guild: Ein optionales Guild-Objekt, für das der Log-Prefix generiert werden soll.
-        :type guild: Optional[Guild]
+        Args:
+            guild: Optional guild to include in the prefix.
 
-        :return: Ein Log-Prefix als String.
-        :rtype: str
+        Returns:
+            The formatted prefix, or an empty string when no guild is provided.
         """
         if guild:
             return f"{guild.name} ({guild.id}) - "
@@ -51,10 +51,19 @@ class Base:
 
     @property
     def table(self) -> str:
-        """Gibt die SQL-Abfrage zurück, um die Tabelle für diesen Service zu erstellen. Diese Eigenschaft muss von Unterklassen implementiert werden, um die spezifische SQL-Abfrage für die jeweilige Tabelle bereitzustellen."""
+        """Return the SQL statement that creates this repository's table.
+
+        Raises:
+            NotImplementedError: Subclasses must provide their table definition.
+        """
         raise NotImplementedError('Subclasses must implement the "table" property.')
 
     async def count_all(self) -> int:
+        """Return the number of records in this repository's table.
+
+        Returns:
+            The record count, or zero if the query fails.
+        """
         try:
             query = f"SELECT COUNT(*) FROM {self.table_name}"
             row = await self.database.fetch_one(query)
@@ -133,18 +142,19 @@ class Base:
 
 
 class Database:
+    """Manage asynchronous SQLite connections and database operations."""
+
     _busy_timeout_ms = 5000
     _write_retry_attempts = 5
     _write_retry_delay = 0.2
 
     def __init__(self, *, folder: str = "data", filename: str = "data.db") -> None:
         """
-        Initialisiert die Datenbankverbindung und erstellt den Ordner für die Datenbankdatei, falls dieser nicht existiert.
+        Configure the database file and create its parent directory.
 
-        :param folder: Der Ordner, in dem die Datenbankdatei gespeichert werden soll. Standardmäßig "data".
-        :type folder: str
-        :param filename: Der Name der Datenbankdatei. Standardmäßig "data.db".
-        :type filename: str
+        Args:
+            folder: Directory containing the database file.
+            filename: Database file name.
         """
         os.makedirs(folder, exist_ok=True)
         self.file = os.path.join(folder, filename)
@@ -178,11 +188,13 @@ class Database:
     @asynccontextmanager
     async def connect(self):
         """
-        Stellt eine asynchrone Verbindung zur SQLite-Datenbank her und sorgt dafür, dass die Verbindung ordnungsgemäß geschlossen wird.
+        Open a configured SQLite connection and close it when the context exits.
 
-         :return: Ein aiosqlite.Connection-Objekt, das für Datenbankoperationen verwendet werden kann.
-         :rtype: aiosqlite.Connection
-         :raises Exception: Wenn ein Fehler bei der Herstellung der Verbindung auftritt, wird die Ausnahme protokolliert und erneut ausgelöst.
+        Yields:
+            An open ``aiosqlite.Connection``.
+
+        Raises:
+            Exception: Re-raises connection or setup failures after logging them.
         """
         database = None
         try:
@@ -204,15 +216,14 @@ class Database:
 
     async def execute(self, query: str, params: tuple = ()) -> bool:
         """
-        Führt eine SQL-Abfrage aus, die keine Ergebnisse zurückgibt (z.B. INSERT, UPDATE, DELETE).
+        Execute a write query and commit the transaction.
 
-        :param query: Die SQL-Abfrage, die ausgeführt werden soll.
-        :type query: str
-        :param params: Die Parameter für die SQL-Abfrage. Standardmäßig ein leeres Tupel.
-        :type params: Tuple
-        :return: True, wenn die Abfrage erfolgreich ausgeführt wurde, False andernfalls.
-        :rtype: bool
-        :raises Exception: Wenn ein Fehler bei der Ausführung der Abfrage auftritt, wird die Ausnahme protokolliert und erneut ausgelöst.
+        Args:
+            query: SQL statement to execute.
+            params: Positional parameters bound to the statement.
+
+        Returns:
+            Whether the write completed successfully.
         """
         async with self._write_lock:
             for attempt in range(self._write_retry_attempts + 1):
@@ -238,7 +249,15 @@ class Database:
         return False
 
     async def execute_many(self, query: str, params: Sequence[tuple]) -> bool:
-        """Execute a batch of writes in one transaction."""
+        """Execute a batch of writes in one transaction.
+
+        Args:
+            query: SQL statement to execute for each parameter tuple.
+            params: Parameter tuples bound to each execution.
+
+        Returns:
+            Whether the batch completed successfully.
+        """
         async with self._write_lock:
             for attempt in range(self._write_retry_attempts + 1):
                 try:
@@ -267,15 +286,14 @@ class Database:
         self, query: str, params: tuple = ()
     ) -> tuple[aiosqlite.Row, ...]:
         """
-        Führt eine SQL-Abfrage aus, die mehrere Ergebnisse zurückgibt (z.B. SELECT) und gibt diese als Tupel von aiosqlite.Row-Objekten zurück.
+        Execute a query and return all result rows.
 
-        :param query: Die SQL-Abfrage, die ausgeführt werden soll.
-        :type query: str
-        :param params: Die Parameter für die SQL-Abfrage. Standardmäßig ein leeres Tupel.
-        :type params: Tuple
-        :return: Ein Tupel von aiosqlite.Row-Objekten, die die Ergebnisse der Abfrage enthalten.
-        :rtype: Tuple[aiosqlite.Row, ...]
-        :raises Exception: Wenn ein Fehler bei der Ausführung der Abfrage auftritt, wird die Ausnahme protokolliert und erneut ausgelöst.
+        Args:
+            query: SQL statement to execute.
+            params: Positional parameters bound to the statement.
+
+        Returns:
+            Rows returned by the query.
         """
         async with (
             self.connect() as connection,
@@ -285,15 +303,14 @@ class Database:
 
     async def fetch_one(self, query: str, params: tuple = ()) -> aiosqlite.Row | None:
         """
-        Führt eine SQL-Abfrage aus, die ein einzelnes Ergebnis zurückgibt (z.B. SELECT) und gibt dieses als aiosqlite.Row-Objekt zurück.
+        Execute a query and return its first result row.
 
-        :param query: Die SQL-Abfrage, die ausgeführt werden soll.
-        :type query: str
-        :param params: Die Parameter für die SQL-Abfrage. Standardmäßig ein leeres Tupel.
-        :type params: Tuple
-        :return: Ein aiosqlite.Row-Objekt, das das Ergebnis der Abfrage enthält, oder None, wenn kein Ergebnis gefunden wurde.
-        :rtype: Optional[aiosqlite.Row]
-        :raises Exception: Wenn ein Fehler bei der Ausführung der Abfrage auftritt, wird die Ausnahme protokolliert und erneut ausgelöst.
+        Args:
+            query: SQL statement to execute.
+            params: Positional parameters bound to the statement.
+
+        Returns:
+            The first row, or ``None`` when the query returns no rows.
         """
         async with (
             self.connect() as connection,

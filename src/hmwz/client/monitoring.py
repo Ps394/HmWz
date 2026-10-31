@@ -1,3 +1,5 @@
+"""Optional system resource monitoring for the bot process."""
+
 import asyncio
 import logging
 import os
@@ -19,10 +21,10 @@ async def resource_monitor_loop(
     interval: int = config["monitoring"]["interval_seconds"],
 ):
     """
-    Periodische Überwachung der Ressourcen (CPU, Speicher, Festplatte).
+    Periodically log warnings when system resource thresholds are exceeded.
 
-    :param interval: Zeitintervall in Sekunden zwischen den Überprüfungen (Standard: 60 Sekunden)
-    :type interval: int
+    Args:
+        interval: Seconds to wait between resource checks.
     """
     if not PSUTIL_AVAILABLE:
         _logger.info("Resource monitoring disabled (psutil not installed)")

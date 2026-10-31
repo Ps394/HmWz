@@ -1,3 +1,5 @@
+"""Callback protocol for buttons attached to overview messages."""
+
 from __future__ import annotations
 
 from typing import Protocol

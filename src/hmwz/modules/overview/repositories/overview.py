@@ -1,3 +1,5 @@
+"""Persistence for guild overview content and Discord message IDs."""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +18,7 @@ class OverviewRepository(sqlite_db.Base):
 
     @property
     def table(self) -> str:
+        """Return the SQL statement that creates the overview table."""
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             Guild INTEGER NOT NULL,

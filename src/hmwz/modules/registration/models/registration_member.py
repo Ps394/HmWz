@@ -1,3 +1,5 @@
+"""Domain model for a member's registration."""
+
 from dataclasses import dataclass
 
 from .registration_role import RegistrationRole

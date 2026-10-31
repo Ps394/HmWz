@@ -1,15 +1,16 @@
+"""Command for exporting channel registrations as CSV."""
+
 import io
 import logging
 
 from discord import File, Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.loaders import fetch_member
 from hmwz.utils.interactions import log_interaction
 
-from hmwz.modules.hs.wz.module import WzRegistrationModule
-
-from ..responses import send_temporary_followup
+from hmwz.modules.registration.module import RegistrationModule
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
         key="wz.registration.csv.description",
     ),
 )
+@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
+@app_commands.default_permissions(manage_messages=True, manage_roles=True)
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
@@ -32,6 +35,12 @@ logger = logging.getLogger(__name__)
 )
 @app_commands.checks.cooldown(1, 60, key=lambda i: i.guild_id)
 async def csv(interaction: Interaction, ephemeral: bool = True):
+    """Export registrations for the current channel as a CSV attachment.
+
+    Args:
+        interaction: The interaction that invoked the command.
+        ephemeral: Whether to show the result only to the invoking user.
+    """
     await interaction.response.defer(ephemeral=ephemeral)
     try:
         if not interaction.guild:
@@ -47,8 +56,8 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            interaction.guild, WzRegistrationModule
+        module: RegistrationModule = await manager.get_module(
+            interaction.guild, RegistrationModule
         )
         channel_id = interaction.channel_id
         if channel_id is None:

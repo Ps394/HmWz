@@ -4,47 +4,56 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import discord
 
 from hmwz import events, sqlite_db
 from hmwz.i18n import t
-from hmwz.modules.basic_module import BasicModule
+from hmwz.modules.module import Module
+from hmwz.modules.protocols import (
+    ChannelModuleProtocol,
+    GuildModuleProtocol,
+    MessageModuleProtocol,
+)
 from hmwz.modules.registry import register
 
 from .overview import DonationOverview
-from .responses import send_temporary_response as _send_temporary_response
-from .repository import DonationRepository, DonationType
-from hmwz.modules.snapshots import Snapshot
-from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
-from .rush_pricing import (
+from hmwz.ui.messages import send_temporary_response as _send_temporary_response
+from .models import DonationType
+from .repositories import DonationRepository
+from .snapshot import DonationSnapshotExporter
+from .type.credit import service as credit_service
+from .type.rush import service as rush_service
+from .type.rush.pricing import (
     RUSH_BUTTON_DURATIONS_HOURS,
-    RUSH_DURATIONS_HOURS,
-    available_rush_durations,
-    rush_donation_cost,
     rush_donation_prices,
+    validate_rush_target,
 )
-from .views import (
-    DonationAmountModal,
-    DonationAmountChoiceView,
-    DonationOverviewView,
-    DonationRushConfirmationView,
-    DonationTimeReductionView,
-)
+from .views import DonationOverviewView
 
 _logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from hmwz.client import Client
+
 
 @register
-class DonationModule(BasicModule):
+class DonationModule(
+    Module, MessageModuleProtocol, ChannelModuleProtocol, GuildModuleProtocol
+):
     """Guild-scoped donation tracking with channel-specific summaries."""
 
-    def __init__(self, guild: discord.Guild, client: discord.Client) -> None:
+    module_key: str = "donation"
+
+    def __init__(self, guild: discord.Guild, client: Client) -> None:
         super().__init__(guild, client)
         if not isinstance(self.database, sqlite_db.Database):
             raise RuntimeError("Donation module requires a database.")
         self.donations = DonationRepository(self.database)
-        self._snapshot_exporter = DiscordJsonSnapshotExporter(guild)
+        self._snapshot_exporter = DonationSnapshotExporter(
+            guild=guild, donations=self.donations
+        )
         self._views: dict[int, DonationOverviewView] = {}
         self._registered_message_ids: set[int] = set()
         self._rush_view_states: dict[
@@ -77,48 +86,51 @@ class DonationModule(BasicModule):
         donation_type: DonationType,
         goal_hours: int | None = None,
         recent_limit: int = 20,
-        show_ranking: bool = True,
+        show_ranking: bool = False,
         rush_start_at: datetime | None = None,
         timezone_name: str = "UTC",
         show_donations: bool = True,
         donations_enabled: bool = True,
         export_channel_id: int | None = None,
+        target_at: datetime | None = None,
     ) -> bool:
         """Persist the channel's single-unit donation setup and publish it."""
-        history_units = await self.donations.get_history_units(
-            guild=self.guild, channel_id=channel_id
-        )
-        if history_units is None or (
-            history_units and set(history_units) != {donation_type.unit}
-        ):
-            _logger.error(
-                "%s Cannot change donation unit for channel %s because history "
-                "already contains donations with another unit.",
-                self.guild.name,
-                channel_id,
+        async with self._cycle_lock(channel_id):
+            history_units = await self.donations.get_history_units(
+                guild=self.guild, channel_id=channel_id
             )
-            return False
-        if not await self.donations.configure_channel(
-            guild=self.guild,
-            channel_id=channel_id,
-            title=title,
-            description=description,
-            goal_hours=goal_hours,
-            recent_limit=recent_limit,
-            show_ranking=show_ranking,
-            rush_start_at=rush_start_at,
-            timezone_name=timezone_name,
-            show_donations=show_donations,
-            donations_enabled=donations_enabled,
-            export_channel_id=export_channel_id,
-        ):
-            return False
-        if not await self.donations.configure_type(
-            guild=self.guild,
-            channel_id=channel_id,
-            donation_type=donation_type,
-        ):
-            return False
+            if history_units is None or (
+                history_units and set(history_units) != {donation_type.unit}
+            ):
+                _logger.error(
+                    "%s Cannot change donation unit for channel %s because history "
+                    "already contains donations with another unit.",
+                    self.guild.name,
+                    channel_id,
+                )
+                return False
+            if not await self.donations.configure_channel(
+                guild=self.guild,
+                channel_id=channel_id,
+                title=title,
+                description=description,
+                goal_hours=goal_hours,
+                recent_limit=recent_limit,
+                show_ranking=show_ranking,
+                rush_start_at=rush_start_at,
+                timezone_name=timezone_name,
+                show_donations=show_donations,
+                donations_enabled=donations_enabled,
+                export_channel_id=export_channel_id,
+                target_at=target_at,
+            ):
+                return False
+            if not await self.donations.configure_type(
+                guild=self.guild,
+                channel_id=channel_id,
+                donation_type=donation_type,
+            ):
+                return False
         result = await self.compose_overview(channel_id)
         if donation_type.kind == "time_reduction":
             self._ensure_maintenance_task()
@@ -221,96 +233,22 @@ class DonationModule(BasicModule):
             )
             return
         if donation_type.kind == "time_reduction":
-            configuration = await self.donations.get_channel(
-                guild=self.guild, channel_id=channel_id
-            )
-            now = datetime.now(timezone.utc)
-            if configuration is None or configuration.rush_start_at is None:
-                await _send_temporary_response(
-                    interaction, t(interaction, "donation.error.rush_closed")
-                )
-                return
-            summary = await self.donations.get_summary(
-                guild=self.guild,
-                channel_id=channel_id,
-                cycle=configuration.current_cycle,
-            )
-            if summary is None:
-                await _send_temporary_response(
-                    interaction, t(interaction, "donation.error.save")
-                )
-                return
-            rush_prices = rush_donation_prices(
-                started_at=configuration.rush_start_at,
-                now=now,
-                accelerated_hours=summary.time_reduction_hours,
-            )
-            if not rush_prices:
-                await _send_temporary_response(
-                    interaction, t(interaction, "donation.error.rush_closed")
-                )
-                return
-            if time_reduction is None:
-                await interaction.response.send_message(
-                    t(interaction, "donation.setup.hours_donation_prompt"),
-                    view=DonationTimeReductionView(
-                        self, channel_id, donation_type, rush_prices
-                    ),
-                    ephemeral=True,
-                )
-                return
-            if time_reduction not in {f"{hours}h" for hours in rush_prices}:
-                await _send_temporary_response(
-                    interaction, t(interaction, "donation.error.choose_time")
-                )
-                return
-            hours = int(time_reduction.removesuffix("h"))
-            cost = rush_prices[hours]
-            response_content = t(
-                interaction,
-                "donation.rush.confirm",
-                hours=hours,
-                cost=format(cost, "f"),
-            )
-            confirmation_view = DonationRushConfirmationView(
+            await rush_service.start_donation(
                 self,
+                interaction,
                 channel_id,
                 donation_type,
-                hours,
-                cost,
-                configuration.current_cycle,
-                configuration.rush_start_at,
-                now,
-                interaction.user.id,
+                time_reduction=time_reduction,
+                replace_prompt=replace_prompt,
             )
-            if replace_prompt:
-                await interaction.response.edit_message(
-                    content=response_content, view=confirmation_view
-                )
-                confirmation_view.message = interaction.message
-            else:
-                await interaction.response.send_message(
-                    response_content,
-                    view=confirmation_view,
-                    ephemeral=True,
-                )
-                confirmation_view.message = await interaction.original_response()
-            return
-        elif time_reduction is not None:
-            await _send_temporary_response(
-                interaction, t(interaction, "donation.error.invalid_type")
+        else:
+            await credit_service.start_donation(
+                self,
+                interaction,
+                channel_id,
+                donation_type,
+                time_reduction=time_reduction,
             )
-            return
-        if donation_type.input_mode == "choice" and donation_type.choices:
-            await interaction.response.send_message(
-                t(interaction, "donation.setup.amount_donation_prompt"),
-                view=DonationAmountChoiceView(self, channel_id, donation_type),
-                ephemeral=True,
-            )
-            return
-        await interaction.response.send_modal(
-            DonationAmountModal(self, channel_id, donation_type, time_reduction)
-        )
 
     async def record_donation(
         self,
@@ -321,43 +259,15 @@ class DonationModule(BasicModule):
         *,
         time_reduction: str | None,
     ) -> tuple[bool, bool]:
-        """Save a donation and refresh both public messages."""
-        guild = interaction.guild
-        member = interaction.user
-        if (
-            guild is None
-            or guild.id != self.guild.id
-            or not isinstance(member, discord.Member)
-            or amount <= 0
-            or (donation_type.kind != "simple" or time_reduction is not None)
-            or (
-                donation_type.input_mode == "choice"
-                and amount not in {Decimal(choice) for choice in donation_type.choices}
-            )
-        ):
-            return False, False
-
-        current_type = await self.donations.get_type(
-            guild=self.guild, channel_id=channel_id
+        """Delegate credit validation and recording to the credit workflow."""
+        return await credit_service.record_donation(
+            self,
+            interaction,
+            channel_id,
+            donation_type,
+            amount,
+            time_reduction=time_reduction,
         )
-        configuration = await self.donations.get_channel(
-            guild=self.guild, channel_id=channel_id
-        )
-        if current_type != donation_type or configuration is None:
-            return False, False
-        async with self._cycle_lock(channel_id):
-            if not await self.donations.add_donation(
-                guild=guild,
-                channel_id=channel_id,
-                member=member,
-                donation_type=donation_type,
-                amount=amount,
-                time_reduction=time_reduction,
-                cycle=configuration.current_cycle,
-            ):
-                return False, False
-        public_messages_updated = await self.compose_overview(channel_id)
-        return True, public_messages_updated
 
     async def record_rush_donation(
         self,
@@ -370,79 +280,35 @@ class DonationModule(BasicModule):
         expected_start_at: datetime,
         quoted_at: datetime,
     ) -> tuple[bool, bool]:
-        """Confirm a priced Rush donation if its cycle and time window remain valid."""
-        guild = interaction.guild
-        member = interaction.user
-        if (
-            guild is None
-            or guild.id != self.guild.id
-            or not isinstance(member, discord.Member)
-            or donation_type.kind != "time_reduction"
-            or duration_hours not in RUSH_DURATIONS_HOURS
-            or amount <= 0
-        ):
-            return False, False
-        configuration = await self.donations.get_channel(
-            guild=self.guild, channel_id=channel_id
+        """Delegate Rush confirmation and recording to the Rush workflow."""
+        return await rush_service.record_donation(
+            self,
+            interaction,
+            channel_id,
+            donation_type,
+            duration_hours,
+            amount,
+            expected_cycle,
+            expected_start_at,
+            quoted_at,
         )
-        current_type = await self.donations.get_type(
-            guild=self.guild, channel_id=channel_id
-        )
-        if (
-            configuration is None
-            or current_type != donation_type
-            or configuration.current_cycle != expected_cycle
-            or configuration.rush_start_at != expected_start_at
-        ):
-            return False, False
-        summary = await self.donations.get_summary(
-            guild=self.guild,
-            channel_id=channel_id,
-            cycle=configuration.current_cycle,
-        )
-        now = datetime.now(timezone.utc)
-        if (
-            summary is None
-            or duration_hours
-            not in available_rush_durations(
-                started_at=expected_start_at,
-                now=quoted_at,
-                accelerated_hours=summary.time_reduction_hours,
-            )
-            or duration_hours
-            not in available_rush_durations(
-                started_at=expected_start_at,
-                now=now,
-                accelerated_hours=summary.time_reduction_hours,
-            )
-            or amount
-            != rush_donation_cost(
-                started_at=expected_start_at,
-                now=quoted_at,
-                duration_hours=duration_hours,
-                accelerated_hours=summary.time_reduction_hours,
-            )
-        ):
-            return False, False
-        async with self._cycle_lock(channel_id):
-            if not await self.donations.add_donation(
-                guild=guild,
-                channel_id=channel_id,
-                member=member,
-                donation_type=donation_type,
-                amount=amount,
-                time_reduction=f"{duration_hours}h",
-                cycle=configuration.current_cycle,
-                rush_quoted_at=quoted_at,
-            ):
-                return False, False
-        messages_updated = await self.compose_overview(channel_id)
-        return True, messages_updated
 
     async def reset_cycle(
-        self, channel_id: int, *, rush_start_at: datetime | None
+        self,
+        channel_id: int,
+        *,
+        rush_start_at: datetime | None,
+        target_at: datetime | None = None,
     ) -> tuple[bool, bool, bool]:
         """Export and reset the current cycle before refreshing public messages."""
+        if target_at is not None:
+            try:
+                if rush_start_at is None:
+                    raise ValueError("A target requires a Rush start.")
+                validate_rush_target(rush_start_at, target_at)
+            except ValueError:
+                _logger.exception("Invalid target for Rush reset in %s.", channel_id)
+                return False, False, False
         async with self._cycle_lock(channel_id):
             if not await self.export_current_cycle(channel_id):
                 return False, False, True
@@ -450,77 +316,19 @@ class DonationModule(BasicModule):
                 guild=self.guild,
                 channel_id=channel_id,
                 rush_start_at=rush_start_at,
+                target_at=target_at,
             ):
                 return False, False, False
         return True, await self.compose_overview(channel_id), False
 
     async def export_current_cycle(self, channel_id: int) -> bool:
         """Export every donation in the current cycle when a destination is set."""
-        configuration = await self.donations.get_channel(
-            guild=self.guild, channel_id=channel_id
-        )
-        if configuration is None:
-            return False
-        destination_channel_id = configuration.export_channel_id
-        if destination_channel_id is None:
-            return True
+        return await self._snapshot_exporter.export(channel_id, "cycle-reset")
 
-        records = await self.donations.get_donations_for_export(
-            guild=self.guild,
-            channel_id=channel_id,
-            cycle=configuration.current_cycle,
-        )
-        summary = await self.donations.get_summary(
-            guild=self.guild,
-            channel_id=channel_id,
-            cycle=configuration.current_cycle,
-        )
-        if records is None or summary is None or len(records) != summary.donation_count:
-            _logger.error(
-                "%s Cannot export all donations for channel %s, cycle %s.",
-                self.guild.name,
-                channel_id,
-                configuration.current_cycle,
-            )
-            return False
-
-        name = configuration.title
-        if not name:
-            channel = self.guild.get_channel_or_thread(channel_id)
-            name = channel.name if channel is not None else str(channel_id)
-        donations: list[dict[str, int | str]] = []
-        for record in records:
-            donation: dict[str, int | str] = {
-                "member_id": record.member_id,
-                "member_name": record.member_name,
-                "amount": format(record.amount, "f"),
-                "unit": record.unit,
-                "created_at": record.created_at,
-            }
-            if record.time_reduction is not None:
-                donation["time_reduction"] = record.time_reduction
-            donations.append(donation)
-
-        snapshot = Snapshot(
-            destination_channel_id=destination_channel_id,
-            filename=f"donation-{channel_id}-cycle-{configuration.current_cycle}.json",
-            payload={
-                "type": "cycle-reset",
-                "name": name,
-                "channel-id": channel_id,
-                "cycle": configuration.current_cycle,
-                "donations": donations,
-            },
-        )
-        exported = await self._snapshot_exporter.export(snapshot)
-        if not exported:
-            _logger.error(
-                "%s Failed to export donation cycle %s from channel %s.",
-                self.guild.name,
-                configuration.current_cycle,
-                channel_id,
-            )
-        return exported
+    async def export_donation_snapshot(self, channel_id: int) -> bool:
+        """Export the active cycle on request without changing any donations."""
+        async with self._cycle_lock(channel_id):
+            return await self._snapshot_exporter.export(channel_id, "snapshot")
 
     def _cycle_lock(self, channel_id: int) -> asyncio.Lock:
         """Return the lock protecting donation writes and cycle resets."""
@@ -574,6 +382,7 @@ class DonationModule(BasicModule):
                 started_at=configuration.rush_start_at,
                 now=now,
                 accelerated_hours=summary.time_reduction_hours,
+                target_at=configuration.target_at,
             )
             if configuration.rush_start_at is not None
             else {}
@@ -587,7 +396,6 @@ class DonationModule(BasicModule):
                 if donation_type.kind == "time_reduction"
                 else None
             ),
-            timezone_name=configuration.timezone_name,
             accelerated_hours=(
                 summary.time_reduction_hours
                 if donation_type.kind == "time_reduction"
@@ -671,53 +479,7 @@ class DonationModule(BasicModule):
     async def _maintenance_loop(self) -> None:
         while True:
             try:
-                now = datetime.now(timezone.utc)
-                for channel_id in await self.donations.get_channels(guild=self.guild):
-                    configuration = await self.donations.get_channel(
-                        guild=self.guild, channel_id=channel_id
-                    )
-                    donation_type = await self.donations.get_type(
-                        guild=self.guild, channel_id=channel_id
-                    )
-                    if (
-                        configuration is None
-                        or donation_type is None
-                        or donation_type.kind != "time_reduction"
-                    ):
-                        continue
-                    summary = await self.donations.get_summary(
-                        guild=self.guild,
-                        channel_id=channel_id,
-                        cycle=configuration.current_cycle,
-                    )
-                    if summary is None:
-                        continue
-                    rush_prices = (
-                        rush_donation_prices(
-                            started_at=configuration.rush_start_at,
-                            now=now,
-                            accelerated_hours=summary.time_reduction_hours,
-                        )
-                        if configuration.rush_start_at is not None
-                        else {}
-                    )
-                    rush_open = configuration.donations_enabled and bool(rush_prices)
-                    rush_state = (
-                        rush_open,
-                        configuration.donations_enabled,
-                        tuple(
-                            rush_prices.get(hours)
-                            for hours in RUSH_BUTTON_DURATIONS_HOURS
-                        ),
-                    )
-                    if self._rush_view_states.get(channel_id) != rush_state:
-                        if not await self.compose_overview(channel_id):
-                            _logger.error(
-                                "%s Failed to refresh Rush overview in channel %s "
-                                "after a price or availability change.",
-                                self.guild.name,
-                                channel_id,
-                            )
+                await rush_service.refresh_overviews(self)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -788,6 +550,34 @@ class DonationModule(BasicModule):
                 channel_id,
             )
             return False
+
+    async def on_guild_join(self, guild: discord.Guild) -> bool:
+        """Initialize this guild's persisted donation schema."""
+        return guild.id == self.guild.id and await self.sync(startup=True)
+
+    async def on_message_create(self, message: discord.Message) -> bool:
+        """Ignore new messages that are not managed by this module."""
+        return True
+
+    async def on_message_update(
+        self, before: discord.Message, after: discord.Message
+    ) -> bool:
+        """Ignore message edits; managed messages are refreshed explicitly."""
+        return True
+
+    async def on_message_delete(self, message: discord.Message) -> bool:
+        """Let raw deletion events restore managed messages without duplicate work."""
+        return True
+
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
+        """Confirm that a new channel belongs to this module's guild."""
+        return channel.guild.id == self.guild.id
+
+    async def on_guild_channel_update(
+        self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
+    ) -> bool:
+        """Confirm that an updated channel belongs to this module's guild."""
+        return after.guild.id == self.guild.id
 
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
         """Remove donation data when the bot leaves this guild."""

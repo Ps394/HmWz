@@ -1,3 +1,5 @@
+"""Components for short-lived private interaction views and responses."""
+
 from __future__ import annotations
 
 import asyncio
@@ -5,6 +7,7 @@ import logging
 
 import discord
 
+from hmwz.emojis import emojis
 from hmwz.ui.messages import (
     delete_temporary_message,
     retain_delete_task,
@@ -45,7 +48,9 @@ class EphemeralView(discord.ui.View):
         self, interaction: discord.Interaction, content: str, *, delay: float = 10
     ) -> None:
         """Send a private response and remove it after a short delay."""
-        await interaction.response.send_message(content, ephemeral=True)
+        await interaction.response.send_message(
+            emojis.render(content, interaction), ephemeral=True
+        )
         task = asyncio.create_task(self._delete_original_after(interaction, delay))
         retain_delete_task(task)
 

@@ -1,8 +1,7 @@
-"""Registry fuer alle Modulklassen.
+"""Registry for all module classes.
 
-Dieses Modul bietet einen kleinen Dekorator, mit dem Module zentral
-registriert werden koennen. Der Manager instanziiert spaeter pro Guild
-alle hier registrierten Module.
+The decorator registers modules centrally so the manager can create an
+instance for each guild.
 """
 
 from __future__ import annotations
@@ -14,13 +13,13 @@ REGISTRY: list[ModuleType] = []
 
 
 def register(cls: ModuleType) -> ModuleType:
-    """Registriert eine Modulklasse in der globalen Registry.
+    """Register a module class once in the global registry.
 
-    Parameter:
-    - cls: Modulklasse, die spaeter vom Manager erstellt werden kann.
+    Args:
+        cls: Module class that can be instantiated by the manager.
 
-    Rueckgabe:
-    - Die unveraenderte Klasse, damit der Dekorator transparent bleibt.
+    Returns:
+        The unchanged class, allowing the decorator to be used transparently.
     """
     if cls not in REGISTRY:
         REGISTRY.append(cls)

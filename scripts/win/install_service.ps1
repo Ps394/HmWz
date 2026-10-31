@@ -1,12 +1,18 @@
 $ErrorActionPreference = "Stop"
 $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot "service_config.ps1")
 
 $venvPython = Join-Path $projectDirectory "venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
     throw "Virtual environment not found. Run create_venv.ps1 first."
 }
 
-$taskName = "HmWzBot"
+$currentTaskName = Resolve-HmwzTaskName
+$taskNameInput = $env:HMWZ_SERVICE_NAME
+if ([string]::IsNullOrWhiteSpace($taskNameInput) -and [Environment]::UserInteractive) {
+    $taskNameInput = Read-Host "Scheduled task name [$currentTaskName]"
+}
+$taskName = Resolve-HmwzTaskName -Name $taskNameInput
 $entryPoint = Join-Path $projectDirectory "src\bot.py"
 $action = New-ScheduledTaskAction -Execute $venvPython -Argument "`"$entryPoint`"" -WorkingDirectory $projectDirectory
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
@@ -20,5 +26,6 @@ if ($null -ne $existingTask -and $existingTask.State -eq "Running") {
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Runs the HmWz Discord bot when this user logs in." -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
+Save-HmwzTaskName -Name $taskName
 Write-Host "Registered and started scheduled task '$taskName'. It will start when this user logs in." -ForegroundColor Green
 Write-Host "The task runs in this user's context so it can read the token from HKCU:\Software\HsBot."

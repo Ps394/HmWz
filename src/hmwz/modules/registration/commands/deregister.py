@@ -1,3 +1,5 @@
+"""Command for removing an in-game account registration."""
+
 from __future__ import annotations
 
 import logging
@@ -6,11 +8,11 @@ import discord
 from discord import Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.interactions import log_interaction
 
 from .autocomplete import DISPLAY_NAME_ACCOUNT_VALUE, registered_accounts
-from hmwz.modules.hs.wz.module import WzRegistrationModule
-from ..responses import send_temporary_followup
+from hmwz.modules.registration.module import RegistrationModule
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,12 @@ logger = logging.getLogger(__name__)
 @app_commands.checks.cooldown(1, 10, key=lambda interaction: interaction.user.id)
 @app_commands.autocomplete(account=registered_accounts)
 async def deregister(interaction: Interaction, account: str) -> None:
+    """Remove the invoking member's account registration from the current channel.
+
+    Args:
+        interaction: The interaction that invoked the command.
+        account: Linked in-game account or display-name registration to remove.
+    """
     await interaction.response.defer(ephemeral=True)
     account = account.strip()
     try:
@@ -50,9 +58,7 @@ async def deregister(interaction: Interaction, account: str) -> None:
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
+        module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
         channel_id = interaction.channel_id
         if channel_id is None:
             await send_temporary_followup(

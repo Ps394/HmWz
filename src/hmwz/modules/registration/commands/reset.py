@@ -1,3 +1,5 @@
+"""Reset registration data for the current channel."""
+
 import asyncio
 import logging
 
@@ -5,12 +7,11 @@ import discord
 from discord import HTTPException, Interaction, app_commands
 
 from hmwz.i18n import CommandLocalizations, t
+from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.loaders import fetch_channel, fetch_member
 from hmwz.utils.interactions import log_interaction
 
-from hmwz.modules.hs.wz.module import WzRegistrationModule
-
-from ..responses import send_temporary_followup
+from hmwz.modules.registration.module import RegistrationModule
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,6 @@ async def _purge_configured_channels(
                 error,
             )
 
-
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
 @app_commands.command(
     name="reset",
     description=app_commands.locale_str(
@@ -76,6 +75,8 @@ async def _purge_configured_channels(
         key="wz.registration.reset.description",
     ),
 )
+@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
+@app_commands.default_permissions(manage_messages=True, manage_roles=True)
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
@@ -92,6 +93,13 @@ async def _purge_configured_channels(
 async def reset(
     interaction: Interaction, ephemeral: bool = False, purge: bool = False
 ) -> None:
+    """Reset registrations configured for the current channel.
+
+    Args:
+        interaction: The interaction that invoked the command.
+        ephemeral: Whether to show the result only to the invoking user.
+        purge: Whether to also remove registration messages.
+    """
     await interaction.response.defer(ephemeral=ephemeral)
     try:
         guild = interaction.guild
@@ -112,9 +120,7 @@ async def reset(
             )
             return
 
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
+        module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
         channel_id = interaction.channel_id
         if channel_id is None:
             await send_temporary_followup(
@@ -187,15 +193,7 @@ async def reset(
             await module.export_registration_snapshot(channel_id, "sync")
 
         if purge:
-            channels_to_purge = await module.purge_channels.get(
-                guild=guild, registration_channel_id=channel_id
-            )
-            channel_ids = {
-                configured.channel_id for configured in channels_to_purge or ()
-            }
-            if registration_config.channel is not None:
-                channel_ids.add(registration_config.channel)
-            await _purge_configured_channels(guild, channel_ids)
+            await _purge_configured_channels(guild, {channel_id})
 
         await module.compose_registration_overview(force=True, channel_id=channel_id)
         timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")

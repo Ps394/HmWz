@@ -1,3 +1,5 @@
+"""About-bot application command."""
+
 from discord import Interaction
 from discord.app_commands import command, describe, locale_str
 
@@ -22,6 +24,12 @@ __all__ = ["AboutBot"]
     )
 )
 async def AboutBot(interaction: Interaction, ephemeral: bool = True):
+    """Show information about the bot.
+
+    Args:
+        interaction: The interaction that invoked the command.
+        ephemeral: Whether to show the response only to the invoking user.
+    """
     bot_name = (
         interaction.client.user.name
         if interaction.client and interaction.client.user

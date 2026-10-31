@@ -1,3 +1,5 @@
+"""Translation catalogs and helpers for commands and runtime messages."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +23,15 @@ __all__ = [
 ]
 
 def register_translations(directory: Path) -> None:
-    """Merge an extension's command and runtime catalogs into the bot catalogs."""
+    """Merge an extension's command and runtime catalogs into the bot catalogs.
+
+    Args:
+        directory: Extension directory containing ``command`` and ``runtime``
+            catalog subdirectories.
+
+    Raises:
+        ValueError: If a catalog defines a key already registered for its language.
+    """
     for category, target in (
         ("command", CommandLocalizations),
         ("runtime", RuntimeLocalizations),
@@ -41,7 +51,15 @@ def register_translations(directory: Path) -> None:
 def get_user_language(
     context: discord.Interaction | discord.Guild, default: str = "de"
 ) -> str:
-    """Resolve a language from an interaction or guild context."""
+    """Resolve a supported language from an interaction or guild context.
+
+    Args:
+        context: Interaction or guild whose locale should be used.
+        default: Fallback language when the locale is unsupported.
+
+    Returns:
+        A supported language code.
+    """
     locale = getattr(context, "locale", None)
     if not locale:
         locale = getattr(context, "guild_locale", None)
@@ -53,7 +71,16 @@ def get_user_language(
 
 
 def t(context: discord.Interaction | discord.Guild, key: str, **kwargs: object) -> str:
-    """Translate a runtime key using the supplied interaction or guild context."""
+    """Translate a runtime key using the supplied interaction or guild context.
+
+    Args:
+        context: Interaction or guild used to select a language.
+        key: Runtime translation key.
+        **kwargs: Values interpolated into the translated template.
+
+    Returns:
+        The translated and formatted text, or the key if no translation exists.
+    """
     language = get_user_language(context)
     catalog = RuntimeLocalizations.get(language, {})
     template = catalog.get(key, RuntimeLocalizations.get("de", {}).get(key, key))
@@ -102,6 +129,16 @@ class CommandTranslator(discord.app_commands.Translator):
         locale: discord.Locale,
         context: discord.app_commands.TranslationContext[Any, Any],
     ) -> str | None:
+        """Resolve command metadata in the requested locale.
+
+        Args:
+            string: Localized source string containing the translation key.
+            locale: Locale requested by Discord.
+            context: Command metadata location used to construct the catalog key.
+
+        Returns:
+            The translated string, or ``None`` if no matching entry exists.
+        """
         key = string.extras.get("key")
         key_context = self._context_prefixes.get(context.location)
         if not key or key_context is None:

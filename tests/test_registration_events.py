@@ -13,7 +13,7 @@ import pytest
 from hmwz.modules.registration.repositories import RegistrationEventChannelRepository
 from hmwz.modules.snapshots import Snapshot, SnapshotExporter
 from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
-from hmwz.modules.snapshots.registration import RegistrationSnapshotExporter
+from hmwz.modules.registration.snapshot import RegistrationSnapshotExporter
 from hmwz.modules.registration.repositories import (
     RegistrationSnapshotMessageRepository,
 )
@@ -36,6 +36,37 @@ async def test_registration_event_channel_repository_crud(tmp_path: Path) -> Non
     assert await repository.get(guild=guild) == 789
     assert await repository.remove(guild=guild)
     assert await repository.get(guild=guild) is None
+
+
+@pytest.mark.asyncio
+async def test_snapshot_channel_repository_migrates_legacy_table(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="snapshot-channel.db")
+    assert await database.execute(
+        """
+        CREATE TABLE Registration_Event_Channel (
+            Guild INTEGER PRIMARY KEY,
+            Channel INTEGER NOT NULL
+        )
+        """
+    )
+    assert await database.execute(
+        "INSERT INTO Registration_Event_Channel (Guild, Channel) VALUES (?, ?)",
+        (123, 456),
+    )
+    repository = RegistrationEventChannelRepository(database)
+
+    assert repository.table_name == "Registration_Snapshot_Channel"
+    assert await repository.migrate_schema()
+    assert await repository.get(guild=SimpleNamespace(id=123, name="guild")) == 456
+    assert (
+        await database.fetch_one(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'Registration_Event_Channel'"
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,5 @@
+"""Domain models for registration configuration and member state."""
+
 from .configuration import Configuration
 from .registration import Registration
 from .registration_member import RegistrationMember

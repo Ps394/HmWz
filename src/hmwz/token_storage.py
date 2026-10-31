@@ -1,3 +1,5 @@
+"""Load the bot token from the environment or platform-specific storage."""
+
 import logging
 import os
 import sys
@@ -6,37 +8,37 @@ logger = logging.getLogger(__name__)
 
 
 class Token:
+    """Resolve a bot token from supported local sources."""
+
     @property
     def windowsOS(self) -> str:
+        """Return the registry path containing the token."""
         return rf"Software\{self.key}"
 
     @property
     def linuxOS(self) -> str:
+        """Return the configuration-file path containing the token."""
         return os.path.expanduser(f"~/.config/{self.key.lower()}/config")
 
     def __init__(self, name: str = "WZ_BOT_TOKEN", key: str = "HsBot"):
         """
-        Initialisiert die Token-Klasse mit dem Namen des Tokens, der gesucht werden soll.
+        Configure the environment variable and storage key used for lookup.
 
-        :param name: Der Name des Tokens (z.B. "WZ_BOT_TOKEN")
-        :type name: str
-        :param key: Der Schlüssel für die Windows-Registry und den Linux-Konfigurationsordner (z.B. "HsBot")
-        :type key: str
+        Args:
+            name: Environment variable and value name for the token.
+            key: Windows registry and Linux configuration directory key.
         """
         self.name: str = name
         self.key: str = key
 
     def get_linux_token(self) -> str | None:
         """
-        Auslesen des Tokens aus der Konfigurationsdatei unter Linux/Unix
+        Read the token from the Linux configuration file.
 
-            Config-Datei-Format:
+        The file uses one ``NAME=value`` entry per line.
 
-            WZ_BOT_TOKEN=dein_token_hier
-
-        :return: Der Bot-Token oder None, wenn er nicht gefunden wurde
-        :rtype: typing.Optional[str]
-
+        Returns:
+            The configured token, or ``None`` if it is unavailable.
         """
         if os.path.exists(self.linuxOS):
             try:
@@ -52,10 +54,10 @@ class Token:
 
     def get_windows_token(self) -> str | None:
         """
-        Auslesen des Tokens aus der Windows-Registry
+        Read the token from the current user's Windows registry.
 
-        :return: Der Bot-Token oder None, wenn er nicht gefunden wurde
-        :rtype: typing.Optional[str]
+        Returns:
+            The configured token, or ``None`` if it is unavailable.
         """
         try:
             import winreg
@@ -72,19 +74,19 @@ class Token:
 
     def get_environment_token(self) -> str | None:
         """
-        Auslesen des Tokens aus der Umgebung
+        Read the token from its configured environment variable.
 
-        :return: Der Bot-Token oder None, wenn er nicht gefunden wurde
-        :rtype: typing.Optional[str]
+        Returns:
+            The environment value, or ``None`` if it is not set.
         """
         return os.getenv(self.name)
 
     def get(self) -> str | None:
         """
-        Holt den Bot-Token aus der Umgebung, der Windows-Registry oder der Linux-Konfigurationsdatei.
+        Resolve the token from the environment or platform-specific storage.
 
-        :return: Der Bot-Token oder None, wenn er nicht gefunden wurde
-        :rtype: typing.Optional[str]
+        Returns:
+            The first available token, or ``None`` if no source has one.
         """
         token = self.get_environment_token()
         if token:

@@ -1,3 +1,5 @@
+"""Autocomplete providers for registration slash commands."""
+
 from __future__ import annotations
 
 import logging
@@ -7,7 +9,7 @@ from discord import Interaction, app_commands
 
 from hmwz.i18n import t
 
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.modules.registration.module import RegistrationModule
 
 logger = logging.getLogger(__name__)
 DISPLAY_NAME_ACCOUNT_VALUE = "__discord_display_name__"
@@ -15,13 +17,13 @@ DISPLAY_NAME_ACCOUNT_VALUE = "__discord_display_name__"
 
 async def _module_for(
     interaction: Interaction,
-) -> tuple[discord.Guild, discord.Member, WzRegistrationModule] | None:
+) -> tuple[discord.Guild, discord.Member, RegistrationModule] | None:
     guild = interaction.guild
     member = interaction.user
     manager = getattr(interaction.client, "module_manager", None)
     if guild is None or not isinstance(member, discord.Member) or manager is None:
         return None
-    module: WzRegistrationModule = await manager.get_module(guild, WzRegistrationModule)
+    module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
     return guild, member, module
 
 

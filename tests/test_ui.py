@@ -9,12 +9,10 @@ import discord
 import pytest
 
 from hmwz.modules.donation.overview import DonationOverview
-from hmwz.modules.donation.repository import DonationChannel
+from hmwz.modules.donation.models import DonationChannel
+from hmwz.modules.overview import OverviewModule
 from hmwz.modules.registration.list_overview import RegistrationListOverview
-from hmwz.modules.registration.repositories import (
-    MemberRegistrationRepository,
-    RegistrationMessageRepository,
-)
+from hmwz.modules.registration.repositories import MemberRegistrationRepository
 from hmwz.ui.embeds import DEFAULT_EMBED_COLOR, create_embed
 from hmwz.ui.messages import delete_message, edit_message, send_message
 
@@ -81,32 +79,30 @@ def test_donation_overview_uses_shared_embed_theme(
 
 
 @pytest.mark.asyncio
-async def test_registration_list_sends_messages_through_ui_api(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    message = SimpleNamespace(id=10)
+async def test_registration_list_sends_messages_through_ui_api() -> None:
     channel = SimpleNamespace(id=20)
-    lists = SimpleNamespace(add=AsyncMock())
+    overview_module = SimpleNamespace(
+        publish=AsyncMock(return_value=True),
+        overviews=SimpleNamespace(get_all=AsyncMock(return_value=())),
+        delete=AsyncMock(return_value=True),
+    )
     overview = RegistrationListOverview(
         guild=cast(discord.Guild, SimpleNamespace(id=1)),
         registrations=cast(MemberRegistrationRepository, SimpleNamespace()),
-        lists=cast(RegistrationMessageRepository, lists),
+        overview_module=cast(OverviewModule, overview_module),
+        overview_id="registration-20",
         module_key="wz",
         max_players=None,
     )
-    send = AsyncMock(return_value=message)
-    monkeypatch.setattr("hmwz.modules.registration.list_overview.send_message", send)
     embed = create_embed(title="Title", description="Description")
 
-    await overview._create_message(cast(discord.TextChannel, channel), embed)
+    assert await overview.sync_messages(cast(discord.TextChannel, channel), [embed])
 
-    send.assert_awaited_once_with(channel, embed=embed)
-    lists.add.assert_awaited_once_with(
-        guild=overview.guild,
-        channel=channel.id,
-        message=message.id,
+    overview_module.publish.assert_awaited_once_with(
+        overview_id="registration-20-list-1",
+        channel_id=channel.id,
         title="Title",
-        text="Description",
+        description="Description",
     )
 
 

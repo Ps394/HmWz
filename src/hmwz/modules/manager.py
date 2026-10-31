@@ -1,3 +1,5 @@
+"""Create guild-scoped module instances and route Discord events to them."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,18 +16,27 @@ _logger = logging.getLogger(__name__)
 
 
 class Manager:
-    """Verwaltet Module pro Guild und verteilt Events guild-spezifisch."""
+    """Manage guild-scoped module instances and dispatch Discord events."""
 
     def __init__(self, client):
-        """Erstellt einen Modulmanager fuer einen Discord-Client."""
+        """Create a module manager for a Discord client.
+
+        Args:
+            client: Discord client used to create module instances.
+        """
         self.client = client
         self._modules_by_guild: dict[int, list[ModuleProtocol]] = {}
 
     async def get_modules(self, guild: discord.Guild) -> Modules:
-        """Liefert alle Modulinstanzen fuer eine Guild.
+        """Return all module instances for a guild.
 
-        Falls noch keine Instanzen existieren, werden sie aus der Registry
-        erzeugt und zwischengespeichert.
+        Instances are created from the registry and cached on first access.
+
+        Args:
+            guild: Guild whose modules should be retrieved.
+
+        Returns:
+            The guild's module instances.
         """
         if guild.id not in self._modules_by_guild:
             modules: list[ModuleProtocol] = []
@@ -40,7 +51,18 @@ class Manager:
         return self._modules_by_guild[guild.id]
 
     async def get_module(self, guild: discord.Guild, module_type: ModuleType):
-        """Liefert genau eine Modulinstanz eines bestimmten Typs."""
+        """Return the module instance matching a requested type.
+
+        Args:
+            guild: Guild whose modules should be searched.
+            module_type: Module class or protocol used to identify the instance.
+
+        Returns:
+            The matching guild-scoped module.
+
+        Raises:
+            LookupError: If no module of the requested type is registered.
+        """
         modules = await self.get_modules(guild)
         for module in modules:
             if isinstance(module, module_type):
@@ -51,12 +73,16 @@ class Manager:
         )
 
     async def startup(self) -> None:
-        """Initialisiert alle Module fuer alle verbundenen Guilds."""
+        """Initialize modules for all currently connected guilds."""
         await asyncio.gather(*(self.init_guild(guild) for guild in self.client.guilds))
         _logger.info("Module manager startup complete.")
 
     async def init_guild(self, guild: discord.Guild) -> None:
-        """Fuehrt Erst-Sync und Ensure fuer alle Module einer Guild aus."""
+        """Run startup synchronization and message restoration for a guild.
+
+        Args:
+            guild: Guild whose modules should be initialized.
+        """
         modules = await self.get_modules(guild)
         for module in modules:
             try:
@@ -69,7 +95,15 @@ class Manager:
                 )
 
     async def sync(self, guild: discord.Guild, startup: bool = False) -> bool:
-        """Synchronisiert alle Module einer Guild und fuehrt anschliessend ensure aus."""
+        """Synchronize each module for a guild and restore managed messages.
+
+        Args:
+            guild: Guild whose modules should be synchronized.
+            startup: Whether this synchronization is part of startup.
+
+        Returns:
+            Whether every module synchronized successfully.
+        """
         modules = await self.get_modules(guild)
         status = True
         for module in modules:
@@ -85,7 +119,16 @@ class Manager:
         return status
 
     async def _dispatch(self, guild: discord.Guild, method_name: str, *args) -> bool:
-        """Ruft einen benannten Event-Handler auf allen Guild-Modulen auf."""
+        """Dispatch an event handler to every module associated with a guild.
+
+        Args:
+            guild: Guild whose modules receive the event.
+            method_name: Name of the handler to invoke.
+            *args: Event arguments passed to each matching handler.
+
+        Returns:
+            Whether all invoked handlers completed successfully.
+        """
         modules = await self.get_modules(guild)
         status = True
         for module in modules:
@@ -102,24 +145,24 @@ class Manager:
         return status
 
     async def on_guild_join(self, guild: discord.Guild) -> bool:
-        """Verarbeitet Guild-Join Ereignisse fuer alle Module."""
+        """Dispatch a guild-join event to the guild's modules."""
         self._modules_by_guild.pop(guild.id, None)
         return await self._dispatch(guild, "on_guild_join", guild)
 
     async def on_guild_update(
         self, before: discord.Guild, after: discord.Guild
     ) -> bool:
-        """Leitet Guild-Updateevents an Guild-Module weiter."""
+        """Dispatch a guild-update event to the guild's modules."""
         return await self._dispatch(after, "on_guild_update", before, after)
 
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
-        """Verarbeitet Guild-Remove Ereignisse fuer alle Module."""
+        """Dispatch a guild-removal event, then discard its module instances."""
         status = await self._dispatch(guild, "on_guild_remove", guild)
         self._modules_by_guild.pop(guild.id, None)
         return status
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
-        """Leitet Kanal-Erstellungsevents an Guild-Module weiter."""
+        """Dispatch a guild-channel creation event to its modules."""
         if not channel.guild:
             return False
         return await self._dispatch(channel.guild, "on_guild_channel_create", channel)
@@ -127,14 +170,14 @@ class Manager:
     async def on_guild_channel_update(
         self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel
     ) -> bool:
-        """Leitet Kanal-Updateevents an Guild-Module weiter."""
+        """Dispatch a guild-channel update event to its modules."""
         guild = before.guild or after.guild
         if not guild:
             return False
         return await self._dispatch(guild, "on_guild_channel_update", before, after)
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
-        """Leitet Kanal-Loeschevents an Guild-Module weiter."""
+        """Dispatch a guild-channel deletion event to its modules."""
         if not channel.guild:
             return False
         return await self._dispatch(channel.guild, "on_guild_channel_delete", channel)
@@ -142,21 +185,21 @@ class Manager:
     async def on_guild_role_update(
         self, before: discord.Role, after: discord.Role
     ) -> bool:
-        """Leitet Rollen-Updateevents an Guild-Module weiter."""
+        """Dispatch a guild-role update event to its modules."""
         return await self._dispatch(before.guild, "on_guild_role_update", before, after)
 
     async def on_guild_role_delete(self, role: discord.Role) -> bool:
-        """Leitet Rollen-Loeschevents an Guild-Module weiter."""
+        """Dispatch a guild-role deletion event to its modules."""
         return await self._dispatch(role.guild, "on_guild_role_delete", role)
 
     async def on_member_update(
         self, before: discord.Member, after: discord.Member
     ) -> bool:
-        """Leitet Member-Updateevents an Guild-Module weiter."""
+        """Dispatch a member update event to its guild's modules."""
         return await self._dispatch(before.guild, "on_member_update", before, after)
 
     async def on_raw_member_remove(self, payload: events.RawMemberRemoveEvent) -> bool:
-        """Leitet Raw-Member-Removeevents an die passende Guild weiter."""
+        """Dispatch a raw member-removal event when its guild is cached."""
         guild = self.client.get_guild(payload.guild_id)
         if guild is None:
             return False
@@ -165,7 +208,7 @@ class Manager:
     async def on_raw_message_delete(
         self, payload: events.RawMessageDeleteEvent
     ) -> bool:
-        """Leitet Raw-Message-Deleteevents an die passende Guild weiter."""
+        """Dispatch a raw message-deletion event when its guild is cached."""
         guild = self.client.get_guild(payload.guild_id)
         if guild is None:
             return False
@@ -174,7 +217,7 @@ class Manager:
     async def on_raw_bulk_message_delete(
         self, payload: events.RawBulkMessageDeleteEvent
     ) -> bool:
-        """Leitet Raw-Bulk-Message-Deleteevents an die passende Guild weiter."""
+        """Dispatch a raw bulk message-deletion event when its guild is cached."""
         guild = self.client.get_guild(payload.guild_id)
         if guild is None:
             return False

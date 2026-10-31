@@ -1,3 +1,5 @@
+"""Legacy persistence for startup snapshot message IDs."""
+
 from __future__ import annotations
 
 import logging
@@ -11,7 +13,10 @@ _logger = logging.getLogger(__name__)
 
 
 class RegistrationSnapshotMessageRepository(sqlite_db.Base):
-    """Store the Discord message used for each registration startup snapshot."""
+    """Deprecated storage for startup snapshot message IDs.
+
+    Retained temporarily so existing snapshot exports can update their messages.
+    """
 
     table_name = "Registration_Snapshot_Messages"
 
@@ -21,6 +26,7 @@ class RegistrationSnapshotMessageRepository(sqlite_db.Base):
 
     @property
     def table(self) -> str:
+        """Return the SQL statement that creates the snapshot message table."""
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             Guild INTEGER NOT NULL,
@@ -38,6 +44,7 @@ class RegistrationSnapshotMessageRepository(sqlite_db.Base):
         source_channel_id: int,
         destination_channel_id: int,
     ) -> _Data | None:
+        """Retrieve the stored message ID for one source and destination pair."""
         try:
             row = await self.database.fetch_one(
                 f"""
@@ -64,6 +71,7 @@ class RegistrationSnapshotMessageRepository(sqlite_db.Base):
         destination_channel_id: int,
         message_id: int,
     ) -> bool:
+        """Store or update the message ID for one snapshot channel pair."""
         try:
             return await self.database.execute(
                 f"""
@@ -90,6 +98,7 @@ class RegistrationSnapshotMessageRepository(sqlite_db.Base):
         source_channel_id: int,
         destination_channel_id: int,
     ) -> bool:
+        """Remove the stored message ID for one snapshot channel pair."""
         try:
             return await self.database.execute(
                 f"""

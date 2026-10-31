@@ -38,39 +38,112 @@ Diese README beschreibt den aktuellen Projektstand, die Einrichtung auf einem Di
 - Deutsche und englische Command-Lokalisierungen.
 - Optionales Ressourcenmonitoring mit `psutil`; Messwerte und Schwellwertüberschreitungen erscheinen im Log.
 
+## Application-Emojis
+
+Beim Start gleicht der Bot die Bilder in `src/hmwz/emojis/assets/` mit den
+Emojis seiner Discord-Application ab. Fehlende Emojis werden automatisch
+hochgeladen; bestehende Namen werden wiederverwendet, nicht ersetzt oder
+gelöscht. Die Emojis sind serverübergreifend für den Bot verfügbar und benötigen
+keine Emoji-Slots oder Emoji-Verwaltungsrechte auf den einzelnen Servern.
+
+- Unterstützt werden PNG, JPEG und GIF mit höchstens 256 KiB pro Datei.
+- Dateinamen ohne Endung sind die Discord-Emoji-Namen: 2 bis 32 Zeichen aus
+  Buchstaben (ASCII), Zahlen und Unterstrichen. Namen müssen auch unabhängig
+  von Groß-/Kleinschreibung eindeutig sein.
+- `credit.png` und `cristall.png` werden für Credits und Kristalle in
+  Spendenbuttons, Ranglisten und Spendenhistorien verwendet.
+- Weitere gemeinsame Symbole können über gleichnamige Bilder ergänzt werden,
+  etwa `success.png`, `delete.png`, `perma_registration.png` oder
+  `normal_registration.png`. Upload-Fehler werden protokolliert; der Bot
+  verwendet dann weiterhin die jeweiligen Unicode-Symbole.
+- Nach dem Hinzufügen neuer Bilder den Bot neu starten. Zum Austausch eines
+  Bildes zuerst das betreffende Application-Emoji im Developer Portal löschen.
+
+Module können `emojis.get("credit", module.client)` aus `hmwz.emojis` für
+Button-Emoji-Eigenschaften und Nachrichtentext verwenden. `emojis.render(text,
+module.client)` ersetzt gemeinsame Unicode-Symbole durch verfügbare
+Application-Emojis. In Button-Labels und Modal-Eingabefeldern bleiben Unicode
+und Klartext erhalten, da Discord dort keine Custom-Emoji-Mentions darstellt.
+
 ## Wiederverwendbare Overviews
 
-`hmwz.modules.overview.OverviewModule` verwaltet eigenständige Embed-Nachrichten
-pro Guild. Andere Module können über `Manager.get_module` eine Übersicht
-veröffentlichen oder aktualisieren und ihre Schaltflächen über stabile IDs mit
-asynchronen Handlern verbinden:
+`hmwz.modules.overview.OverviewModule` ist ein direkt instanziierbarer Baustein,
+den ein anderes Guild-Modul besitzen und verwenden kann. Er wird nicht separat
+vom Modulmanager erzeugt. Das besitzende Modul initialisiert ihn und delegiert
+bei Bedarf Lifecycle-Ereignisse:
 
 ```python
 from hmwz.modules.overview import OverviewButton, OverviewModule
 
-overview = await self.client.module_manager.get_module(
-    self.guild, OverviewModule
-)
-overview.register_handler(
-    overview_id="my_feature",
-    button_id="action",
-    handler=self.handle_action,
-)
-await overview.publish(
-    overview_id="my_feature",
-    channel_id=channel_id,
-    title="Meine Übersicht",
-    description="Beschreibung der Übersicht",
-    buttons=(OverviewButton(button_id="action", label="Ausführen"),),
-)
+class FeatureModule:
+    def __init__(self, guild, client):
+        self.overview = OverviewModule(guild, client)
+
+    async def sync(self, startup=False):
+        return await self.overview.sync(startup=startup)
+
+    async def ensure(self):
+        self.overview.register_handler(
+            overview_id="my_feature",
+            button_id="action",
+            handler=self.handle_action,
+        )
+        return await self.overview.ensure()
+
+    async def publish_overview(self, channel_id):
+        return await self.overview.publish(
+            overview_id="my_feature",
+            channel_id=channel_id,
+            title="Meine Übersicht",
+            description="Beschreibung der Übersicht",
+            buttons=(OverviewButton(button_id="action", label="Ausführen"),),
+        )
+
+    async def on_guild_remove(self, guild):
+        return await self.overview.on_guild_remove(guild)
 ```
 
 `publish` legt die Nachricht an oder aktualisiert die vorhandene; `delete`
-entfernt Nachricht und Konfiguration. Die Übersicht und ihre Schaltflächen
-werden beim Start aus SQLite wiederhergestellt. Handler werden vom
-bereitstellenden Modul beim Initialisieren erneut registriert. Beim Verlassen
-einer Guild versucht das Overview-Modul, die verwalteten Nachrichten zu löschen
-und bereinigt anschließend deren gespeicherte Konfiguration.
+entfernt Nachricht und Konfiguration. Die `overview_id` muss pro Guild
+eindeutig sein. Die Übersicht und ihre Schaltflächen werden beim Start aus
+SQLite wiederhergestellt. Handler werden vom besitzenden Modul vor `ensure`
+erneut registriert. Da der Manager nur registrierte Module kennt, muss das
+besitzende Modul relevante Guild- und Message-Ereignisse an den Baustein
+weiterleiten; insbesondere sollte es `on_guild_remove` aufrufen, damit
+Nachrichten beim Verlassen einer Guild bereinigt werden.
+
+## Alte WZ-Datenbank übernehmen
+
+Das Skript [db-merge.py](src/hmwz/modules/registration/db-merge.py) überträgt die
+alten Tabellen `WzRegistration`, `WzRoles`, `WzRegistrations` und `WzList` innerhalb
+derselben SQLite-Datei in das aktuelle Registration-/Overview-Schema.
+Vorher den Bot stoppen und die Projektabhängigkeiten installieren. Zunächst
+eine Vorschau ausführen, danach ohne `--dry-run` übernehmen:
+
+```powershell
+.\.venv\Scripts\python.exe .\src\hmwz\modules\registration\db-merge.py .\data\data.db --dry-run
+.\.venv\Scripts\python.exe .\src\hmwz\modules\registration\db-merge.py .\data\data.db
+```
+
+- Vor Änderungen wird neben der Datenbank eine zeitgestempelte `.bak`-Datei
+  über die SQLite-Backup-API erstellt (einschließlich WAL-Daten).
+- Der Merge läuft in einer Transaktion; Fehler rollen alle Änderungen zurück.
+  Die Vorschau schreibt keine dauerhaften Änderungen und erstellt kein Backup.
+- Bestehende nicht leere Zielwerte bleiben erhalten; fehlende Werte werden
+  ergänzt. Konflikte werden als Warnungen protokolliert. Wiederholungen erzeugen
+  keine zusätzlichen Datensätze.
+- `Account` wird unverändert als `Alias` übernommen, einschließlich ALT-Anmeldungen,
+  Zeitstempeln und vorhandenen Mitglieds-/Rollennamen. Aliase erzeugen nicht
+  automatisch neue Ingame-Accountverknüpfungen.
+- Nachrichten-IDs, Titel und Texte werden als `registration-<Kanal>` bzw.
+  `registration-<Kanal>-list-<Seite>` übernommen. Alte Listenseiten werden nach
+  Nachrichten-ID sortiert; der Bot erzeugt Rollenbuttons und aktualisiert die
+  Listen beim nächsten Synchronisieren.
+- Ohne eindeutigen Anmeldungskanal bleiben Rollen/Anmeldungen unter `Channel=0`
+  erhalten und benötigen eine manuelle Zuordnung. Nicht zuordenbare Übersichten
+  werden gemeldet und bleiben in den Quelltabellen erhalten.
+- Quelltabellen und andere Module werden nicht gelöscht. Bereits vorhandene
+  Registration-Zieltabellen müssen das aktuelle kanalbezogene Schema besitzen.
 
 ## Voraussetzungen
 
@@ -148,9 +221,14 @@ Threads sowie **Manage Roles** mit passender Rollenposition.
 
 Mit `/donation setup` öffnest du im aktuellen Textkanal das interaktive
 Setup-Menü. Zuerst wählst du **Einfache Spende** oder **Rush-Spende**. Im Menü
-konfigurierst du Titel und Beschreibung, die Anzahl der letzten Einträge
-(1–20, Standard 20), ob das kanalbezogene All-Time-Spendenranking (Charts)
-angezeigt wird und optional einen JSON-Exportkanal.
+konfigurierst du Titel und Beschreibung, ob die Spendenhistorie und das
+kanalbezogene All-Time-Spendenranking (Charts) angezeigt werden, ob Spenden
+angenommen werden und optional einen JSON-Exportkanal.
+Das Setup zeigt wie das Registrationsmodul ein gegliedertes Embed mit Kanal,
+Spendenart, Titel, Beschreibung, Eingabeoptionen und Anzeige-/Exportstatus.
+All-Time-Spendencharts sind bei neuen Einrichtungen **standardmäßig deaktiviert**
+und können im Setup eingeblendet werden. Bestehende Chart-Einstellungen bleiben
+erhalten.
 Bei einfachen Spenden sind Einheit und optionale feste Betragsauswahl einstellbar;
 neu eingerichtete einfache Spenden verwenden standardmäßig vier Credit-Buttons:
 `10.000`, `100.000`, `1.000.000` und `8.000.000` Credits. Die festen Werte
@@ -158,24 +236,54 @@ können im Setup angepasst werden; ohne feste Werte bleibt die freie Eingabe
 verfügbar.
 
 Rush-Spenden verwenden fest die Optionen **1h**, **8h** und **24h** sowie
-Kristalle als Einheit. Der Start wird mit Datum und Uhrzeit in
-`Europe/Berlin` festgelegt. Ein Rush-Zeitraum dauert neun Tage; Spenden sind bis
-einschließlich acht Tage nach dem Start möglich. Die Preise richten sich nach
-der seit dem Start vergangenen Zeit: 0–72h, 72–144h und 144–192h. Die
-Kristallpreise je Option und Zone sind:
+Kristalle als Einheit. Im Setup und beim Reset wird der Start als
+**Discord-Zeitstempel** (zum Beispiel `<t:1793448000:F>`) oder
+**Unix-Zeitstempel in Sekunden** (`1793448000`) eingegeben.
+Eine Zeitzonenauswahl gibt es nicht mehr. Setup und öffentliche Spendenübersicht
+zeigen Start und beschleunigtes Ende als Discord-Zeitstempel an; Discord stellt
+diese automatisch in der lokalen Zeitzone jedes Nutzers dar. Bereits gespeicherte
+Startzeitpunkte bleiben unverändert. Ein Rush-Zeitraum dauert
+neun Tage; bisher gespendete Beschleunigungen verkürzen diesen Zeitraum.
+Eine Spende ist nur möglich, wenn danach mindestens 24 Stunden bis zum
+beschleunigten Rush-Ende verbleiben. Die Preise richten sich ausschließlich
+nach den bereits gespendeten Beschleunigungsstunden des aktuellen Zyklus,
+nicht nach der seit dem Start vergangenen Zeit.
 
-| Option | 0–72h | 72–144h | 144–192h |
+Über **Zielzeit** kannst du im Rush-Setup einen optionalen Discord-/Unix-Zeitstempel
+festlegen; ein leeres Feld entfernt das Ziel. Die Zielzeit wird in Setup und
+öffentlicher Übersicht gesondert **hervorgehoben**. Sie muss nach dem Start und
+spätestens am bereits beschleunigten Ende liegen; ihr Abstand vom ursprünglichen
+Ende muss eine ganze Anzahl Stunden sein. Dadurch ist sie mit 1h-Spenden exakt
+erreichbar. Die angezeigte Endzeit lautet immer **Start + 216h − gespendete Stunden**.
+Nur Optionen, die das Ende nicht vor die Zielzeit verschieben, bleiben zugänglich.
+Bei Gleichstand erscheint **Ziel erreicht**, und alle Beschleunigungsbuttons
+verschwinden. Auch bereits geöffnete Bestätigungen werden beim Speichern erneut
+gegen das aktuelle Ziel geprüft. Die zusätzliche 24-Stunden-Grenze gilt weiterhin;
+zu spät begonnene Spenden können das Ziel deshalb möglicherweise nicht mehr erreichen.
+
+| Option | Basispreis | Faktor 2 | Faktor 3 |
 | --- | ---: | ---: | ---: |
 | 1h | 28 | 56 | 84 |
-| 8h | 223 | 445 | 667 |
+| 8h | 223 | 446 | 669 |
 | 24h | 667 | 1.334 | 2.001 |
 
-Die Übersicht zeigt die drei Preiszonen und hebt die aktuell geltende Zone
-hervor. Überschreitet eine Option eine Zonengrenze, erhöht sich der Preis der
-aktuellen Zone nach `(1 + (x / 24)) * aktueller Preis`, wobei `x` die Stunden
-der Spende in der nächsten Zone aufgerundet auf angefangene Stunden bezeichnet;
-das Ergebnis wird kaufmännisch auf ganze Kristalle gerundet. Die
-Rush-Schaltflächen **1h**, **8h** und **24h**
+Die Berechnung folgt der Formel aus
+[`calculated-price.py`](src/hmwz/modules/donation/calculated-price.py):
+Unter 72 bereits beschleunigten Stunden gilt grundsätzlich Faktor **1**.
+Im Bereich 48–72 Stunden gilt nur dann
+`1 + (bisherige Stunden - 48) / 24`, wenn die bisherigen Stunden **plus
+gewählte Spendendauer strikt über 72 Stunden** liegen. Von 72 bis 144 Stunden
+gilt grundsätzlich Faktor **2**; im Bereich über 120 bis unter 144 Stunden
+gilt entsprechend `2 + (bisherige Stunden - 120) / 24`, wenn die Spende
+**strikt über 144 Stunden** führt. Ab 144 Stunden gilt Faktor **3**.
+Genaues Erreichen einer Grenze löst keinen Übergangszuschlag aus.
+Der Basispreis jeder Option wird mit dem Faktor multipliziert und auf ganze
+Kristalle **aufgerundet**. Nach dem Speichern werden die gespendeten Stunden
+zum Beschleunigungsstand des Zyklus addiert.
+Beispiel: Nach 50 beschleunigten Stunden kosten 24h **723**, 8h **223** und
+1h **28** Kristalle. Maßgeblich ist die implementierte Referenzformel, nicht
+die teilweise abweichenden Beispielkommentare der Referenzdatei.
+Die Rush-Schaltflächen **1h**, **8h** und **24h**
 stehen direkt bei der Übersicht und werden außerhalb des zulässigen Zeitraums
 ausgeblendet. Vor dem Speichern wird der berechnete Preis bestätigt. Die
 Übersicht zeigt die Spenden und Zeitersparnis des aktuellen Zyklus. Das
@@ -191,11 +299,28 @@ konfigurierten Kanal senden. Das kurze JSON enthält Systemname, Quellkanal,
 Zyklus sowie je Spende Mitglied, Betrag, Einheit und Zeitpunkt; Rush-Spenden
 enthalten zusätzlich die Zeitersparnis. Scheitert der Export, wird der Reset
 abgebrochen. Ohne Exportkanal wird der Reset wie gewohnt ausgeführt.
+Bei konfigurierter Zielzeit enthalten Rush-Snapshots zusätzlich `target_at` und
+die tatsächliche beschleunigte Endzeit `end_at` als ISO-Zeitstempel.
+Mit `/donation snapshot` exportierst du denselben vollständigen aktuellen
+Zyklus ohne Reset in den konfigurierten JSON-Exportkanal. Dieser Befehl
+erfordert die Berechtigung „Kanäle verwalten“ und einen eingerichteten
+Exportkanal. Manuelle Exporte haben den Typ `snapshot`, Reset-Exporte
+`cycle-reset`; Beträge werden ohne Genauigkeitsverlust als Zeichenketten
+exportiert. Beim Bot-Start oder nach einzelnen Spenden erfolgt kein Export.
+Die Implementierungen sind nach Spendenart getrennt:
+[`type/credit/`](src/hmwz/modules/donation/type/credit/) enthält Betragseingabe,
+Credit-Validierung, Werte-Setup und Reset-Bestätigung;
+[`type/rush/`](src/hmwz/modules/donation/type/rush/) enthält Preisberechnung,
+Rush-Bestätigung, Zeitvalidierung, Zeitstempel-Setup, Reset und
+Rush-Zeitdarstellung. Das gemeinsame Modul leitet die Abläufe an die
+konfigurierte Spendenart weiter. SQLite-Repository, Kanalmodelle,
+Ranking/Spendenhistorie und JSON-Snapshots bleiben gemeinsam.
 `/donation reset` startet den aktuellen Zyklus neu; bei Rush-Spenden legst du
-dabei den neuen Start fest. Frühere Einträge bleiben im All-Time-Ranking
-enthalten. `/donation remove` und
-`/donation delete` entfernen nach Bestätigung Einrichtung, Bot-Nachrichten und
-alle Spenden des aktuellen Kanals unwiderruflich. Damit das Ranking
+dabei den neuen Start und optional eine neue Zielzeit fest. Ein leeres Zielzeitfeld
+setzt den neuen Zyklus ohne Ziel auf; die alte absolute Zielzeit wird nicht
+übernommen. Frühere Einträge bleiben im All-Time-Ranking
+enthalten. `/donation remove` entfernt nach Bestätigung Einrichtung,
+Bot-Nachrichten und alle Spenden des aktuellen Kanals unwiderruflich. Damit das Ranking
 vergleichbar bleibt, kann die Einheit nach dem ersten Spenden-Eintrag nicht
 mehr geändert werden.
 
@@ -205,7 +330,7 @@ Führe Befehle aus dem Projektverzeichnis aus. Das ist wichtig, weil `configurat
 
 ### Automatische Installation
 
-Die Installationsskripte bündeln separat ausführbare Etappen: virtuelle Umgebung erstellen, Abhängigkeiten installieren, optional den Token konfigurieren und den automatischen Start einrichten. Linux installiert und startet einen systemd-Dienst; Windows registriert eine Aufgabenplaner-Aufgabe, die beim Anmelden des aktuellen Benutzers startet und sofort gestartet wird. Prüfe ein Skript, bevor du es ausführst.
+Die Installationsskripte bündeln separat ausführbare Etappen: virtuelle Umgebung erstellen, Abhängigkeiten installieren, optional den Token konfigurieren und den automatischen Start einrichten. Beim Einrichten kannst du den systemd-Dienstnamen (Linux) beziehungsweise den Aufgabennamen (Windows) festlegen. Linux installiert und startet einen systemd-Dienst; Windows registriert eine Aufgabenplaner-Aufgabe, die beim Anmelden des aktuellen Benutzers startet und sofort gestartet wird. Prüfe ein Skript, bevor du es ausführst.
 
 **Windows (PowerShell):**
 
@@ -219,7 +344,7 @@ Die Installationsskripte bündeln separat ausführbare Etappen: virtuelle Umgebu
 bash scripts/linux/install.bash
 ```
 
-Unter Windows läuft die Aufgabe im aktuellen Benutzerkontext, damit sie auf den Token in dessen Registry zugreifen kann. Sie startet beim Benutzer-Login und nicht vor der Anmeldung. Die Skripte `scripts/win/start_bot_service.ps1` und `scripts/win/stop_bot_service.ps1` starten beziehungsweise stoppen sie; Stoppen entfernt die Aufgabe nicht.
+Unter Windows läuft die Aufgabe im aktuellen Benutzerkontext, damit sie auf den Token in dessen Registry zugreifen kann. Sie startet beim Benutzer-Login und nicht vor der Anmeldung. Der konfigurierte Name wird für die Start-/Stop-Skripte gespeichert; alternativ kannst du ihn als Parameter `-TaskName` angeben. Stoppen entfernt die Aufgabe nicht.
 
 Die Etappen können einzeln ausgeführt werden:
 
@@ -230,9 +355,9 @@ Die Etappen können einzeln ausgeführt werden:
 | Token optional konfigurieren | `.\scripts\win\configure_token.ps1` | `bash scripts/linux/configure_token.bash` |
 | Automatischen Start einrichten | `.\scripts\win\install_service.ps1` | `bash scripts/linux/install_service.bash` |
 
-**Test-Branch (Linux):** Dieser Branch ist für einen Test-Bot parallel zum produktiven Bot gedacht. Die Linux-Skripte verwenden daher standardmäßig den Dienst `discordbot-test.service` und die Token-Datei `~/.config/hsbot-test/config` (wird per `EnvironmentFile` an den Dienst übergeben). Klone den Branch in ein eigenes Verzeichnis (eigene `venv`), nutze einen eigenen Bot-Token und überschreibe bei Bedarf `HMWZ_SERVICE_NAME` bzw. `HMWZ_TOKEN_FILE`. Der produktive `discordbot.service` bleibt unberührt.
+**Test-Branch (Linux):** Dieser Branch ist für einen Test-Bot parallel zum produktiven Bot gedacht. Der vorgeschlagene Dienstname ist `discordbot-test.service`; bei der Installation kannst du einen anderen wählen. Klone den Branch in ein eigenes Verzeichnis (eigene `venv`) und nutze einen eigenen Bot-Token. `HMWZ_SERVICE_NAME` kann den Dienstnamen vorgeben; `HMWZ_TOKEN_FILE` übergibt optional eine Umgebungsdatei an systemd und muss auf eine vorhandene Datei mit absolutem Pfad zeigen. Ist die Variable leer oder nicht gesetzt, wird keine `EnvironmentFile`-Zeile in die Unit geschrieben. Der konfigurierte Dienstname wird für die Start-/Stop-Skripte gespeichert. Der produktive `discordbot.service` bleibt unberührt.
 
-Die Dienstinstallation unter Linux benötigt `systemd` und `sudo`; führe das Installationsskript als Bot-Benutzer aus, nicht als root. Sie installiert `discordbot.service`, aktiviert ihn beim Systemstart und startet ihn. Verwende `scripts/linux/start_bot_service.bash` zum Neustart und `scripts/linux/stop_bot_service.bash` zum Stoppen; der Dienst bleibt für den nächsten Systemstart aktiviert.
+Die Dienstinstallation unter Linux benötigt `systemd` und `sudo`; führe das Installationsskript als Bot-Benutzer aus, nicht als root. Sie aktiviert den gewählten Dienst beim Systemstart und startet ihn. Verwende `scripts/linux/start_bot_service.bash` zum Neustart und `scripts/linux/stop_bot_service.bash` zum Stoppen; optional kannst du den Dienstnamen als erstes Argument übergeben. Der Dienst bleibt nach dem Stoppen für den nächsten Systemstart aktiviert.
 
 ### Manuelle Installation
 
@@ -349,8 +474,13 @@ src/
         models/                 Allgemeine Registrierungsmodelle
         repositories/           Gemeinsamer Registrierungsdatenzugriff
       donation/                 Spendenübersichten und persistente Spenden
+        commands/setup/config/  Setup-Befehl, Entwurf, Konfigurationsanzeige und Views
         models/                 Fachliche Spenden- und Kanalwerte
         repositories/           SQLite-Persistenz der Spenden
+        snapshot/               Aufbau und Export vollständiger Zyklus-Snapshots
+        type/
+          credit/               Credit-Abläufe, Betragseingabe, Validierung und Setup
+          rush/                 Rush-Abläufe, Preise, Zeitvalidierung, Setup und Reset
       queue/                    QS-Eruptionen und Phasenqueues
         models/                 Eruptions- und Phasenmodelle
         repositories/           SQLite-Persistenz der QS-Phasenqueues

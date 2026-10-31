@@ -1,5 +1,5 @@
 """
-Modul für Exceptions, die in HsBot verwendet werden.
+Discord exception types exposed for consistent bot error handling.
 """
 
 from discord import (

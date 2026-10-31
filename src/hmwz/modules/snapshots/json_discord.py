@@ -1,3 +1,5 @@
+"""Discord delivery backend for JSON snapshots."""
+
 from __future__ import annotations
 
 import io
@@ -8,7 +10,8 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz import sqlite_db
-from hmwz.utils.loaders import fetch_channel
+from hmwz.ui.messages import edit_message, send_message
+from hmwz.utils.loaders import fetch_channel, fetch_message
 
 from . import Snapshot
 
@@ -65,9 +68,17 @@ class DiscordJsonSnapshotExporter:
             )
             file = discord.File(io.BytesIO(data), filename=snapshot.filename)
             if existing_message is None:
-                message = await channel.send(file=file)
+                message = await send_message(channel, file=file)
             else:
-                message = await existing_message.edit(attachments=[file])
+                message = await edit_message(existing_message, attachments=[file])
+            if message is None:
+                _logger.error(
+                    "%s Failed to send snapshot %s to channel %s.",
+                    sqlite_db.Base.log_prefix(self.guild),
+                    snapshot.filename,
+                    snapshot.destination_channel_id,
+                )
+                return False
             if self._is_startup_snapshot(snapshot):
                 if self.snapshot_messages is None:
                     return True
@@ -113,7 +124,9 @@ class DiscordJsonSnapshotExporter:
         )
         if saved_message is not None:
             try:
-                return await channel.fetch_message(saved_message.message_id)
+                return await fetch_message(
+                    channel, saved_message.message_id, raise_on_error=True
+                )
             except discord.NotFound:
                 await self.snapshot_messages.remove(
                     guild=self.guild,

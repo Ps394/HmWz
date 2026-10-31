@@ -1,25 +1,27 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import discord
 
 from hmwz import events, sqlite_db
-from hmwz.modules.registration import RegistrationModuleBase
-from hmwz.modules.registry import register
+from hmwz.modules.registration import RegistrationModule
 
 from . import repositories
+
+if TYPE_CHECKING:
+    from hmwz.client import Client
 
 _logger = logging.getLogger(__name__)
 
 
-@register
-class QsRegistrationModule(RegistrationModuleBase):
+class QsRegistrationModule(RegistrationModule):
     """Guild-spezifisches QS-Registrierungsmodul."""
 
     module_key = "qs"
 
-    def __init__(self, guild: discord.Guild, client: discord.Client) -> None:
+    def __init__(self, guild: discord.Guild, client: Client) -> None:
         super().__init__(guild, client)
         database = self.database
         if not isinstance(database, sqlite_db.Database):
@@ -34,7 +36,6 @@ class QsRegistrationModule(RegistrationModuleBase):
             registration=self.registration,
             roles=self.roles,
             registrations=self.registrations,
-            lists=self.list,
         )
         self._schema_ready = False
 

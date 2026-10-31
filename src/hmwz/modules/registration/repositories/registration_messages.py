@@ -1,3 +1,5 @@
+"""Legacy persistence for registration-list messages."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +15,11 @@ _logger = logging.getLogger(__name__)
 
 
 class RegistrationMessageRepository(sqlite_db.Base):
-    """Repository fuer Registrierungslisten-Nachrichten je Guild."""
+    """Deprecated legacy storage for registration-list messages.
+
+    The standalone RegistrationModule stores these messages through OverviewModule.
+    This repository remains for compatibility with older WZ/QS module instances.
+    """
 
     table_name = "Registration_Messages"
 
@@ -22,6 +28,8 @@ class RegistrationMessageRepository(sqlite_db.Base):
 
     @dataclass(frozen=True)
     class TableCols:
+        """Column names used by the legacy message table."""
+
         Guild: str = "Guild"
         Channel: str = "Channel"
         Message: str = "Message"
@@ -30,6 +38,7 @@ class RegistrationMessageRepository(sqlite_db.Base):
 
     @property
     def table(self) -> str:
+        """Return the SQL statement that creates the legacy message table."""
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER,
@@ -54,6 +63,7 @@ class RegistrationMessageRepository(sqlite_db.Base):
     type Records = tuple[_Data, ...] | None
 
     async def get(self, *, guild: discord.Guild, channel: int | None = None) -> Records:
+        """Retrieve legacy registration messages, optionally filtered by channel."""
         try:
             query = f"""
             SELECT
@@ -77,6 +87,7 @@ class RegistrationMessageRepository(sqlite_db.Base):
             async def resolve_record(
                 rec: typing.Any,
             ) -> RegistrationMessageRepository._Data:
+                """Convert a database row to a legacy message record."""
                 return self._Data(
                     guild_id=guild.id,
                     channel=rec[self.TableCols.Channel],
@@ -102,6 +113,18 @@ class RegistrationMessageRepository(sqlite_db.Base):
         title: str,
         text: str,
     ) -> bool:
+        """Store a legacy registration message record.
+
+        Args:
+            guild: Guild that owns the message.
+            channel: Channel containing the message.
+            message: Discord message identifier.
+            title: Stored overview title.
+            text: Stored overview description.
+
+        Returns:
+            Whether the database write succeeded.
+        """
         try:
             channel_name = await self.channel_log_name(guild, channel)
             executed = await self.database.execute(
@@ -133,6 +156,20 @@ class RegistrationMessageRepository(sqlite_db.Base):
         messages: list[int] | None = None,
         channel: int | None = None,
     ) -> bool:
+        """Remove legacy message records matching the supplied filters.
+
+        Args:
+            guild: Guild whose records should be removed.
+            message: Optional message identifier to remove.
+            messages: Optional message identifiers to remove.
+            channel: Optional channel identifier to filter by.
+
+        Returns:
+            Whether the database write succeeded.
+
+        Raises:
+            ValueError: If both ``message`` and ``messages`` are provided.
+        """
         target = "lists"
         try:
             if message is not None and messages:

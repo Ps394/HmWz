@@ -9,5 +9,4 @@ Write-Host "=== HmWz installation ===" -ForegroundColor Cyan
 & (Join-Path $scriptDirectory "install_service.ps1")
 
 Write-Host ""
-Write-Host "Installation complete. The HmWzBot scheduled task is registered and running." -ForegroundColor Green
-Write-Host "Check its status with: Get-ScheduledTask -TaskName HmWzBot"
+Write-Host "Installation complete. The configured scheduled task is registered and running." -ForegroundColor Green

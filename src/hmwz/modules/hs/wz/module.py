@@ -1,25 +1,27 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import discord
 
 from hmwz import events, sqlite_db
-from ...registry import register
 from ..account.repositories import MemberGameAccountRepository
-from hmwz.modules.registration import RegistrationModuleBase
+from hmwz.modules.registration import RegistrationModule
 from . import repositories
+
+if TYPE_CHECKING:
+    from hmwz.client import Client
 
 _logger = logging.getLogger(__name__)
 
 
-@register
-class WzRegistrationModule(RegistrationModuleBase):
+class WzRegistrationModule(RegistrationModule):
     """Guild-spezifisches WZ-Registrierungsmodul."""
 
     module_key = "wz"
 
-    def __init__(self, guild: discord.Guild, client: discord.Client) -> None:
+    def __init__(self, guild: discord.Guild, client: Client) -> None:
         """Initialisiert Repositories und Laufzeitzustand fuer die Guild."""
         super().__init__(guild, client)
         database = self.database
@@ -43,7 +45,6 @@ class WzRegistrationModule(RegistrationModuleBase):
             registration=self.registration,
             roles=self.roles,
             registrations=self.registrations,
-            lists=self.list,
         )
         self.purge_channels: repositories.PurgeChannelRepository = (
             repositories.PurgeChannelRepository(self._database)

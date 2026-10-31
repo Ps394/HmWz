@@ -9,31 +9,34 @@ import discord
 import pytest
 
 from hmwz.modules.donation.module import DonationModule
-from hmwz.modules.donation.repository import DonationChannel, DonationType
-from hmwz.modules.donation.rush_pricing import (
+from hmwz.modules.donation.models import DonationChannel, DonationType
+from hmwz.modules.donation.type.rush.pricing import (
     RUSH_PERIOD_DURATION,
     RUSH_DONATION_CUTOFF,
     available_rush_durations,
     is_rush_donation_open,
     rush_donation_cost,
     rush_donation_prices,
+    rush_end_at,
 )
-from hmwz.modules.donation.validation import parse_rush_start
-from hmwz.modules.donation.validation import normalize_donation_timezone
+from hmwz.modules.donation.type.rush.validation import (
+    parse_rush_start,
+    normalize_donation_timezone,
+)
 
 
-def test_rush_cost_prorates_a_donation_across_price_zones() -> None:
+def test_rush_cost_ignores_elapsed_wall_clock_time() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     now = start + timedelta(hours=60)
 
     assert rush_donation_cost(started_at=start, now=now, duration_hours=24) == Decimal(
-        1001
+        667
     )
     assert rush_donation_cost(
         started_at=start,
         now=start + timedelta(hours=68),
         duration_hours=8,
-    ) == Decimal(260)
+    ) == Decimal(223)
 
 
 def test_rush_cost_uses_active_zone_after_the_second_boundary() -> None:
@@ -43,22 +46,24 @@ def test_rush_cost_uses_active_zone_after_the_second_boundary() -> None:
         started_at=start,
         now=start + timedelta(hours=144),
         duration_hours=8,
-    ) == Decimal(667)
+        accelerated_hours=144,
+    ) == Decimal(669)
     assert rush_donation_cost(
         started_at=start,
         now=start + timedelta(hours=192),
         duration_hours=1,
+        accelerated_hours=144,
     ) == Decimal(84)
 
 
-def test_rush_cost_rounds_partial_crossing_hours_up() -> None:
+def test_rush_cost_does_not_round_elapsed_hours_into_the_price() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
     assert rush_donation_cost(
         started_at=start,
         now=start + timedelta(hours=71, minutes=30),
         duration_hours=8,
-    ) == Decimal(297)
+    ) == Decimal(223)
 
 
 def test_previous_donations_advance_rush_price_progression() -> None:
@@ -70,16 +75,16 @@ def test_previous_donations_advance_rush_price_progression() -> None:
         now=now,
         duration_hours=24,
         accelerated_hours=0,
-    ) == Decimal(1001)
+    ) == Decimal(667)
     assert rush_donation_cost(
         started_at=start,
         now=now,
         duration_hours=24,
-        accelerated_hours=12,
+        accelerated_hours=72,
     ) == Decimal(1334)
 
 
-def test_rush_prices_derive_shorter_durations_from_24_hour_base_price() -> None:
+def test_rush_prices_use_independent_option_base_prices() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
     assert rush_donation_prices(
@@ -93,13 +98,93 @@ def test_rush_prices_derive_shorter_durations_from_24_hour_base_price() -> None:
     }
     assert rush_donation_prices(
         started_at=start,
-        now=start + timedelta(hours=72),
-        accelerated_hours=0,
+        now=start,
+        accelerated_hours=72,
     ) == {
         24: Decimal(1334),
-        8: Decimal(445),
+        8: Decimal(446),
         1: Decimal(56),
     }
+
+
+@pytest.mark.parametrize(
+    ("accelerated_hours", "prices"),
+    [
+        (0, (667, 223, 28)),
+        (47, (667, 223, 28)),
+        (48, (667, 223, 28)),
+        (50, (723, 223, 28)),
+        (58, (945, 223, 28)),
+        (64, (1112, 223, 28)),
+        (65, (1140, 381, 28)),
+        (71, (1307, 437, 28)),
+        (72, (1334, 446, 56)),
+        (119, (1334, 446, 56)),
+        (120, (1334, 446, 56)),
+        (122, (1390, 446, 56)),
+        (136, (1779, 446, 56)),
+        (137, (1807, 604, 56)),
+        (143, (1974, 660, 56)),
+        (144, (2001, 669, 84)),
+        (192, (2001, 669, 84)),
+    ],
+)
+def test_rush_cost_matches_reference_formula_at_ramps_and_boundaries(
+    accelerated_hours: int, prices: tuple[int, int, int]
+) -> None:
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert tuple(
+        rush_donation_cost(
+            started_at=start,
+            now=start,
+            duration_hours=duration,
+            accelerated_hours=accelerated_hours,
+        )
+        for duration in (24, 8, 1)
+    ) == tuple(Decimal(price) for price in prices)
+
+
+@pytest.mark.parametrize("hours", range(217))
+def test_every_integer_hour_matches_exact_reference_arithmetic(hours: int) -> None:
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for duration, base in ((24, 667), (8, 223), (1, 28)):
+        if hours >= 144:
+            numerator = 72
+        elif hours >= 72:
+            numerator = 48
+            if hours > 120 and hours + duration > 144:
+                numerator += hours - 120
+        else:
+            numerator = 24
+            if hours >= 48 and hours + duration > 72:
+                numerator += hours - 48
+        expected = (base * numerator + 23) // 24
+        assert rush_donation_cost(
+            started_at=start,
+            now=start,
+            duration_hours=duration,
+            accelerated_hours=hours,
+        ) == Decimal(expected)
+
+
+@pytest.mark.parametrize(
+    ("duration", "hours", "naive", "before_start"),
+    [
+        (2, 0, False, False),
+        (24, -1, False, False),
+        (24, 0, True, False),
+        (24, 0, False, True),
+    ],
+)
+def test_rush_cost_rejects_invalid_inputs(
+    duration: int, hours: int, naive: bool, before_start: bool
+) -> None:
+    start = datetime(2026, 1, 1, tzinfo=None if naive else timezone.utc)
+    now = start - timedelta(seconds=1) if before_start else start
+    with pytest.raises(ValueError):
+        rush_donation_cost(
+            started_at=start, now=now, duration_hours=duration, accelerated_hours=hours
+        )
 
 
 def test_rush_stop_is_exactly_nine_days_after_start() -> None:
@@ -205,9 +290,10 @@ def test_parse_rush_start_rejects_daylight_saving_gaps_and_ambiguities(
 
 
 @pytest.mark.asyncio
-async def test_confirmed_rush_donation_records_the_quoted_price_in_current_cycle() -> (
-    None
-):
+@pytest.mark.parametrize("target_remaining", [None, 24, 1, 0])
+async def test_confirmed_rush_donation_records_the_quoted_price_in_current_cycle(
+    target_remaining: int | None,
+) -> None:
     now = datetime.now(timezone.utc)
     start = now - timedelta(hours=60)
     guild = cast(discord.Guild, SimpleNamespace(id=123))
@@ -230,6 +316,11 @@ async def test_confirmed_rush_donation_records_the_quoted_price_in_current_cycle
         goal_hours=216,
         rush_start_at=start,
         current_cycle=2,
+        target_at=(
+            rush_end_at(start, target_remaining)
+            if target_remaining is not None
+            else None
+        ),
     )
     repository = SimpleNamespace(
         get_channel=AsyncMock(return_value=configuration),
@@ -261,7 +352,11 @@ async def test_confirmed_rush_donation_records_the_quoted_price_in_current_cycle
         2,
         start,
         quote_time,
-    ) == (True, True)
+    ) == ((True, True) if target_remaining in (None, 24) else (False, False))
+    if target_remaining in (1, 0):
+        repository.add_donation.assert_not_awaited()
+        module.compose_overview.assert_not_awaited()
+        return
     repository.add_donation.assert_awaited_once_with(
         guild=guild,
         channel_id=789,

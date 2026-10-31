@@ -1,3 +1,5 @@
+"""Persistence for roles available in registration channels."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +14,8 @@ _logger = logging.getLogger(__name__)
 
 
 class RegistrationRoleRepository(sqlite_db.Base):
+    """Store registration role settings for guild channels."""
+
     table_name = "Registration_Roles"
     legacy_table_name = "Roles"
     settings_table_name = "Registration_Settings"
@@ -21,6 +25,8 @@ class RegistrationRoleRepository(sqlite_db.Base):
 
     @dataclass(frozen=True)
     class TableCols:
+        """Column names used by the registration role table."""
+
         Guild: str = "Guild"
         Channel: str = "Channel"
         Role: str = "Role"
@@ -30,7 +36,7 @@ class RegistrationRoleRepository(sqlite_db.Base):
     @property
     def table(self) -> str:
         """
-        Gibt die SQL-Anweisung zurück, um die Tabelle für WZ-Registrierungsrollen zu erstellen.
+        Return the SQL statement that creates the registration role table.
         """
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name}(
@@ -143,21 +149,10 @@ class RegistrationRoleRepository(sqlite_db.Base):
         channel_id: int = 0
 
     type Record = _Data | None
-    """
-    Repräsentiert eine WZ-Registrierungsrolle in einem Guild, einschließlich der Rolle selbst, ob sie permanent ist und welche Punktzahl sie hat.
-
-    :param guild: Das Guild-Objekt, zu dem die Rolle gehört.
-    :type guild: discord.Guild
-    :param role: Die ID der Discord-Rolle, die die Rolle repräsentiert.
-    :type role: int
-    :param permanent: Gibt an, ob die Rolle permanent ist.
-    :type permanent: bool
-    :param score: Die Punktzahl der Rolle.
-    :type score: int
-    """
+    """A registration role record, or ``None`` when no record exists."""
 
     type Records = tuple[_Data, ...] | None
-    """Repräsentiert eine Sammlung von WZ-Registrierungsrollen, die in einem Guild registriert sind. Kann None sein, wenn keine Rollen gefunden wurden."""
+    """A tuple of registration role records, or ``None`` when none are found."""
 
     async def count(
         self,
@@ -168,17 +163,18 @@ class RegistrationRoleRepository(sqlite_db.Base):
         channel_id: int | None = None,
     ) -> int:
         """
-        Zählt die Anzahl der WZ-Registrierungsrollen in einem Guild, optional gefiltert nach Permanenz oder einer Liste von Rollen-IDs.
+        Count registration roles matching the supplied filters.
 
-        :param guild: Das Guild-Objekt, für das die Rollen gezählt werden sollen.
-        :type guild: Guild
-        :param permanent: Optionaler Filter, um nur permanente oder nicht-permanente Rollen zu zählen.
-        :type permanent: Optional[bool]
-        :param roles: Optionale Liste von Rollen-IDs, um nur bestimmte Rollen zu zählen.
-        :type roles: Optional[Ids]
-        :return: Die Anzahl der WZ-Registrierungsrollen, die den angegebenen Kriterien entsprechen.
-        :rtype: int
-        :raises ValueError: Wenn sowohl permanent als auch roles Filter gleichzeitig angegeben werden.
+        Args:
+            guild: Guild whose roles should be counted.
+            permanent: Optional permanence filter.
+            roles: Optional role identifiers to count.
+            channel_id: Optional channel identifier to filter by.
+
+        Returns:
+            Number of matching roles, or zero if the query fails.
+
+        Conflicting ``permanent`` and ``roles`` filters are rejected and logged.
         """
         try:
             if permanent is not None and roles:
@@ -215,15 +211,15 @@ class RegistrationRoleRepository(sqlite_db.Base):
         channel_id: int | None = None,
     ) -> Records:
         """
-        Holt alle WZ-Registrierungsrollen für ein Guild, optional gefiltert nach Permanenz.
-        Bereinigt automatisch verwaiste Rollen, die nicht mehr existieren.
+        Retrieve registration roles matching the supplied filters.
 
-        :param guild: Das Guild-Objekt, für das die Rollen abgerufen werden sollen.
-        :type guild: Guild
-        :param permanent: Optionaler Filter, um nur permanente oder nicht-permanente Rollen abzurufen.
-        :type permanent: Optional[bool]
-        :return: Eine Sammlung von WZ-Registrierungsrollen oder None, wenn keine Rollen gefunden wurden.
-        :rtype: Records
+        Args:
+            guild: Guild whose roles should be retrieved.
+            permanent: Optional permanence filter.
+            channel_id: Optional channel identifier to filter by.
+
+        Returns:
+            Matching role records, or ``None`` if none are found or the query fails.
         """
         try:
             query = f"SELECT {self.TableCols.Channel}, {self.TableCols.Role}, {self.TableCols.Permanent}, {self.TableCols.Score} FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
@@ -242,7 +238,7 @@ class RegistrationRoleRepository(sqlite_db.Base):
 
             async def resolve_records(rec):
                 """
-                Hilfsfunktion, um die Rolle für einen Datensatz aufzulösen und gleichzeitig Fehler zu protokollieren.
+                Convert a database row to a registration role record.
                 """
                 return self._Data(
                     guild_id=guild.id,
@@ -272,19 +268,17 @@ class RegistrationRoleRepository(sqlite_db.Base):
         channel_id: int = 0,
     ) -> bool:
         """
-        Fügt eine neue WZ-Registrierungsrolle zu einem Guild hinzu oder aktualisiert sie, wenn sie bereits existiert.
+        Insert or update a registration role for a guild channel.
 
-        :param guild: Das Guild-Objekt, zu dem die Rolle hinzugefügt werden soll.
-        :type guild: discord.Guild
-        :param role: Die ID der Rolle, die als WZ-Registrierungsrolle hinzu
-        gefügt werden soll.
-        :type role: int
-        :param permanent: Gibt an, ob die Rolle dauerhaft sein soll.
-        :type permanent: typing.Optional[bool]
-        :param score: Der Score-Wert der Rolle.
-        :type score: typing.Optional[int]
-        :return: True, wenn die Rolle erfolgreich hinzugefügt oder aktualisiert wurde, False bei einem Fehler.
-        :rtype: bool
+        Args:
+            guild: Guild that owns the registration role.
+            role: Discord role identifier.
+            permanent: Whether the role is permanent.
+            score: Score associated with the role.
+            channel_id: Registration channel identifier.
+
+        Returns:
+            Whether the database write succeeded.
         """
         role_name = f"unknown role ({role})"
         try:
@@ -340,16 +334,18 @@ class RegistrationRoleRepository(sqlite_db.Base):
         channel_id: int | None = None,
     ) -> bool:
         """
-        Entfernt eine oder mehrere WZ-Registrierungsrollen aus einem Guild.
+        Remove registration roles matching the supplied filters.
 
-        :param guild: Das Guild-Objekt, aus dem die Rolle(n) entfernt werden sollen.
-        :type guild: discord.Guild
-        :param role: Die ID der Rolle, die entfernt werden soll.
-        :type role: typing.Optional[int]
-        :param roles: Eine Sequenz von Rollen-IDs, die entfernt werden sollen.
-        :type roles: typing.Optional[typing.List[int]]
-        :return: True, wenn die Rolle(n) erfolgreich entfernt wurden, False bei einem Fehler.
-        :rtype: bool
+        Args:
+            guild: Guild whose roles should be removed.
+            role: Optional role identifier to remove.
+            roles: Optional role identifiers to remove.
+            channel_id: Optional channel identifier to filter by.
+
+        Returns:
+            Whether the database operation succeeded.
+
+        Conflicting ``role`` and ``roles`` filters are rejected and logged.
         """
         target = "roles"
         try:

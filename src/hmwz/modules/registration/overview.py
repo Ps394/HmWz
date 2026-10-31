@@ -1,3 +1,5 @@
+"""Compose registration overviews and member-list messages."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,9 +12,8 @@ import discord
 
 from hmwz.configuration import registration_defaults
 from hmwz.i18n import t
-from hmwz.ui.embeds import create_embed
-from hmwz.ui.messages import edit_message, send_message
-from hmwz.utils.loaders import fetch_channel, fetch_message
+from hmwz.modules.overview import Overview, OverviewButton, OverviewModule
+from hmwz.utils.loaders import fetch_channel
 
 from . import models
 from .list_overview import RegistrationListOverview
@@ -22,24 +23,6 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 RegistrationHandler = Callable[[discord.Interaction, discord.Role], Awaitable[None]]
-
-
-class RegistrationButton(discord.ui.Button):
-    """A button that delegates its registration action to the module."""
-
-    def __init__(
-        self,
-        role: discord.Role,
-        handler: RegistrationHandler,
-        *,
-        row: int,
-    ) -> None:
-        super().__init__(label=role.name, style=discord.ButtonStyle.primary, row=row)
-        self.role = role
-        self._handler = handler
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self._handler(interaction, self.role)
 
 
 class RegistrationOverview:
@@ -52,8 +35,8 @@ class RegistrationOverview:
         registration: repositories.RegistrationSettingsRepository,
         roles: repositories.RegistrationRoleRepository,
         registrations: repositories.MemberRegistrationRepository,
-        lists: repositories.RegistrationMessageRepository,
         registration_handler: RegistrationHandler,
+        overview_module: OverviewModule,
         channel_id: int,
         module_key: str = "registration",
         max_players: int | None = None,
@@ -66,17 +49,17 @@ class RegistrationOverview:
         self.registration = registration
         self.roles = roles
         self.registrations = registrations
-        self.lists = lists
         self.registration_handler = registration_handler
+        self.overview_module = overview_module
+        self.overview_id = f"{module_key}-{channel_id}"
         self._compose_lock = asyncio.Lock()
         self._last_compose_at = 0.0
         self._compose_min_interval_seconds = 1.5
-        self._overview_message: discord.Message | None = None
-        self._overview_signature: tuple[object, ...] | None = None
         self._list_overview = RegistrationListOverview(
             guild=guild,
             registrations=registrations,
-            lists=lists,
+            overview_module=overview_module,
+            overview_id=self.overview_id,
             module_key=module_key,
             max_players=max_players,
         )
@@ -84,31 +67,6 @@ class RegistrationOverview:
     def forget_message(self, message_id: int) -> None:
         """Drop cached message state after Discord reports its deletion."""
         self._list_overview.forget_message(message_id)
-        if (
-            self._overview_message is not None
-            and self._overview_message.id == message_id
-        ):
-            self._overview_message = None
-            self._overview_signature = None
-
-    @property
-    def _client_color(self) -> discord.Color:
-        member = (
-            self.guild.get_member(self.client.user.id)
-            if self.client.user is not None
-            else None
-        )
-        if member and member.roles:
-            return max(member.roles, key=lambda role: role.position).color
-        return discord.Color.blurple()
-
-    @property
-    def _client_avatar(self) -> discord.Asset | None:
-        guild_icon = self.guild.icon
-        if isinstance(guild_icon, discord.Asset):
-            return guild_icon
-        user_avatar = self.client.user.avatar if self.client.user is not None else None
-        return user_avatar if isinstance(user_avatar, discord.Asset) else None
 
     def _translate(self, key: str, **kwargs: object) -> str:
         _, suffix = key.split(".", maxsplit=1)
@@ -180,24 +138,36 @@ class RegistrationOverview:
 
         return models.Registration(guild=self.guild, registrations=members)
 
-    def _build_view(
+    def _build_buttons(
         self, roles: tuple[models.RegistrationRole, ...]
-    ) -> discord.ui.View:
-        view = discord.ui.View(timeout=None)
-        row = 0
-        for role_data in roles:
+    ) -> tuple[OverviewButton, ...]:
+        buttons: list[OverviewButton] = []
+        for row, role_data in enumerate(roles):
             role = self.guild.get_role(role_data.role_id)
             if role is None:
                 continue
-            view.add_item(
-                RegistrationButton(
-                    role,
-                    self.registration_handler,
+
+            async def handle(
+                interaction: discord.Interaction, role: discord.Role = role
+            ) -> None:
+                """Forward the selected role to the registration handler."""
+                await self.registration_handler(interaction, role)
+
+            button_id = str(role.id)
+            self.overview_module.register_handler(
+                overview_id=self.overview_id,
+                button_id=button_id,
+                handler=handle,
+            )
+            buttons.append(
+                OverviewButton(
+                    button_id=button_id,
+                    label=role.name,
+                    style=discord.ButtonStyle.primary,
                     row=min(row, 4),
                 )
             )
-            row += 1
-        return view
+        return tuple(buttons)
 
     async def _compose(self) -> bool:
         configuration = await self._load_configuration()
@@ -254,83 +224,98 @@ class RegistrationOverview:
 
         title = configuration.title or default_title
         description = configuration.description or default_description
-        embed = create_embed(
-            title=title,
-            description=description,
-            color=self._client_color,
-            client_avatar=self._client_avatar,
+        if not await self.overview_module.sync():
+            _logger.error(
+                "%s (%s) - Failed to initialize the overview service.",
+                self.guild.name,
+                self.guild.id,
+            )
+            return False
+        buttons = self._build_buttons(configuration.registration_roles)
+        existing_overview = await self.overview_module.overviews.get(
+            guild=self.guild,
+            overview_id=self.overview_id,
         )
-        view = self._build_view(configuration.registration_roles)
-        overview_signature = (
-            title,
-            description,
-            tuple(
-                (item.role.id, item.role.name, item.row)
-                for item in view.children
-                if isinstance(item, RegistrationButton)
-            ),
-        )
-
-        message = self._overview_message
-        if (
-            message is None
-            or message.id != configuration.message_id
-            or message.channel.id != channel.id
-        ):
-            message = None
-        if (
-            message is None
-            and configuration.has_message
-            and configuration.message_id is not None
-        ):
-            message = await fetch_message(channel, configuration.message_id)
-        registrations = await self._load_registrations(configuration)
-
-        if message is None:
-            message = await send_message(channel, embed=embed, view=view)
-            if message is None:
-                _logger.warning(
-                    "%s (%s) - Discord could not send the registration overview "
-                    "in #%s (%s); verify the bot's channel permissions.",
+        if existing_overview is None and configuration.message_id is not None:
+            legacy_overview = Overview(
+                guild_id=self.guild.id,
+                overview_id=self.overview_id,
+                channel_id=channel.id,
+                message_id=configuration.message_id,
+                title=title,
+                description=description,
+                buttons=buttons,
+            )
+            if not await self.overview_module.overviews.save(legacy_overview):
+                _logger.error(
+                    "%s (%s) - Failed to adopt registration overview message %s.",
                     self.guild.name,
                     self.guild.id,
-                    channel.name,
-                    channel.id,
+                    configuration.message_id,
                 )
                 return False
-            self._overview_message = message
-            self._overview_signature = overview_signature
-            action = "Created"
-        elif self._overview_signature != overview_signature:
-            updated_message = await edit_message(message, embed=embed, view=view)
-            if updated_message is None:
-                return False
-            message = updated_message
-            self._overview_message = message
-            self._overview_signature = overview_signature
-            action = "Updated"
-        else:
-            action = "Reused"
-
-        await self.registration.upsert(
-            guild=self.guild,
+        if not await self.overview_module.publish(
+            overview_id=self.overview_id,
             channel_id=channel.id,
-            message_id=message.id,
             title=title,
             description=description,
+            buttons=buttons,
+        ):
+            _logger.warning(
+                "%s (%s) - Failed to publish registration overview in #%s (%s).",
+                self.guild.name,
+                self.guild.id,
+                channel.name,
+                channel.id,
+            )
+            return False
+        overview = await self.overview_module.overviews.get(
+            guild=self.guild,
+            overview_id=self.overview_id,
         )
+        if overview is None or overview.message_id is None:
+            _logger.error(
+                "%s (%s) - Registration overview %s was published without a message ID.",
+                self.guild.name,
+                self.guild.id,
+                self.overview_id,
+            )
+            return False
+        registrations = await self._load_registrations(configuration)
+        if not await self.registration.upsert(
+            guild=self.guild,
+            channel_id=channel.id,
+            message_id=overview.message_id,
+            title=title,
+            description=description,
+        ):
+            _logger.error(
+                "%s (%s) - Failed to save registration overview message %s.",
+                self.guild.name,
+                self.guild.id,
+                overview.message_id,
+            )
+            return False
         list_embeds = await self._list_overview.create_embeds(
             registrations,
-            get_color=lambda: self._client_color,
-            get_client_avatar=lambda: self._client_avatar,
+            get_color=lambda: self.overview_module.client_color,
+            get_client_avatar=lambda: self.overview_module.client_avatar,
         )
-        await self._list_overview.sync_messages(channel, list_embeds)
+        if not await self._list_overview.sync_messages(channel, list_embeds):
+            _logger.error(
+                "%s (%s) - Failed to synchronize registration list overviews "
+                "in #%s (%s).",
+                self.guild.name,
+                self.guild.id,
+                channel.name,
+                channel.id,
+            )
+            return False
         _logger.info(
-            "%s (%s) - %s registration overview message %s in %s(%s).",
+            "%s (%s) - Synchronized registration overview message %s in %s(%s).",
             self.guild.name,
             self.guild.id,
-            action,
-            message.id,
+            overview.message_id,
             channel.name,
             channel.id,
         )
@@ -348,6 +333,14 @@ class RegistrationOverview:
         return tuple(name for name in required if not getattr(permissions, name))
 
     async def compose(self, force: bool = False) -> bool:
+        """Synchronize this channel's overview, optionally bypassing debounce.
+
+        Args:
+            force: Whether to bypass the minimum interval between updates.
+
+        Returns:
+            Whether the overview was synchronized successfully.
+        """
         now = time.monotonic()
         if (
             not force

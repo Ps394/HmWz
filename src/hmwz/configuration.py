@@ -1,7 +1,14 @@
 """
-Configurationsmodul für den Bot.
+Bot configuration loading and registration defaults.
 
-:param config: Ein Dictionary, das die Konfigurationen des Bots enthält, geladen aus der Datei "configuration.json".
+The ``config`` mapping is loaded from ``configuration.json`` and falls back
+to built-in defaults when the file is missing.
+
+Configuration keys include ``bot.prefix``, ``bot.delay_seconds``, and
+``bot.token_env``; database ``folder`` and ``filename``; and monitoring
+interval and CPU, memory, disk, and temperature thresholds. The ``hs.wz``
+settings define minimum and maximum registration roles plus overview defaults.
+WZ settings remain compatible with the legacy ``wz_registration`` key.
 """
 
 import json
@@ -12,10 +19,10 @@ _logger = logging.getLogger(__name__)
 
 def _default_config() -> dict:
     """
-    Gibt die Standardkonfigurationen zurück, die verwendet werden, wenn die Konfigurationsdatei nicht gefunden oder ungültig ist.
+    Build the default configuration used when no valid file is available.
 
-    :return: Ein Dictionary mit den Standardkonfigurationen.
-    :rtype: dict
+    Returns:
+        The default bot configuration.
     """
     return {
         "bot": {"prefix": "!", "delay_seconds": 0.1, "token_env": "WZ_BOT_TOKEN"},
@@ -45,6 +52,14 @@ def _default_config() -> dict:
 
 
 def _load_configuration(path: str = "configuration.json") -> dict:
+    """Load configuration from a JSON file, creating defaults if it is missing.
+
+    Args:
+        path: Path to the configuration file.
+
+    Returns:
+        The loaded or default configuration.
+    """
     try:
         with open(path) as f:
             return dict(json.load(f))
@@ -71,12 +86,23 @@ config: dict = _load_configuration()
 
 
 def wz_registration_config() -> dict:
-    """Return WZ settings from the new namespace or the legacy config key."""
+    """Return WZ settings from the new namespace or the legacy config key.
+
+    Returns:
+        The WZ registration settings, or an empty mapping when unavailable.
+    """
     return registration_defaults("wz")
 
 
 def registration_defaults(module_key: str) -> dict:
-    """Return per-registration-type defaults from the HS configuration."""
+    """Return defaults for a registration module.
+
+    Args:
+        module_key: Registration configuration key to retrieve.
+
+    Returns:
+        The matching settings, or an empty mapping when unavailable.
+    """
     hs_config = config.get("hs")
     if isinstance(hs_config, dict):
         registration_config = hs_config.get(module_key)
@@ -86,24 +112,3 @@ def registration_defaults(module_key: str) -> dict:
         return {}
     legacy_config = config.get("wz_registration")
     return legacy_config if isinstance(legacy_config, dict) else {}
-
-
-"""
-Konfigurationen des Bots, geladen aus der Datei "configuration.json". Zugriff auf die Konfigurationen erfolgt über dieses Dictionary.
-
-# Gruppe "bot":
-- "prefix": Das Präfix, das der Bot für Befehle verwendet (z.B. "!").
-- "delay_seconds": Die Verzögerung in Sekunden, die der Bot zwischen Befehlen einhält, um Ratenbegrenzungen zu vermeiden.
-- "token_env": Der Name der Umgebungsvariable, die den Bot-Token enthält (z.B. "WZ_BOT_TOKEN").
-# Gruppe "monitoring":
-- "interval_seconds": Das Intervall in Sekunden, in dem die Systemressourcen überwacht werden.
-- "cpu_threshold": Die CPU-Auslastungsgrenze in Prozent, bei der eine Warnung ausgegeben wird.
-- "memory_threshold": Die Speicherauslastungsgrenze in Prozent, bei der eine Warnung ausgegeben wird.
-- "disk_threshold": Die Festplattenauslastungsgrenze in Prozent, bei der eine Warnung ausgegeben wird.
-- "temperature_threshold": Die Temperaturgrenze in Grad Celsius, bei der eine Warnung ausgegeben wird.
-# Gruppe "hs.wz" (der alte Schlüssel "wz_registration" bleibt kompatibel):
-- "max_registration_roles": Die maximale Anzahl von Rollen, die für die Anmeldung verwendet werden können.
-- "min_registration_roles": Die minimale Anzahl von Rollen, die für die Anmeldung verwendet werden müssen
-- "default_title": Der Standardtitel für die Anmeldungsübersicht.
-- "default_description": Die Standardbeschreibung für die Anmeldungsübersicht.
-"""

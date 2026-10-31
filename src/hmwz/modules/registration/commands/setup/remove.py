@@ -1,3 +1,5 @@
+"""Command and confirmation view for removing a registration setup."""
+
 from __future__ import annotations
 
 import logging
@@ -6,15 +8,18 @@ import discord
 from discord import app_commands
 
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.utils.loaders import fetch_channel, fetch_member
+from hmwz.utils.loaders import fetch_channel, fetch_member, fetch_message
 from hmwz.utils.interactions import log_interaction
 from hmwz.ui.components.ephemeral_view import EphemeralView
-from hmwz.modules.hs.wz.module import WzRegistrationModule
+from hmwz.ui.messages import delete_temporary_message
+from hmwz.modules.registration.module import RegistrationModule
 
 _logger = logging.getLogger(__name__)
 
 
 class RegistrationRemoveConfirmation(EphemeralView):
+    """Confirm and perform removal of a registration configuration."""
+
     def __init__(
         self,
         *,
@@ -37,6 +42,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
                 )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Allow only the user who opened the confirmation view to interact."""
         if interaction.user.id == self.owner_id:
             return True
         await interaction.response.send_message(
@@ -54,6 +60,12 @@ class RegistrationRemoveConfirmation(EphemeralView):
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
+        """Remove the registration configuration and its associated data.
+
+        Args:
+            interaction: The confirmation interaction.
+            button: Button that triggered the callback.
+        """
         await interaction.response.defer()
         self._disable_buttons()
         try:
@@ -62,8 +74,8 @@ class RegistrationRemoveConfirmation(EphemeralView):
                 await self._finish(interaction, "error")
                 return
 
-            module: WzRegistrationModule = await manager.get_module(
-                self.guild, WzRegistrationModule
+            module: RegistrationModule = await manager.get_module(
+                self.guild, RegistrationModule
             )
             registration = await module.registration.get(
                 guild=self.guild, channel_id=self.channel_id
@@ -97,10 +109,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
                         roles_to_remove
                     )
 
-            list_messages = await module.list.get(
-                guild=self.guild, channel=self.channel_id
-            )
-            message_ids = {record.message for record in list_messages or ()}
+            message_ids: set[int] = set()
             if registration.message is not None:
                 message_ids.add(registration.message)
             operations = (
@@ -108,10 +117,6 @@ class RegistrationRemoveConfirmation(EphemeralView):
                     guild=self.guild, channel_id=self.channel_id
                 ),
                 module.roles.remove(guild=self.guild, channel_id=self.channel_id),
-                module.list.remove(guild=self.guild, channel=self.channel_id),
-                module.purge_channels.remove(
-                    guild=self.guild, registration_channel_id=self.channel_id
-                ),
                 module.registration.remove(
                     guild=self.guild, channel_id=self.channel_id
                 ),
@@ -126,8 +131,21 @@ class RegistrationRemoveConfirmation(EphemeralView):
                 message_ids, bot_id=bot_user.id if bot_user is not None else None
             )
 
-            for message_id in message_ids:
-                module._overview_for(self.channel_id).forget_message(message_id)
+            overview_id = module._overview_for(self.channel_id).overview_id
+            overview_records = await module._overview_module.overviews.get_all(
+                guild=self.guild
+            )
+            managed_overview_ids = {
+                record.overview_id
+                for record in overview_records
+                if record.overview_id == overview_id
+                or record.overview_id.startswith(f"{overview_id}-list-")
+            }
+            for managed_overview_id in managed_overview_ids:
+                if not await module._overview_module.delete(
+                    overview_id=managed_overview_id
+                ):
+                    message_removal_failed = True
 
             await self._finish(
                 interaction,
@@ -186,6 +204,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
         handled_message_ids: set[int] = set()
 
         async def delete_message(message: discord.Message) -> None:
+            """Delete a message and record whether the operation failed."""
             nonlocal failed
             handled_message_ids.add(message.id)
             try:
@@ -202,7 +221,9 @@ class RegistrationRemoveConfirmation(EphemeralView):
 
         for message_id in message_ids:
             try:
-                message = await channel.fetch_message(message_id)
+                message = await fetch_message(
+                    channel, message_id, raise_on_error=True
+                )
             except discord.NotFound:
                 handled_message_ids.add(message_id)
                 continue
@@ -242,7 +263,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
             content=t(interaction, f"wz.setup.registration.remove.{result}"),
             view=None,
         )
-        await message.delete(delay=5)
+        await delete_temporary_message(message, delay=5)
 
     @discord.ui.button(
         label="Cancel",
@@ -252,6 +273,12 @@ class RegistrationRemoveConfirmation(EphemeralView):
     async def cancel(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
+        """Cancel removal and dismiss the confirmation view.
+
+        Args:
+            interaction: The cancellation interaction.
+            button: Button that triggered the callback.
+        """
         self._disable_buttons()
         await interaction.response.edit_message(
             content=t(interaction, "wz.setup.registration.remove.cancelled"),
@@ -260,13 +287,10 @@ class RegistrationRemoveConfirmation(EphemeralView):
         )
 
 
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
-@app_commands.checks.has_permissions(
-    manage_roles=True, manage_messages=True, manage_channels=True
-)
-@app_commands.default_permissions(
-    manage_roles=True, manage_messages=True, manage_channels=True
-)
+#@app_commands.checks.has_any_role("Offiziere", "Moderator")
+
+@app_commands.checks.has_permissions(manage_messages=True, manage_roles=True)
+@app_commands.default_permissions(manage_messages=True, manage_roles=True)
 @app_commands.command(
     name="remove",
     description=app_commands.locale_str(
@@ -278,6 +302,11 @@ class RegistrationRemoveConfirmation(EphemeralView):
     ),
 )
 async def remove(interaction: discord.Interaction) -> None:
+    """Open a confirmation view to remove the current channel's registration.
+
+    Args:
+        interaction: The interaction that invoked the command.
+    """
     guild = interaction.guild
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)
@@ -290,9 +319,7 @@ async def remove(interaction: discord.Interaction) -> None:
         return
 
     try:
-        module: WzRegistrationModule = await manager.get_module(
-            guild, WzRegistrationModule
-        )
+        module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
         if await module.registration.get(guild=guild, channel_id=channel_id) is None:
             await interaction.response.send_message(
                 t(interaction, "wz.registration.error.not_configured"),

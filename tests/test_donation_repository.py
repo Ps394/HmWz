@@ -5,25 +5,26 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from zoneinfo import ZoneInfo
 
 import discord
 import pytest
 
 from hmwz.modules.donation.overview import DonationOverview
-from hmwz.modules.donation.repository import (
-    DonationRepository,
+from hmwz.modules.donation.models import (
     DonationSummary,
     DonationType,
 )
-from hmwz.modules.donation.rush_pricing import (
+from hmwz.modules.donation.repositories import DonationRepository
+from hmwz.modules.donation.type.rush.pricing import (
     RUSH_DONATION_CUTOFF,
     RUSH_PERIOD_DURATION,
     rush_donation_cost,
 )
-from hmwz.modules.donation.validation import (
+from hmwz.modules.donation.type.credit.validation import (
     parse_amount,
     parse_choices,
+)
+from hmwz.modules.donation.type.rush.validation import (
     parse_hours,
 )
 from hmwz.sqlite_db import Database
@@ -157,21 +158,20 @@ async def test_donation_types_channels_and_entries_are_persisted(
     assert exported_records == records
     assert records[0].member_id == 456
     assert records[0].member_name == "Donor One"
-    assert records[0].amount == Decimal(445)
+    assert records[0].amount == Decimal(223)
     assert records[0].unit == "crystals"
     assert records[0].time_reduction == "8h"
     summary = await donations.get_summary(guild=guild, channel_id=789)
     assert summary == DonationSummary(donation_count=2, time_reduction_hours=32)
     ranking = await donations.get_ranking(guild=guild, channel_id=789, unit="crystals")
     assert len(ranking) == 1
-    assert ranking[0].amount == Decimal(1446)
+    assert ranking[0].amount == Decimal(890)
     assert ranking[0].donation_count == 2
     assert ranking[0].time_reduction_hours == 32
     overview = DonationOverview.create_embed(
         guild,
         channel,
         rush_start_at=rush_start,
-        timezone_name=channel.timezone_name,
         accelerated_hours=summary.time_reduction_hours,
         donations_enabled=channel.donations_enabled,
     )
@@ -181,12 +181,9 @@ async def test_donation_types_channels_and_entries_are_persisted(
         "Startzeit",
         "Dauer",
         "Endzeit",
-        "Zeitzone",
         "Spendenstatus",
     ]
-    assert overview.fields[0].value == rush_start.astimezone(
-        ZoneInfo(channel.timezone_name)
-    ).strftime("%d.%m.%Y %H:%M")
+    assert overview.fields[0].value == discord.utils.format_dt(rush_start, "F")
     assert "UTC" not in overview.fields[0].value
     assert overview.fields[1].value == "9 Tage (216 Stunden)"
     expected_adjusted_end = (
@@ -194,13 +191,12 @@ async def test_donation_types_channels_and_entries_are_persisted(
         + RUSH_PERIOD_DURATION
         - timedelta(hours=summary.time_reduction_hours)
     )
-    assert overview.fields[2].value == expected_adjusted_end.astimezone(
-        ZoneInfo("America/New_York")
-    ).strftime("%d.%m.%Y %H:%M")
-    assert overview.fields[3].value == "New York (USA)"
-    assert overview.fields[4].value == "aktiviert"
+    assert overview.fields[2].value == discord.utils.format_dt(
+        expected_adjusted_end, "F"
+    )
+    assert overview.fields[3].value == "aktiviert"
     ranking_embed = DonationOverview.create_ranking_embed(guild, crystal_type, ranking)
-    assert "1.446 Kristalle" in ranking_embed.description
+    assert "890 Kristalle" in ranking_embed.description
     assert "32h eingespart" in ranking_embed.description
     history_embed = DonationOverview.create_history_embed(
         guild,
@@ -210,7 +206,7 @@ async def test_donation_types_channels_and_entries_are_persisted(
     )
     assert history_embed.title == "2 Spenden | 1d 08:00 beschleunigt"
     assert "Donor One" in history_embed.description
-    assert "445 Kristalle" in history_embed.description
+    assert "223 Kristalle" in history_embed.description
     assert not history_embed.fields
 
     assert await donations.get_donations(guild=guild, channel_id=789) == records
@@ -504,7 +500,7 @@ async def test_repository_rejects_rush_donations_after_the_cutoff(
         channel_id=789,
         member=member,
         donation_type=donation_type,
-        amount=Decimal(84),
+        amount=Decimal(28),
         time_reduction="1h",
         rush_quoted_at=quote_time,
     )
@@ -558,7 +554,7 @@ async def test_repository_allows_only_durations_that_fit_before_rush_cutoff(
         channel_id=789,
         member=member,
         donation_type=donation_type,
-        amount=Decimal(84),
+        amount=Decimal(28),
         time_reduction="1h",
         rush_quoted_at=quote_time,
     )

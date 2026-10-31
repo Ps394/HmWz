@@ -1,3 +1,5 @@
+"""Build and synchronize paginated registration-list overview messages."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -6,16 +8,16 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from hmwz import emojis
+from hmwz.emojis import emojis
 from hmwz.i18n import t
+from hmwz.modules.overview import OverviewModule
 from hmwz.ui.embeds import create_embed
-from hmwz.ui.messages import delete_message, edit_message, send_message
-from hmwz.utils.loaders import fetch_member, fetch_message
+from hmwz.utils.loaders import fetch_member
 
 from . import models
 
 if TYPE_CHECKING:
-    from . import repositories
+    from .repositories import MemberRegistrationRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,21 +33,26 @@ class RegistrationListOverview:
     def __init__(
         self,
         guild: discord.Guild,
-        registrations: repositories.MemberRegistrationRepository,
-        lists: repositories.RegistrationMessageRepository,
+        registrations: MemberRegistrationRepository,
+        overview_module: OverviewModule,
+        overview_id: str,
         module_key: str,
         max_players: int | None,
     ) -> None:
         self.guild = guild
         self.registrations = registrations
-        self.lists = lists
+        self.overview_module = overview_module
+        self.overview_id = overview_id
         self.module_key = module_key
         self.max_players = max_players
-        self._messages: dict[int, discord.Message] = {}
 
     def forget_message(self, message_id: int) -> None:
-        """Drop cached message state after Discord reports its deletion."""
-        self._messages.pop(message_id, None)
+        """Keep a compatibility hook while OverviewModule owns message state.
+
+        Args:
+            message_id: Message identifier; retained for backward compatibility.
+        """
+        del message_id
 
     async def create_embeds(
         self,
@@ -54,6 +61,16 @@ class RegistrationListOverview:
         get_color: Callable[[], discord.Color],
         get_client_avatar: Callable[[], discord.Asset | None],
     ) -> list[discord.Embed]:
+        """Create paginated embeds for the current registrations.
+
+        Args:
+            registrations: Registration records to display.
+            get_color: Callback that returns the embed color.
+            get_client_avatar: Callback that returns the embed avatar.
+
+        Returns:
+            The registration pages, or an empty list when no entries can be shown.
+        """
         if not registrations.registrations:
             return []
 
@@ -73,6 +90,7 @@ class RegistrationListOverview:
         non_permanent_count = len(entries) - permanent_count
 
         def make_embed(page: int, content: str) -> discord.Embed:
+            """Create one page with totals shared across the full registration list."""
             return self._create_embed(
                 page=page,
                 content=content,
@@ -107,15 +125,14 @@ class RegistrationListOverview:
                 )
         return entries
 
-    @staticmethod
-    def _build_rows(entries: list[_RegistrationListEntry]) -> list[str]:
+    def _build_rows(self, entries: list[_RegistrationListEntry]) -> list[str]:
         rows: list[str] = []
         last_group = ""
         for index, entry in enumerate(entries, 1):
             marker = (
-                emojis.PERMA_REGISTRATION
+                emojis.get("perma_registration", self.guild)
                 if entry.permanent
-                else emojis.NORMAL_REGISTRATION
+                else emojis.get("normal_registration", self.guild)
             )
             group = f"{entry.role_name} {marker}"
             if group != last_group:
@@ -142,9 +159,9 @@ class RegistrationListOverview:
                 page=page,
                 total=total,
                 max_players=self.max_players or total,
-                perma_emoji=emojis.PERMA_REGISTRATION,
+                perma_emoji=emojis.get("perma_registration", self.guild),
                 permanent_count=permanent_count,
-                normal_emoji=emojis.NORMAL_REGISTRATION,
+                normal_emoji=emojis.get("normal_registration", self.guild),
                 non_permanent_count=non_permanent_count,
             ),
             description=content,
@@ -179,90 +196,37 @@ class RegistrationListOverview:
         self,
         channel: discord.TextChannel,
         embeds: list[discord.Embed],
-    ) -> None:
-        existing_messages = await self._load_messages(channel)
+    ) -> bool:
+        """Publish the current pages and remove obsolete page overviews.
 
-        for index in range(max(len(existing_messages), len(embeds))):
-            has_message = index < len(existing_messages)
-            has_embed = index < len(embeds)
-            if has_message and has_embed:
-                await self._update_message(
-                    channel,
-                    existing_messages[index],
-                    embeds[index],
-                )
-            elif has_embed:
-                await self._create_message(channel, embeds[index])
-            else:
-                await self._delete_message(existing_messages[index])
+        Args:
+            channel: Channel that should contain the registration pages.
+            embeds: Pages to publish.
 
-    async def _update_message(
-        self,
-        channel: discord.TextChannel,
-        message: discord.Message,
-        embed: discord.Embed,
-    ) -> None:
-        if message.embeds and message.embeds[0].to_dict() == embed.to_dict():
-            return
-        updated_message = await edit_message(message, embed=embed)
-        if updated_message is None:
-            return
-        await self._save_message(channel, updated_message, embed)
+        Returns:
+            Whether every page was published and every obsolete page removed.
+        """
+        page_ids: set[str] = set()
+        for page, embed in enumerate(embeds, start=1):
+            overview_id = f"{self.overview_id}-list-{page}"
+            page_ids.add(overview_id)
+            if not await self.overview_module.publish(
+                overview_id=overview_id,
+                channel_id=channel.id,
+                title=embed.title or f"{self.module_key} registrations",
+                description=embed.description or "",
+            ):
+                return False
 
-    async def _create_message(
-        self,
-        channel: discord.TextChannel,
-        embed: discord.Embed,
-    ) -> None:
-        message = await send_message(channel, embed=embed)
-        if message is None:
-            return
-        await self._save_message(channel, message, embed)
-
-    async def _save_message(
-        self,
-        channel: discord.TextChannel,
-        message: discord.Message,
-        embed: discord.Embed,
-    ) -> None:
-        self._messages[message.id] = message
-        await self.lists.add(
-            guild=self.guild,
-            channel=channel.id,
-            message=message.id,
-            title=embed.title or "",
-            text=embed.description or "",
-        )
-
-    async def _delete_message(self, message: discord.Message) -> None:
-        await delete_message(message)
-        self._messages.pop(message.id, None)
-        await self.lists.remove(guild=self.guild, message=message.id)
-
-    async def _load_messages(
-        self, channel: discord.TextChannel
-    ) -> list[discord.Message]:
-        records = await self.lists.get(guild=self.guild, channel=channel.id)
-        if not records:
-            return []
-
-        messages: list[discord.Message] = []
-        stale_ids: list[int] = []
-        for record in records:
-            message = self._messages.get(record.message)
-            if message is not None and message.channel.id != channel.id:
-                message = None
-            if message is None:
-                message = await fetch_message(channel, record.message)
-            if message is None:
-                stale_ids.append(record.message)
-            else:
-                self._messages[record.message] = message
-                messages.append(message)
-
-        for stale_id in stale_ids:
-            self._messages.pop(stale_id, None)
-            await self.lists.remove(
-                guild=self.guild, message=stale_id, channel=channel.id
-            )
-        return messages
+        prefix = f"{self.overview_id}-list-"
+        existing_pages = await self.overview_module.overviews.get_all(guild=self.guild)
+        for overview in existing_pages:
+            if (
+                overview.overview_id.startswith(prefix)
+                and overview.overview_id not in page_ids
+            ):
+                if not await self.overview_module.delete(
+                    overview_id=overview.overview_id
+                ):
+                    return False
+        return True

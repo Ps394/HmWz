@@ -1,6 +1,9 @@
+"""Message cleanup application command."""
+
 from discord import Interaction, TextChannel, Thread, app_commands
 from discord.app_commands import command, describe, locale_str
 
+from hmwz.emojis import emojis
 from hmwz.i18n import CommandLocalizations, t
 
 __all__ = ["Purge"]
@@ -47,6 +50,15 @@ async def Purge(
     ignore_pinned: bool = True,
     ephemeral: bool = True,
 ):
+    """Delete eligible messages from the current text channel or thread.
+
+    Args:
+        interaction: The interaction that invoked the command.
+        limit: Maximum number of recent messages to inspect.
+        ignore_bots: Whether to preserve messages sent by bots.
+        ignore_pinned: Whether to preserve pinned messages.
+        ephemeral: Whether to show the response only to the invoking user.
+    """
     channel = interaction.channel
 
     # Purging can take longer than the 3s interaction token timeout, so defer first
@@ -72,4 +84,6 @@ async def Purge(
     if ignore_bots:
         message += t(interaction, "wz.purge.ignored_bots")
 
-    await interaction.followup.send(message, ephemeral=ephemeral)
+    await interaction.followup.send(
+        emojis.render(message, interaction), ephemeral=ephemeral
+    )

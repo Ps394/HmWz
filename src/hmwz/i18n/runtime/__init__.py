@@ -1,3 +1,5 @@
+"""Runtime message localization catalogs."""
+
 from pathlib import Path
 
 from ..loader import load_translations

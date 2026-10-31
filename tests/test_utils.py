@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import discord
 import pytest
+from aiohttp import ClientResponse
 
 from hmwz.utils.loaders import fetch_message
 from hmwz.utils.interactions import log_guild, log_interaction
@@ -27,7 +28,10 @@ def test_log_interaction_formats_context() -> None:
 @pytest.mark.asyncio
 async def test_fetch_message_returns_none_for_missing_message() -> None:
     error = discord.NotFound(
-        SimpleNamespace(status=404, reason="Not Found"),
+        cast(
+            ClientResponse,
+            SimpleNamespace(status=404, reason="Not Found"),
+        ),
         "message not found",
     )
     channel = SimpleNamespace(
@@ -40,4 +44,30 @@ async def test_fetch_message_returns_none_for_missing_message() -> None:
     result = await fetch_message(cast(discord.TextChannel, channel), 4, attempts=1)
 
     assert result is None
+    channel.fetch_message.assert_awaited_once_with(4)
+
+
+@pytest.mark.asyncio
+async def test_fetch_message_can_propagate_discord_errors() -> None:
+    error = discord.NotFound(
+        cast(
+            ClientResponse,
+            SimpleNamespace(status=404, reason="Not Found"),
+        ),
+        "message not found",
+    )
+    channel = SimpleNamespace(
+        name="channel",
+        id=3,
+        guild=SimpleNamespace(name="Guild", id=2),
+        fetch_message=AsyncMock(side_effect=error),
+    )
+
+    with pytest.raises(discord.NotFound, match="message not found"):
+        await fetch_message(
+            cast(discord.TextChannel, channel),
+            4,
+            raise_on_error=True,
+        )
+
     channel.fetch_message.assert_awaited_once_with(4)

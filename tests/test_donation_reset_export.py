@@ -10,11 +10,12 @@ import discord
 import pytest
 
 from hmwz.modules.donation.module import DonationModule
-from hmwz.modules.donation.repository import (
+from hmwz.modules.donation.models import (
     DonationChannel,
     DonationRecord,
     DonationSummary,
 )
+from hmwz.modules.donation.snapshot import DonationSnapshotExporter
 from hmwz.modules.snapshots import Snapshot
 
 
@@ -78,7 +79,11 @@ async def test_reset_exports_every_current_cycle_donation_before_advancing() -> 
     module.guild = guild
     module.donations = donations
     module._cycle_locks = {}
-    module._snapshot_exporter = SimpleNamespace(export=AsyncMock(side_effect=export))
+    module._snapshot_exporter = DonationSnapshotExporter(
+        guild=guild,
+        donations=donations,
+        exporter=SimpleNamespace(export=AsyncMock(side_effect=export)),
+    )
     module._cycle_lock = lambda channel_id: asyncio.Lock()
     module.compose_overview = AsyncMock(return_value=True)
 
@@ -156,7 +161,11 @@ async def test_reset_does_not_advance_when_cycle_export_fails() -> None:
     module = cast(DonationModule, SimpleNamespace())
     module.guild = guild
     module.donations = donations
-    module._snapshot_exporter = SimpleNamespace(export=AsyncMock(return_value=False))
+    module._snapshot_exporter = DonationSnapshotExporter(
+        guild=guild,
+        donations=donations,
+        exporter=SimpleNamespace(export=AsyncMock(return_value=False)),
+    )
     module._cycle_lock = lambda channel_id: asyncio.Lock()
     module.compose_overview = AsyncMock(return_value=True)
 

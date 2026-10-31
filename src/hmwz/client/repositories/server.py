@@ -1,3 +1,5 @@
+"""Persistence for Discord guild names."""
+
 from __future__ import annotations
 
 import logging
@@ -10,8 +12,9 @@ from hmwz import sqlite_db
 
 class ServerRepository(sqlite_db.Base):
     """
-    Repository für die Verwaltung von Servern (Guilds) in der Datenbank.
-    Diese Klasse bietet Methoden zum Hinzufügen, Entfernen und Zählen von Servern in der Datenbank.
+    Store Discord guilds in the database.
+
+    The repository supports adding, updating, and removing guild records.
     """
 
     table_name = "Servers"
@@ -22,16 +25,18 @@ class ServerRepository(sqlite_db.Base):
 
     @dataclass(frozen=True)
     class TableCols:
+        """Column names used by the server table."""
+
         Guild: str = "Guild"
         Name: str = "Name"
 
     @property
     def table(self) -> str:
         """
-        Gibt die SQL-Abfrage zurück, um die Tabelle für die Server zu erstellen. Die Tabelle enthält die Spalten "Guild" (INTEGER PRIMARY KEY) und "Name" (TEXT).
+        Return the SQL statement that creates the server table.
 
-        :return: SQL-Abfrage zum Erstellen der Tabelle.
-        :rtype: str
+        Returns:
+            The table creation statement.
         """
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
@@ -42,12 +47,13 @@ class ServerRepository(sqlite_db.Base):
 
     async def add(self, *, guild: discord.Guild) -> bool:
         """
-        Fügt einen Server (Guild) zur Datenbank hinzu oder aktualisiert den Namen, wenn der Server bereits existiert.
+        Insert a guild or update its stored name.
 
-        :param guild: Das Guild-Objekt, das hinzugefügt oder aktualisiert werden soll.
-        :type guild: discord.Guild
-        :return: True, wenn der Server erfolgreich hinzugefügt oder aktualisiert wurde, False bei einem Fehler.
-        :rtype: bool
+        Args:
+            guild: The guild to insert or update.
+
+        Returns:
+            Whether the database operation succeeded.
         """
         try:
             query = f"""
@@ -66,7 +72,11 @@ class ServerRepository(sqlite_db.Base):
             return False
 
     async def migrate_legacy_servers(self) -> bool:
-        """Copies rows from the former singular Server table, if it exists."""
+        """Copy rows from the legacy singular ``Server`` table, if it exists.
+
+        Returns:
+            Whether the migration completed successfully.
+        """
         try:
             legacy_table = await self.database.fetch_one(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -91,12 +101,13 @@ class ServerRepository(sqlite_db.Base):
 
     async def remove(self, *, guild: discord.Guild) -> bool:
         """
-        Entfernt einen Server (Guild) aus der Datenbank.
+        Remove a guild from the database.
 
-        :param guild: Das Guild-Objekt, das entfernt werden soll.
-        :type guild: discord.Guild
-        :return: True, wenn der Server erfolgreich entfernt wurde, False bei einem Fehler.
-        :rtype: bool
+        Args:
+            guild: The guild to remove.
+
+        Returns:
+            Whether the database operation succeeded.
         """
         try:
             query = f"DELETE FROM {self.table_name} WHERE {self.TableCols.Guild} = ?"
