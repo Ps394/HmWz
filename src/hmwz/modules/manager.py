@@ -214,6 +214,13 @@ class Manager:
             return False
         return await self._dispatch(guild, "on_raw_message_delete", payload)
 
+    async def on_raw_thread_delete(self, payload: events.RawThreadDeleteEvent) -> bool:
+        """Dispatch raw thread deletions to modules that own persistent threads."""
+        guild = self.client.get_guild(payload.guild_id)
+        if guild is None:
+            return False
+        return await self._dispatch(guild, "on_raw_thread_delete", payload)
+
     async def on_raw_bulk_message_delete(
         self, payload: events.RawBulkMessageDeleteEvent
     ) -> bool:

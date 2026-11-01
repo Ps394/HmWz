@@ -6,13 +6,17 @@ instance for each guild.
 
 from __future__ import annotations
 
+from typing import TypeVar
+
 from .protocols import ModuleType
 
 REGISTRY: list[ModuleType] = []
 """Globale Liste aller registrierten Modulklassen."""
 
+_ModuleClass = TypeVar("_ModuleClass", bound=ModuleType)
 
-def register(cls: ModuleType) -> ModuleType:
+
+def register(cls: _ModuleClass) -> _ModuleClass:
     """Register a module class once in the global registry.
 
     Args:

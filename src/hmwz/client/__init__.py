@@ -225,6 +225,10 @@ class Client(discord.Client):
         """
         await self.module_manager.on_member_update(before, after)
 
+    async def on_raw_thread_delete(self, payload: events.RawThreadDeleteEvent) -> None:
+        """Notify modules that a persistent thread was deleted."""
+        await self.module_manager.on_raw_thread_delete(payload)
+
     async def on_raw_message_delete(self, payload: events.RawMessageDeleteEvent):
         """
         Notify modules that a message was deleted.
