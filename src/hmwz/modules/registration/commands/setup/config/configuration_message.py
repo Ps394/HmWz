@@ -44,11 +44,9 @@ async def configuration_message(
                 role_id=role.role,
             )
         )
-        permanence = (
-            emojis.get(
-                "perma_registration" if role.permanent else "normal_registration",
-                interaction,
-            )
+        permanence = emojis.get(
+            "perma_registration" if role.permanent else "normal_registration",
+            interaction,
         )
         role_summary.append(
             t(
@@ -122,6 +120,16 @@ async def configuration_message(
     embed.add_field(
         name=t(interaction, "registration.setup.config.export_channel"),
         value=export_status,
+        inline=False,
+    )
+    embed.add_field(
+        name=t(interaction, "registration.setup.config.lock_emojis"),
+        value=t(
+            interaction,
+            "registration.setup.config.lock_emojis_enabled"
+            if settings is None or settings.show_lock_emojis
+            else "registration.setup.config.lock_emojis_disabled",
+        ),
         inline=False,
     )
     return embed

@@ -16,6 +16,7 @@ class Configuration:
     message_id: int | None
     title: str | None
     description: str | None
+    show_lock_emojis: bool = True
     registration_roles: tuple[RegistrationRole, ...] = ()
 
     @property

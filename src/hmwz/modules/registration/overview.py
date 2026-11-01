@@ -98,6 +98,7 @@ class RegistrationOverview:
                 message_id=None,
                 title=None,
                 description=None,
+                show_lock_emojis=True,
                 registration_roles=registration_roles,
             )
 
@@ -107,6 +108,7 @@ class RegistrationOverview:
             message_id=registration_record.message,
             title=registration_record.title,
             description=registration_record.description,
+            show_lock_emojis=registration_record.show_lock_emojis,
             registration_roles=registration_roles,
         )
 
@@ -302,6 +304,7 @@ class RegistrationOverview:
             registrations,
             get_color=lambda: self.overview_module.client_color,
             get_client_avatar=lambda: self.overview_module.client_avatar,
+            show_lock_emojis=configuration.show_lock_emojis,
         )
         if not await self._list_overview.sync_messages(channel, list_embeds):
             _logger.error(

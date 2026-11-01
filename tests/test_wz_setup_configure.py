@@ -62,7 +62,11 @@ async def test_registration_config_shows_json_export_channel() -> None:
         guild=guild,
         module_key="registration",
         registration=SimpleNamespace(
-            get=AsyncMock(return_value=SimpleNamespace(title="Title", description=""))
+            get=AsyncMock(
+                return_value=SimpleNamespace(
+                    title="Title", description="", show_lock_emojis=True
+                )
+            )
         ),
         roles=SimpleNamespace(get=AsyncMock(return_value=None)),
         registration_event_channel=SimpleNamespace(get=AsyncMock(return_value=30)),
@@ -83,6 +87,12 @@ async def test_registration_config_shows_json_export_channel() -> None:
     assert any(
         item.custom_id == "wz_registration_config_export_channel"
         for item in view.children
+    )
+    assert any(
+        item.custom_id == "wz_registration_config_lock_emojis" for item in view.children
+    )
+    assert any(
+        field.name == "Schlossemojis in der Übersicht" for field in message.fields
     )
     apply_button = next(
         item
@@ -111,6 +121,48 @@ async def test_registration_setup_apply_closes_the_menu() -> None:
 
     interaction.response.defer.assert_awaited_once_with()
     interaction.delete_original_response.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_registration_config_toggles_lock_emojis_and_refreshes_overview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guild = Mock(spec=discord.Guild)
+    registration = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(show_lock_emojis=True)),
+        upsert=AsyncMock(return_value=True),
+    )
+    module = SimpleNamespace(
+        guild=guild,
+        registration=registration,
+        roles=SimpleNamespace(get=AsyncMock(return_value=(object(),))),
+        compose_registration_overview=AsyncMock(return_value=True),
+    )
+    rendered = AsyncMock(return_value=discord.Embed())
+    monkeypatch.setattr(
+        "hmwz.modules.registration.commands.setup.config.configuration_message",
+        rendered,
+    )
+    interaction = SimpleNamespace(
+        locale=discord.Locale.german,
+        response=SimpleNamespace(edit_message=AsyncMock()),
+    )
+    view = RegistrationConfigView(module, channel_id=20, owner_id=1)
+    button = next(
+        item
+        for item in view.children
+        if item.custom_id == "wz_registration_config_lock_emojis"
+    )
+
+    await button.callback(interaction)
+
+    registration.upsert.assert_awaited_once_with(
+        guild=guild, channel_id=20, show_lock_emojis=False
+    )
+    module.compose_registration_overview.assert_awaited_once_with(
+        force=True, channel_id=20
+    )
+    interaction.response.edit_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -257,7 +309,11 @@ async def test_registration_export_channel_can_be_disabled() -> None:
         guild=guild,
         module_key="registration",
         registration=SimpleNamespace(
-            get=AsyncMock(return_value=SimpleNamespace(title=None, description=None))
+            get=AsyncMock(
+                return_value=SimpleNamespace(
+                    title=None, description=None, show_lock_emojis=True
+                )
+            )
         ),
         roles=SimpleNamespace(get=AsyncMock(return_value=None)),
         registration_event_channel=event_channel,
@@ -308,7 +364,11 @@ async def test_registration_export_channel_can_be_configured() -> None:
         guild=guild,
         module_key="registration",
         registration=SimpleNamespace(
-            get=AsyncMock(return_value=SimpleNamespace(title=None, description=None))
+            get=AsyncMock(
+                return_value=SimpleNamespace(
+                    title=None, description=None, show_lock_emojis=True
+                )
+            )
         ),
         roles=SimpleNamespace(get=AsyncMock(return_value=None)),
         registration_event_channel=event_channel,

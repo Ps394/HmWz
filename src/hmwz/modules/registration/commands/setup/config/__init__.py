@@ -36,6 +36,9 @@ class RegistrationConfigView(RegistrationSetupView):
         labels = {
             "wz_registration_config_title": "wz.setup.config.edit_title",
             "wz_registration_config_text": "wz.setup.config.edit_text",
+            "wz_registration_config_lock_emojis": (
+                "registration.setup.config.toggle_lock_emojis"
+            ),
             "wz_registration_config_add_role": "wz.setup.config.add_role",
             "wz_registration_config_remove_role": "registration.setup.config.remove_role",
             "wz_registration_config_export_channel": ("wz.setup.config.export_channel"),
@@ -97,6 +100,53 @@ class RegistrationConfigView(RegistrationSetupView):
                 self.owner_id,
                 settings.description if settings and settings.description else "",
             )
+        )
+
+    @discord.ui.button(
+        label="Schlossemojis umschalten",
+        style=discord.ButtonStyle.secondary,
+        custom_id="wz_registration_config_lock_emojis",
+    )
+    async def toggle_lock_emojis(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        """Toggle lock emoji visibility in the registration overview."""
+        settings = await self.module.registration.get(
+            guild=self.guild, channel_id=self.channel_id
+        )
+        show_lock_emojis = not (
+            settings.show_lock_emojis if settings is not None else True
+        )
+        if not await self.module.registration.upsert(
+            guild=self.guild,
+            channel_id=self.channel_id,
+            show_lock_emojis=show_lock_emojis,
+        ):
+            await interaction.response.send_message(
+                t(interaction, "registration.setup.config.save_error"),
+                ephemeral=True,
+                delete_after=5,
+            )
+            return
+
+        roles = await self.module.roles.get(
+            guild=self.guild, channel_id=self.channel_id
+        )
+        refresh_failed = bool(
+            roles
+        ) and not await self.module.compose_registration_overview(
+            force=True, channel_id=self.channel_id
+        )
+        await interaction.response.edit_message(
+            content=(
+                t(interaction, "registration.setup.config.lock_emojis_refresh_error")
+                if refresh_failed
+                else None
+            ),
+            embed=await configuration_message(
+                self.module, interaction, self.channel_id
+            ),
+            view=RegistrationConfigView(self.module, self.channel_id, self.owner_id),
         )
 
     @discord.ui.button(

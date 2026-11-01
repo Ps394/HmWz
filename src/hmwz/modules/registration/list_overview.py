@@ -60,6 +60,7 @@ class RegistrationListOverview:
         *,
         get_color: Callable[[], discord.Color],
         get_client_avatar: Callable[[], discord.Asset | None],
+        show_lock_emojis: bool = True,
     ) -> list[discord.Embed]:
         """Create paginated embeds for the current registrations.
 
@@ -67,6 +68,7 @@ class RegistrationListOverview:
             registrations: Registration records to display.
             get_color: Callback that returns the embed color.
             get_client_avatar: Callback that returns the embed avatar.
+            show_lock_emojis: Whether permanence emojis and counts are displayed.
 
         Returns:
             The registration pages, or an empty list when no entries can be shown.
@@ -85,7 +87,7 @@ class RegistrationListOverview:
                 entry.display_name.lower(),
             )
         )
-        rows = self._build_rows(entries)
+        rows = self._build_rows(entries, show_lock_emojis=show_lock_emojis)
         permanent_count = sum(entry.permanent for entry in entries)
         non_permanent_count = len(entries) - permanent_count
 
@@ -99,6 +101,7 @@ class RegistrationListOverview:
                 non_permanent_count=non_permanent_count,
                 get_color=get_color,
                 get_client_avatar=get_client_avatar,
+                show_lock_emojis=show_lock_emojis,
             )
 
         return self._paginate_rows(rows, make_embed)
@@ -125,16 +128,24 @@ class RegistrationListOverview:
                 )
         return entries
 
-    def _build_rows(self, entries: list[_RegistrationListEntry]) -> list[str]:
+    def _build_rows(
+        self,
+        entries: list[_RegistrationListEntry],
+        *,
+        show_lock_emojis: bool,
+    ) -> list[str]:
         rows: list[str] = []
         last_group = ""
         for index, entry in enumerate(entries, 1):
-            marker = (
-                emojis.get("perma_registration", self.guild)
-                if entry.permanent
-                else emojis.get("normal_registration", self.guild)
-            )
-            group = f"{entry.role_name} {marker}"
+            if show_lock_emojis:
+                marker = (
+                    emojis.get("perma_registration", self.guild)
+                    if entry.permanent
+                    else emojis.get("normal_registration", self.guild)
+                )
+                group = f"{entry.role_name} {marker}"
+            else:
+                group = entry.role_name
             if group != last_group:
                 rows.append(f"**{group}**")
                 last_group = group
@@ -151,18 +162,28 @@ class RegistrationListOverview:
         non_permanent_count: int,
         get_color: Callable[[], discord.Color],
         get_client_avatar: Callable[[], discord.Asset | None],
+        show_lock_emojis: bool,
     ) -> discord.Embed:
-        return create_embed(
-            title=t(
-                self.guild,
-                f"{self.module_key}.overview.list.title",
-                page=page,
-                total=total,
+        title_key = (
+            "list.title" if show_lock_emojis else "list.title_without_permanence"
+        )
+        title_args: dict[str, int | str] = {
+            "page": page,
+            "total": total,
+        }
+        if show_lock_emojis:
+            title_args.update(
                 max_players=self.max_players or total,
                 perma_emoji=emojis.get("perma_registration", self.guild),
                 permanent_count=permanent_count,
                 normal_emoji=emojis.get("normal_registration", self.guild),
                 non_permanent_count=non_permanent_count,
+            )
+        return create_embed(
+            title=t(
+                self.guild,
+                f"{self.module_key}.overview.{title_key}",
+                **title_args,
             ),
             description=content,
             color=get_color(),

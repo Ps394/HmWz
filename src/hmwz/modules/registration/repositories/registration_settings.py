@@ -30,6 +30,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         Message: str = "Message"
         Title: str = "Title"
         Description: str = "Description"
+        ShowLockEmojis: str = "ShowLockEmojis"
 
     @property
     def table(self) -> str:
@@ -41,6 +42,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             {self.TableCols.Message} INTEGER,
             {self.TableCols.Title} TEXT,
             {self.TableCols.Description} TEXT,
+            {self.TableCols.ShowLockEmojis} INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY ({self.TableCols.Guild}, {self.TableCols.Channel}),
             FOREIGN KEY ({self.TableCols.Guild}) REFERENCES Servers(Guild)
         )
@@ -49,6 +51,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
     async def migrate_schema(self) -> bool:
         """Migrate legacy registration settings to channel-scoped records."""
         if not await self._migrate_channel_key():
+            return False
+        if not await self._migrate_show_lock_emojis():
             return False
         return await self.drop_columns(("GuildName", "ChannelName"))
 
@@ -76,6 +80,12 @@ class RegistrationSettingsRepository(sqlite_db.Base):
                     await connection.commit()
                     return True
 
+                copy_columns = "Guild, Channel, Message, Title, Description"
+                copy_show_lock_emojis = (
+                    "ShowLockEmojis"
+                    if any(column["name"] == "ShowLockEmojis" for column in columns)
+                    else "1"
+                )
                 await connection.execute(
                     f'ALTER TABLE "{self.table_name}" RENAME TO "{self.table_name}_legacy"'
                 )
@@ -83,8 +93,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
                 await connection.execute(
                     f"""
                     INSERT OR IGNORE INTO "{self.table_name}"
-                        (Guild, Channel, Message, Title, Description)
-                    SELECT Guild, Channel, Message, Title, Description
+                        ({copy_columns}, ShowLockEmojis)
+                    SELECT {copy_columns}, {copy_show_lock_emojis}
                     FROM "{self.table_name}_legacy"
                     """
                 )
@@ -98,6 +108,31 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             )
             return False
 
+    async def _migrate_show_lock_emojis(self) -> bool:
+        """Add the optional lock-emoji display setting to existing tables."""
+        try:
+            async with self.database.connect() as connection:
+                cursor = await connection.execute(
+                    f'PRAGMA table_info("{self.table_name}")'
+                )
+                columns = await cursor.fetchall()
+                if any(column["name"] == "ShowLockEmojis" for column in columns):
+                    return True
+                await connection.execute(
+                    f"""
+                    ALTER TABLE "{self.table_name}"
+                    ADD COLUMN ShowLockEmojis INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+                await connection.commit()
+            return True
+        except Exception:
+            _logger.exception(
+                "%s Failed to add the lock-emoji display setting.",
+                self.log_prefix(),
+            )
+            return False
+
     @dataclass(frozen=True)
     class _Data:
         guild_id: int
@@ -105,6 +140,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         message: int | None
         title: str | None
         description: str | None
+        show_lock_emojis: bool
 
         @property
         def has_channel(self) -> bool:
@@ -137,6 +173,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             message=record["Message"],
             title=record["Title"],
             description=record["Description"],
+            show_lock_emojis=bool(record["ShowLockEmojis"]),
         )
 
     async def get_all(self, *, guild: discord.Guild) -> Records:
@@ -144,7 +181,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         try:
             rows = await self.database.fetch_all(
                 f"""
-                SELECT Channel, Message, Title, Description
+                SELECT Channel, Message, Title, Description, ShowLockEmojis
                 FROM {self.table_name}
                 WHERE Guild = ?
                 ORDER BY Channel
@@ -176,7 +213,8 @@ class RegistrationSettingsRepository(sqlite_db.Base):
                 {self.TableCols.Channel},
                 {self.TableCols.Message},
                 {self.TableCols.Title},
-                {self.TableCols.Description}
+                {self.TableCols.Description},
+                {self.TableCols.ShowLockEmojis}
             FROM
                 {self.table_name}
             WHERE
@@ -210,6 +248,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
         message_id: int | None = None,
         title: str | None = None,
         description: str | None = None,
+        show_lock_emojis: bool | None = None,
     ) -> bool:
         """Insert or update registration settings for a channel.
 
@@ -219,6 +258,7 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             message_id: Optional overview message identifier.
             title: Optional overview title.
             description: Optional overview description.
+            show_lock_emojis: Whether lock emojis should appear in registration lists.
 
         Returns:
             Whether the database write succeeded.
@@ -235,6 +275,9 @@ class RegistrationSettingsRepository(sqlite_db.Base):
             if description is not None:
                 cols.append(self.TableCols.Description)
                 vals.append(description)
+            if show_lock_emojis is not None:
+                cols.append(self.TableCols.ShowLockEmojis)
+                vals.append(show_lock_emojis)
 
             if not cols:
                 return False
