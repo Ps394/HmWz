@@ -1,4 +1,5 @@
-from .module import QsRegistrationModule  # noqa: E402
-from . import commands  # noqa: E402
+"""Independent Qs phase planning and base reporting."""
 
-__all__ = ["QsRegistrationModule", "commands"]
+from .module import QsModule
+
+__all__ = ["QsModule"]

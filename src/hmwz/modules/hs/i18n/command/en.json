@@ -1,4 +1,11 @@
 {
+  "command.description.qs.admin.remove": "Remove the Qs tool, its threads and data after confirmation",
+  "command.description.qs.admin.reset": "Clean Qs channels and select new eruption and phase timestamps",
+  "command.description.qs.admin.report": "Add a base report for a player",
+  "command.description.qs.admin.withdraw": "Retract a player's base report",
+  "group.description.qs.event.group": "Manage Qs events and phases",
+  "command.description.qs.event.setup": "Configure a Qs role, eruption start and four or five phases",
+  "command.description.qs.event.ping_command": "Ping this channel's configured Qs role",
   "group.description.account.group": "Account commands",
   "group.description.wz.group": "WZ module commands",
   "parameter.description.wz.registration.account": "In-game account name",

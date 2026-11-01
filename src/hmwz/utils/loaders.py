@@ -15,6 +15,44 @@ _DELAY = 0.1
 _logger = logging.getLogger(__name__)
 
 
+async def fetch_thread(guild: discord.Guild, thread_id: int) -> discord.Thread | None:
+    """Resolve a guild thread from cache or API without hiding access failures.
+
+    Args:
+        guild: Guild expected to own the thread.
+        thread_id: Saved thread ID.
+
+    Returns:
+        The thread, or None if Discord reports it no longer exists.
+
+    Raises:
+        RuntimeError: If the ID points to a non-thread or another guild.
+        discord.HTTPException: If Discord rejects retrieval for other reasons.
+        discord.RateLimited: If Discord's rate limit cannot be handled.
+    """
+    thread = guild.get_thread(thread_id)
+    if thread is None:
+        try:
+            channel = await guild.fetch_channel(thread_id)
+        except discord.NotFound:
+            return None
+        except (discord.HTTPException, discord.RateLimited):
+            _logger.exception(
+                "%s Failed to fetch thread %s.", log_guild(guild), thread_id
+            )
+            raise
+        if not isinstance(channel, discord.Thread):
+            _logger.error("%s ID %s is not a thread.", log_guild(guild), thread_id)
+            raise RuntimeError("Saved thread ID points to a non-thread channel.")
+        thread = channel
+    if thread.guild.id != guild.id:
+        _logger.error(
+            "%s Thread %s belongs to another guild.", log_guild(guild), thread_id
+        )
+        raise RuntimeError("Saved thread belongs to another guild.")
+    return thread
+
+
 async def fetch_channel(
     guild: discord.Guild, channel_id: int, attempts: int = 3
 ) -> discord.TextChannel | None:
@@ -202,7 +240,7 @@ async def fetch_member(
                 log_guild(guild),
                 error,
             )
-            
+
     await asyncio.sleep(_DELAY)
     return None
 

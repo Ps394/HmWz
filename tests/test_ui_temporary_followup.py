@@ -12,8 +12,38 @@ from hmwz.ui.messages import (
     edit_original_response,
     send_followup,
     send_interaction_response,
+    send_interaction_message,
     send_temporary_followup,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("acknowledged", [False, True])
+async def test_interaction_message_uses_current_response_state(
+    acknowledged: bool,
+) -> None:
+    message = SimpleNamespace()
+    interaction = cast(
+        discord.Interaction,
+        SimpleNamespace(
+            response=SimpleNamespace(
+                is_done=lambda: acknowledged, send_message=AsyncMock()
+            ),
+            original_response=AsyncMock(return_value=message),
+            followup=SimpleNamespace(send=AsyncMock(return_value=message)),
+        ),
+    )
+    assert await send_interaction_message(interaction, "Result") is message
+    if acknowledged:
+        interaction.response.send_message.assert_not_awaited()
+        interaction.followup.send.assert_awaited_once_with(
+            "Result", ephemeral=True, wait=True
+        )
+    else:
+        interaction.response.send_message.assert_awaited_once_with(
+            "Result", ephemeral=True
+        )
+        interaction.followup.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

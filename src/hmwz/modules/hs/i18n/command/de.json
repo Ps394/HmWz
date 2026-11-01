@@ -1,4 +1,11 @@
 {
+  "command.description.qs.admin.remove": "Qs-Tool mit zugehörigen Threads und Daten nach Bestätigung entfernen",
+  "command.description.qs.admin.reset": "Qs-Kanäle bereinigen und neue Eruptions- und Phasenzeitpunkte festlegen",
+  "command.description.qs.admin.report": "Basenzerstörung für einen Spieler melden",
+  "command.description.qs.admin.withdraw": "Basenmeldung eines Spielers zurücknehmen",
+  "group.description.qs.event.group": "Qs-Termine und Phasen verwalten",
+  "command.description.qs.event.setup": "Qs-Rolle, Eruptionsstart und vier bis fünf Phasen konfigurieren",
+  "command.description.qs.event.ping_command": "Die für diesen Kanal konfigurierte Qs-Rolle benachrichtigen",
   "group.description.account.group": "Account-Befehle",
   "group.description.wz.group": "WZ-Modulbefehle",
   "parameter.description.wz.registration.account": "Name des Ingame-Accounts",

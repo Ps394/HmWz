@@ -20,6 +20,14 @@ Die aktuell eingebundenen Funktionen umfassen:
 - **WZ-Verwaltung:** Eine separate WZ-Einrichtung verwaltet eigene Rollen und
   Kanäle. Bestätigte Resets können Rollen entfernen oder Nachrichten in
   ausgewählten Kanälen bereinigen.
+- **Qs-Phasen:** Pro Textkanal werden eine vorhandene Qs-Rolle, ein Datum mit
+  Zeitzone und vier oder fünf frei wählbare Startstunden von 0 bis 23 Uhr
+  konfiguriert. Jede Phase dauert ein bis drei Stunden und liegt vollständig
+  innerhalb einer Eruption mit eigenem Startzeitstempel und festen 24 Stunden
+  Dauer. Die Hauptübersicht
+  bietet An-/Abmeldung für mehrere Phasen und zeigt zerstörte Basen von insgesamt
+  40. Die Phasenthreads enthalten Anmeldungen und ein Basenformular; eine
+  separate Übersicht listet alle zurückgemeldeten Basen auf.
 - **Spendenübersichten:** Pro Kanal kann ein System für einfache Spenden oder
   Rush-Spenden mit interaktiver Eingabe, Bestätigung und Spendenhistorie
   eingerichtet werden. Für Rush-Spenden gelten die festen Optionen 1, 8 und
@@ -165,6 +173,101 @@ Moderatoren steht in der [Moderator-Anleitung](moderator-anleitung.txt).
 | `/account account-remove` | Hebt die Verknüpfung auf und entfernt die zugehörigen Anmeldungen sowie nicht mehr benötigte Rollen dieses Accounts. |
 | `/account account-list` | Zeigt die eigenen verknüpften Accounts an. |
 
+### Qs
+
+Phasenstunden werden relativ zum Eruptionsstart dem richtigen Kalendertag
+zugeordnet. Bei Start am 1. November um 22:00 liegt die 22-Uhr-Phase am
+1. November; 08:00, 12:00 und 19:00 liegen am 2. November. Eine Phase von
+22:00 bis 01:00 ist damit gültig. Das Setup zeigt für jede Phase Start- und
+Enddatum an. Das Eruptionsdatum wird aus dem Startzeitstempel abgeleitet.
+
+| Befehl | Zweck |
+| --- | --- |
+| `/qs setup` | Klar gegliederte Einstellungen im privaten Menü anzeigen: genau eine bestehende Qs-Rolle, Eruptionsstart, gemeinsames Phasendatum/Zeitzone, vier oder fünf Phasen und je Phase Startstunde (0–23) sowie Dauer (1–3 h) auswählen. Erst **Speichern** übernimmt Änderungen. |
+| `/qs remove` | Nach Bestätigung das Qs-Tool, alle angelegten Phasenthreads, Qs-Übersichten und Daten dieses Kanals löschen. Hauptkanal, ausgewählte Rolle und fremde Nachrichten bleiben bestehen. |
+| `/qs reset` | Zuerst neue Eruptions-/Phasenzeitpunkte im Menü festlegen, anschließend die Bereinigung bestätigen: alle Nachrichten im Hauptkanal und Qs-Threads löschen und einen neuen Meldezyklus beginnen. |
+| `/qs ping` | Die konfigurierte Qs-Rolle im aktuellen Kanal gezielt benachrichtigen; höchstens einmal pro Minute und Kanal. |
+
+Alle Befehle erfordern die Moderator-/Offiziersrollen wie die WZ-Einrichtung.
+Der Bot benötigt zusätzlich **Create Public Threads**, **Send Messages in
+Threads** und **Manage Threads**. Für Pings muss die ausgewählte Rolle erwähnbar
+sein oder der Bot **Mention @everyone, @here, and All Roles** besitzen.
+Normale Aktualisierungen der Übersichten lösen keine Pings aus.
+Automatische Pings erwähnen ausschließlich die konfigurierte Qs-Rolle:
+zum Eruptionsstart, nach genau 24 Stunden zum Eruptionsende sowie einmal je
+Phase beim Erreichen von **acht gemeldeten zerstörten Basen**. Zeitgesteuerte
+Pings werden alle 30 Sekunden geprüft. Bei Neustart oder Verbindungsabbruch
+verpasste Start-/End-Pings werden nicht nachgeholt. Zustellungsmarkierungen
+bleiben über Neustarts erhalten; Reset setzt sie für den neuen Zyklus zurück.
+Beim Start jeder Phase werden außerdem die aktuell angemeldeten Teilnehmer
+im jeweiligen Phasenthread erwähnt, nicht die gesamte Qs-Rolle.
+Verpasste Phasenstarts werden nach einem Ausfall nicht nachgeholt. Leere
+Teilnehmerlisten erzeugen keine Nachricht; spätere Anmeldungen lösen keinen
+zusätzlichen Start-Ping aus.
+
+Mitglieder mit der kanalbezogenen Qs-Rolle können sich unabhängig für mehrere
+Phasen an- oder abmelden. Anmeldebuttons zeigen Phasennummer und Zeitraum in der
+konfigurierten Zeitzone, etwa `Phase 1 : 22:00 – 01:00`; Threadtitel verwenden
+weiterhin `Phase 1 - 22:00 – 01:00`. Teilnehmerübersichten erscheinen nur im
+jeweiligen Phasenthread als eigenständige Embed-Nachricht, nicht in der
+Hauptübersicht. Teilnehmerlisten und Basenmeldungen sind fortlaufend ab 1
+nummeriert; die Gesamt-Basenliste zählt über Embed-Seiten hinweg weiter.
+Die Hauptübersicht zeigt nur die Anzahl der Anmeldungen neben jeder Phase,
+etwa `Phase 1 (3)`. Die Anmeldung erfolgt ausschließlich über die Hauptübersicht;
+Phasenthreads bieten Basenmeldung und Rücknahme, keine Anmeldebuttons.
+Die Schaltfläche nimmt ausschließlich die eigene Meldung zurück, ohne Auswahl,
+auch bei Moderatoren. Die Bestätigung verwendet den Anzeigenamen.
+Moderatoren verwalten fremde Meldungen im Qs-Hauptkanal über
+`/qs withdraw player` (zurücknehmen) und `/qs report player phase` (hinzufügen).
+Beide Commands verwenden die Discord-Spielerauswahl und eine private Bestätigung;
+Moderatorrechte werden beim Bestätigen erneut geprüft. Die Rücknahme
+erfordert eine private Bestätigung, aktualisiert alle Zähler und erlaubt eine
+erneute Meldung. Bereits versendete Phasenziel-Pings werden nicht erneut ausgelöst.
+Kurz aufeinanderfolgende Änderungen werden pro Kanal in einem festen
+250-ms-Fenster gesammelt und gemeinsam veröffentlicht. Anmeldungen ändern nur
+die betroffenen Teilnehmer-Embeds und die Anmeldezähler in der Hauptübersicht.
+Basenmeldungen und Rücknahmen ändern nur die betroffenen Phasenstatus sowie
+Gesamtfortschritt und Basenliste. Die Speicherung bleibt pro Aktion atomar;
+die abschließende Rückmeldung wartet außerhalb der Kanalsperre auf das
+gemeinsame Update und weist auf Darstellungsfehler hin. Vollständige
+Wiederherstellung bleibt für Neustarts, Setup, Reset und gelöschte Ressourcen
+erhalten; laufende Updates werden beim regulären Schließen fertiggestellt.
+Bestehende Threadtitel werden bei Aktualisierungen angepasst.
+Jede Phasenübersicht zählt die dort gemeldeten Basen
+gegen ein Ziel von **8**; dieses Ziel darf überschritten werden.
+Im Phasenthread bestätigen sie, dass sie eine Basis
+zerstört haben, ohne Basennummer oder Kommentar. Die Übersicht zeigt ihren
+Anzeigenamen. Pro Spieler ist **eine Meldung insgesamt** für den
+Qs-Termin möglich; maximal 40 Meldungen werden gezählt. Eine
+Phasenanmeldung ist für eine Basenmeldung nicht erforderlich. Der Verlust der
+Qs-Rolle entfernt Anmeldungen, erhält aber die Basenhistorie.
+
+Einstellungen, Anmeldungen, Meldungen und Nachrichten-IDs liegen in eigenen
+Qs-Tabellen, unabhängig von Queue und Registrierungen. Neustarts sowie gelöschte
+Übersichten oder Phasenthreads werden aus diesen Daten wiederhergestellt.
+Nachrichtenoperationen, Embeds, private Dialoge, Rollenauswahl und Zeitstempel
+verwenden die gemeinsamen UI-Helper. Gespeicherte Nachrichten werden mit dem
+gemeinsamen `fetch_message`-Loader geladen; Fehler werden weitergegeben, damit
+nicht verfügbare Nachrichten und fehlende Berechtigungen getrennt behandelt werden.
+Erneutes Setup bearbeitet den bestehenden Termin und **behält Anmeldungen und
+Basenmeldungen bei**; es beginnt keinen neuen Meldezyklus.
+Eine belegte fünfte Phase kann nicht durch Setup entfernt werden; dafür
+`/qs reset` verwenden.
+
+**Reset löscht auch fremde und angepinnte Nachrichten** im Hauptkanal und allen
+zugehörigen Qs-Threads. Er erfordert beim Moderator und Bot **Manage Messages**;
+der Bot benötigt außerdem **Manage Threads**. Bestehende Threads bleiben
+erhalten, außer dem fünften Thread beim Wechsel auf vier Phasen. Anmeldungen,
+Basenmeldungen und Ping-Markierungen werden gelöscht, die Qs-Rolle bleibt
+konfiguriert. Während der Bereinigung sind automatische Wiederherstellung und
+Teilnehmeraktionen gesperrt. Bei einem Teilfehler können Discord-Ressourcen
+bereits gelöscht sein; Daten bleiben bis zum Abschluss erhalten und der
+Moderator kann Remove/Reset nach Korrektur der Berechtigungen erneut ausführen.
+
+Modelle liegen im Qs-Paket unter `models/`, Datenzugriffe unter `repositories/`,
+jeweils nach Zuständigkeit getrennt. `QsRepository` bündelt die Datenzugriffe
+und speichert Konfiguration und Phasen weiterhin in einer Transaktion.
+
 ### Registrierungen
 
 Registrierungen werden je Kanal eingerichtet. Richten Moderatoren im jeweiligen
@@ -294,6 +397,37 @@ pyproject.toml                  Paket-, Hatch-, Lint- und Testkonfiguration
 ```
 
 ## Entwicklung und Tests
+
+### Gemeinsame Discord-Helper
+
+- [ui/messages.py](src/hmwz/ui/messages.py): `defer_interaction` bestätigt eine
+  Interaktion (standardmäßig privat); `send_modal` öffnet einen Dialog als erste
+  Antwort. Beide reichen Fehler einschließlich bereits beantworteter
+  Interaktionen weiter, ohne sie stillschweigend zu überspringen.
+  `dismiss_dialog` schließt einen noch nicht bestätigten Button-Dialog über den
+  Interaktions-Endpunkt, auch bei privaten Nachrichten. `EphemeralView.dismiss`
+  beendet danach die View. Die Qs-Bestätigungsdialoge verwenden dies bei Abbruch.
+  `send_interaction_message` wählt passend zum Antwortstatus initiale Antwort
+  oder Followup. Qs bestätigt Anmelde-, Melde- und Rücknahmeaktionen vor
+  Kanalsperren und Datenbankabfragen, damit parallele Klicks nicht während
+  laufender Aktualisierungen ihre initiale Discord-Antwortfrist verlieren.
+- [ui/threads.py](src/hmwz/ui/threads.py): `create_thread`, `edit_thread` und
+  `delete_thread` verwalten Threads. `purge_messages` bereinigt Textkanäle oder
+  Threads und deaktiviert Bulk-Löschung in Threads automatisch. Fehler werden
+  protokolliert und weitergegeben; ein bereits gelöschter Thread gilt bei
+  `delete_thread` als erfolgreich entfernt.
+- [utils/loaders.py](src/hmwz/utils/loaders.py): `fetch_thread` verwendet zuerst
+  den Guild-Cache, dann die API. Nur ein nicht mehr vorhandener Thread ergibt
+  `None`; Zugriffsfehler, falscher Kanaltyp oder falsche Guild werden nicht
+  verschleiert.
+- [ui/components/localized.py](src/hmwz/ui/components/localized.py):
+  `LocalizedButton` und `LocalizedSelect` übersetzen Beschriftungen bzw.
+  Platzhalter mit `t`. Native Optionen, Custom-IDs und Callbacks bleiben
+  erhalten. `localize_buttons` übersetzt auch per Decorator erstellte Buttons
+  anhand ihrer Custom-IDs.
+- [utils/text.py](src/hmwz/utils/text.py): `escape_discord_text` maskiert Markdown
+  und Erwähnungen in Benutzertexten. Größenbegrenzungen bleiben Aufgabe des
+  jeweiligen Renderers.
 
 Für lokale Entwicklung installiere Python-Abhängigkeiten und Hatch. Das Projekt
 definiert in `pyproject.toml` die Entwicklungswerkzeuge und Testkommandos:

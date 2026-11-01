@@ -14,6 +14,37 @@ logger = logging.getLogger(__name__)
 _delete_tasks: set[asyncio.Task[None]] = set()
 
 
+async def defer_interaction(
+    interaction: discord.Interaction, *, ephemeral: bool = True, thinking: bool = False
+) -> None:
+    """Acknowledge an interaction, propagating failures to the caller.
+
+    Args:
+        interaction: Interaction that has not yet been acknowledged.
+        ephemeral: Whether a deferred response should be private.
+        thinking: Whether to defer a new response instead of a component update.
+
+    Raises:
+        discord.InteractionResponded: If already acknowledged.
+        discord.HTTPException: If Discord rejects the acknowledgement.
+    """
+    await interaction.response.defer(ephemeral=ephemeral, thinking=thinking)
+
+
+async def send_modal(interaction: discord.Interaction, modal: discord.ui.Modal) -> None:
+    """Open a modal as the initial response, propagating failures.
+
+    Args:
+        interaction: Interaction that has not yet been acknowledged.
+        modal: Modal to open.
+
+    Raises:
+        discord.InteractionResponded: If already acknowledged.
+        discord.HTTPException: If Discord rejects the modal.
+    """
+    await interaction.response.send_modal(modal)
+
+
 async def send_message(
     target: discord.abc.Messageable, **kwargs: Any
 ) -> discord.Message | None:
@@ -71,7 +102,44 @@ async def delete_temporary_message(
 ) -> None:
     """Delete an optional temporary message, ignoring Discord operation failures."""
     if message is not None:
-        await delete_message(message, delay=delay)
+        if delay > 0:
+            await delete_message(message, delay=delay)
+        else:
+            await delete_message(message)
+
+
+async def dismiss_dialog(interaction: discord.Interaction) -> None:
+    """Close a component dialog through Discord's interaction endpoint.
+
+    A component-update acknowledgement keeps the original response pointing to
+    the clicked dialog, including ephemeral messages.
+
+    Args:
+        interaction: Component interaction for the dialog being closed.
+
+    Raises:
+        discord.HTTPException: If acknowledgement or deletion fails.
+        discord.RateLimited: If Discord cannot handle the rate limit.
+        ValueError: If the interaction is not an unacknowledged component click.
+    """
+    if (
+        interaction.type != discord.InteractionType.component
+        or interaction.response.is_done()
+    ):
+        logger.error(
+            "Dialog dismissal requires an unacknowledged component interaction."
+        )
+        raise ValueError(
+            "Dialog dismissal requires an unacknowledged component interaction."
+        )
+    await defer_interaction(interaction, thinking=False)
+    try:
+        await interaction.delete_original_response()
+    except discord.NotFound:
+        return
+    except (discord.HTTPException, discord.RateLimited):
+        logger.exception("Discord failed to dismiss an interaction dialog.")
+        raise
 
 
 async def send_interaction_response(
@@ -98,6 +166,24 @@ async def send_followup(
         emojis.render(content, interaction),
         **kwargs,
     )
+
+
+async def send_interaction_message(
+    interaction: discord.Interaction, content: str | None = None, **kwargs: Any
+) -> discord.InteractionMessage | discord.WebhookMessage:
+    """Send a private initial response or followup according to response state.
+
+    Args:
+        interaction: Interaction that may already have been acknowledged.
+        content: Optional message text.
+        **kwargs: Message options forwarded to the appropriate response helper.
+
+    Returns:
+        The sent response or followup.
+    """
+    if interaction.response.is_done():
+        return await send_followup(interaction, content, **kwargs)
+    return await send_interaction_response(interaction, content, **kwargs)
 
 
 async def edit_interaction_response(

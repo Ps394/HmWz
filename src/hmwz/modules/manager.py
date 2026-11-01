@@ -77,6 +77,22 @@ class Manager:
         await asyncio.gather(*(self.init_guild(guild) for guild in self.client.guilds))
         _logger.info("Module manager startup complete.")
 
+    async def close(self) -> None:
+        """Stop optional background workers owned by guild modules."""
+        for guild_modules in self._modules_by_guild.values():
+            for module in guild_modules:
+                close = getattr(module, "close", None)
+                if close is not None:
+                    await close()
+
+    async def on_disconnect(self) -> None:
+        """Notify optional module workers of gateway disconnection."""
+        for guild_modules in self._modules_by_guild.values():
+            for module in guild_modules:
+                handler = getattr(module, "on_disconnect", None)
+                if handler is not None:
+                    await handler()
+
     async def init_guild(self, guild: discord.Guild) -> None:
         """Run startup synchronization and message restoration for a guild.
 

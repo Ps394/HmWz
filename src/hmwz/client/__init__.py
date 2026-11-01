@@ -73,6 +73,15 @@ class Client(discord.Client):
 
         return await super().setup_hook()
 
+    async def close(self) -> None:
+        """Stop module workers before disconnecting the Discord client."""
+        await self.module_manager.close()
+        await super().close()
+
+    async def on_disconnect(self) -> None:
+        """Prevent module workers from catching up missed gateway deadlines."""
+        await self.module_manager.on_disconnect()
+
     async def on_ready(self):
         """
         Initialize guild modules after the Discord client becomes ready.
@@ -337,7 +346,7 @@ class Client(discord.Client):
         """
         from hmwz.modules.hs.account.commands import AccountGroup
         from hmwz.modules.donation.commands import DonationGroup
-        #from hmwz.modules.hs.qs.commands import QsGroup
+        from hmwz.modules.hs.qs.commands import QsGroup
         from hmwz.modules.hs.wz.commands import WzGroup
         #from hmwz.modules.queue.commands import QueueGroup
         from hmwz.modules.registration.commands import RegistrationGroup
@@ -348,7 +357,7 @@ class Client(discord.Client):
         self.add_command(commands.Purge)
         self.add_command(AccountGroup())
         self.add_command(WzGroup())
-        #self.add_command(QsGroup())
+        self.add_command(QsGroup())
         self.add_command(RegistrationGroup())
         self.add_command(DonationGroup())
         #self.add_command(QueueGroup())

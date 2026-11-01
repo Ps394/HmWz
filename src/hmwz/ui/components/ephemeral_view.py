@@ -9,6 +9,8 @@ import discord
 
 from hmwz.emojis import emojis
 from hmwz.ui.messages import (
+    defer_interaction,
+    dismiss_dialog,
     delete_temporary_message,
     retain_delete_task,
     send_temporary_followup,
@@ -28,6 +30,15 @@ class EphemeralView(discord.ui.View):
         """Delete the associated message when the view expires."""
         await delete_temporary_message(self.message)
 
+    async def dismiss(self, interaction: discord.Interaction) -> None:
+        """Delete a cancelled component dialog before stopping its view.
+
+        Args:
+            interaction: Unacknowledged component click on this dialog.
+        """
+        await dismiss_dialog(interaction)
+        self.stop()
+
     async def finish(
         self, interaction: discord.Interaction, content: str, *, delay: float = 10
     ) -> None:
@@ -36,8 +47,8 @@ class EphemeralView(discord.ui.View):
         response_state = getattr(interaction.response, "is_done", None)
         response_pending = response_state is not None and not response_state()
         if response_pending:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-        message = getattr(interaction, "message", None) or self.message
+            await defer_interaction(interaction, thinking=True)
+        message = self.message or getattr(interaction, "message", None)
         if message is not None:
             await delete_temporary_message(message)
         if message is None or response_pending:
