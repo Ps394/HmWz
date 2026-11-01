@@ -4,7 +4,7 @@ from discord.app_commands import Group, checks, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import  deregister, register, reset, snapshot
+from . import  deregister, register, reset, snapshot, csv
 from .setup import remove as registration_remove
 from .setup import setup as registration_setup
 
@@ -40,6 +40,7 @@ class RegistrationGroup(Group):
         self.add_command(register.register)
         self.add_command(deregister.deregister)
         self.add_command(reset.reset)
+        self.add_command(csv.csv)
         self.add_command(snapshot.snapshot)
         self.add_command(registration_setup)
         self.add_command(registration_remove)

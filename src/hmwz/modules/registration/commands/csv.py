@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
     ),
 )
 @app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
-
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
@@ -116,6 +115,7 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
                 content=t(interaction, "wz.registration.csv.success"),
                 file=csv_file,
                 ephemeral=ephemeral,
+                delay=None
             )
         finally:
             bio.close()
