@@ -10,7 +10,7 @@
   "donation.confirm.expired": "Diese Spendenbestätigung ist nicht mehr gültig. Bitte starte eine neue Spende.",
   "donation.overview.rush_start": "Spendenbegin",
   "donation.overview.rush_duration": "Spendendauer",
-  "donation.overview.rush_end": "Eruptionsbegin (berechnet aus eingegangen Spenden)",
+  "donation.overview.rush_end": "Eruptionsbegin (berechnet aus Spenden)",
   "donation.overview.timezone": "Zeitzone",
   "donation.overview.donations_status": "Spendenstatus",
   "donation.ranking.title": "All-Time-Spendencharts",
@@ -31,7 +31,10 @@
   "donation.setup.target_timestamp": "Zielzeit (leer = ohne)",
   "donation.overview.target": "Eruption-Wunschtermin",
   "donation.overview.target_reached": "Ziel erreicht – keine weiteren Beschleunigungen.",
-  "donation.overview.target_pending": "Spenden beeinflussen/verkürzen den Eruptionsbeginn. Es kann bis zum Eruptions-Wunschtermin und nur bis 24h vor Eruptionsbeginn gespendet werden.",
+  "donation.overview.target_pending": "**Hilfe:**
+- Spenden verkürzen den Eruptionsbeginn.
+- Spenden sind bis 24h vor Eruptionsbegin möglich.
+- Wenn Eruption-Wunschtermin angegeben sind Spenden nur bis dahin möglich. Die 24h Regel greift auch hier.",
   "donation.error.invalid_target": "Die Zielzeit muss nach dem Start, spätestens 24 Stunden vor dem ursprünglichen Ende und nicht nach dem aktuellen Ende liegen. Innerhalb dieses Bereichs wird sie automatisch auf den nächsten mit ganzen Stunden erreichbaren Zeitpunkt aufgerundet.",
   "donation.error.invalid_rush_schedule": "Die Zielzeit muss nach dem Start, spätestens 24 Stunden vor dem ursprünglichen Ende und nicht nach dem aktuellen Ende liegen. Innerhalb dieses Bereichs wird sie automatisch auf den nächsten mit ganzen Stunden erreichbaren Zeitpunkt aufgerundet.",
   "donation.setup.channel": "Kanal",
