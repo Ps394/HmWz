@@ -60,6 +60,8 @@ class Client(discord.Client):
         """
         if not await self._database.execute(self._servers.table):
             raise RuntimeError("Failed to create the server database table.")
+        if not await self._servers.ensure_schema():
+            raise RuntimeError("Failed to migrate the server database schema.")
         if not await self._database.remove_legacy_tables():
             raise RuntimeError("Failed to remove legacy database tables.")
         if not await self._servers.migrate_legacy_servers():
@@ -77,6 +79,20 @@ class Client(discord.Client):
         """Stop module workers before disconnecting the Discord client."""
         await self.module_manager.close()
         await super().close()
+
+    async def get_guild_timezone(self, guild_id: int) -> str:
+        """Return the configured IANA timezone for a guild."""
+        return await self._servers.get_timezone(guild_id)
+
+    async def set_guild_timezone(
+        self, guild: discord.Guild, timezone_name: str
+    ) -> bool:
+        """Set the configured IANA timezone for a guild."""
+        return await self._servers.set_timezone(guild, timezone_name)
+
+    async def on_guild_timezone_update(self, guild: discord.Guild) -> bool:
+        """Refresh guild modules that render local schedule information."""
+        return await self.module_manager.on_guild_timezone_update(guild)
 
     async def on_disconnect(self) -> None:
         """Prevent module workers from catching up missed gateway deadlines."""
@@ -355,6 +371,7 @@ class Client(discord.Client):
 
         self.add_command(commands.AboutBot)
         self.add_command(commands.Purge)
+        self.add_command(commands.SetTimezone)
         self.add_command(AccountGroup())
         self.add_command(WzGroup())
         self.add_command(QsGroup())

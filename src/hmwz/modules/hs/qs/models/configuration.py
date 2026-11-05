@@ -12,7 +12,6 @@ class Configuration:
     channel_id: int
     role_id: int
     date: str
-    timezone: str
     message_id: int | None
     bases_message_id: int | None
     eruption_start: int = 0

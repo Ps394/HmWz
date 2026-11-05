@@ -29,7 +29,6 @@ class QueueConfiguration:
     ping_participants: bool
     message_id: int | None
     season_start_date: str
-    timezone: str
     stage_prefix: str
     season_duration_hours: int
 
@@ -474,7 +473,6 @@ class QueueRepository(sqlite_db.Base):
                 ping_participants=bool(row["PingParticipants"]),
                 message_id=row["Message"],
                 season_start_date=row["SeasonStartDate"],
-                timezone=row["TimeZone"],
                 stage_prefix=row["StagePrefix"],
                 season_duration_hours=row["SeasonDurationHours"],
             )

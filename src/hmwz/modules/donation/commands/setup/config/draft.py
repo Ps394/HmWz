@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ....models import DonationKind
+from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE
 
 if TYPE_CHECKING:
     from ....module import DonationModule
@@ -29,7 +30,7 @@ class DonationSetupDraft:
     recent_limit: int
     show_ranking: bool
     rush_start_at: datetime | None
-    timezone_name: str = "UTC"
+    timezone_name: str = DEFAULT_GUILD_TIMEZONE
     show_donations: bool = True
     donations_enabled: bool = True
     export_channel_id: int | None = None

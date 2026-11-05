@@ -39,7 +39,7 @@ from .overview import (
     participants_embed,
 )
 from .repositories import QsRepository
-from .repositories.bases import BaseLimitReached
+from .repositories.bases import BaseLimitReached, DuplicateBaseReport
 from .views import OverviewView, PhaseView
 
 if TYPE_CHECKING:
@@ -110,12 +110,12 @@ class QsModule(Module):
         role_id: int,
         date: str,
         hours: tuple[int, ...],
-        timezone: str,
         *,
         eruption_start: int | None = None,
         durations: tuple[int, ...] | None = None,
     ) -> bool:
         """Configure one event, preserving existing signups and base reports."""
+        timezone = await self.client.get_guild_timezone(self.guild.id)
         starts = phase_starts(date, hours, timezone, eruption_start=eruption_start)
         durations = durations if durations is not None else (2,) * len(starts)
         eruption_start = eruption_start if eruption_start is not None else min(starts)
@@ -280,23 +280,31 @@ class QsModule(Module):
             except BaseLimitReached:
                 await send_followup(interaction, t(interaction, "qs.event.base_limit"))
                 return
-            except aiosqlite.IntegrityError as error:
-                if error.sqlite_errorcode not in (
-                    sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
-                    sqlite3.SQLITE_CONSTRAINT_UNIQUE,
-                ):
-                    _logger.exception(
-                        "%s Failed to save Qs base report.", log_guild(self.guild)
-                    )
-                    await send_followup(
-                        interaction, t(interaction, "qs.event.database_failed")
-                    )
-                    return
+            except DuplicateBaseReport:
                 _logger.info(
                     "%s Duplicate Qs base report rejected.", log_guild(self.guild)
                 )
                 await send_followup(
                     interaction, t(interaction, "qs.event.duplicate_report")
+                )
+                return
+            except aiosqlite.IntegrityError as error:
+                if error.sqlite_errorcode in (
+                    sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
+                    sqlite3.SQLITE_CONSTRAINT_UNIQUE,
+                ):
+                    _logger.info(
+                        "%s Duplicate Qs base report rejected.", log_guild(self.guild)
+                    )
+                    await send_followup(
+                        interaction, t(interaction, "qs.event.duplicate_report")
+                    )
+                    return
+                _logger.exception(
+                    "%s Failed to save Qs base report.", log_guild(self.guild)
+                )
+                await send_followup(
+                    interaction, t(interaction, "qs.event.database_failed")
                 )
                 return
             except aiosqlite.Error:
@@ -570,6 +578,7 @@ class QsModule(Module):
                     channel_id,
                 )
                 return False
+            timezone = await self.client.get_guild_timezone(self.guild.id)
             phases = await self.qs.phases(self.guild.id, channel_id)
             reports = await self.qs.reports(self.guild.id, channel_id)
             members = {
@@ -583,7 +592,7 @@ class QsModule(Module):
                 bases_changed = full or phase.index in (base_phases or set())
                 if not signup_changed and not bases_changed:
                     continue
-                thread = await self._thread(channel, phase, configuration.timezone)
+                thread = await self._thread(channel, phase, timezone)
                 recreated = phase.thread_id != thread.id
                 if bases_changed or recreated:
                     message = await self._message(
@@ -619,7 +628,7 @@ class QsModule(Module):
                         self.guild, configuration, phases, members, len(reports)
                     )
                 ],
-                view=OverviewView(self, channel_id, phases, configuration.timezone),
+                view=OverviewView(self, channel_id, phases, timezone),
             )
             # Persist each successful Discord operation before starting the next.
             if not await self.qs.database.execute(
@@ -655,6 +664,12 @@ class QsModule(Module):
         self.notifications.start()
         return success
 
+    async def on_guild_timezone_update(self) -> bool:
+        """Refresh local-time labels after the guild timezone changes."""
+        if not await self.sync():
+            return False
+        return await self.ensure()
+
     async def close(self) -> None:
         """Stop automatic pings when the client is closed."""
         self.notifications.stop()
@@ -675,12 +690,12 @@ class QsModule(Module):
         channel_id: int,
         date: str,
         hours: tuple[int, ...],
-        timezone: str,
         *,
         eruption_start: int,
         durations: tuple[int, ...],
     ) -> bool:
         """Validate the replacement schedule before any destructive cleanup."""
+        timezone = await self.client.get_guild_timezone(self.guild.id)
         starts = phase_starts(date, hours, timezone, eruption_start=eruption_start)
         date = (
             datetime.fromtimestamp(eruption_start, resolve_timezone(timezone))

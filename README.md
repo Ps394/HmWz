@@ -20,8 +20,8 @@ Die aktuell eingebundenen Funktionen umfassen:
 - **WZ-Verwaltung:** Eine separate WZ-Einrichtung verwaltet eigene Rollen und
   Kanäle. Bestätigte Resets können Rollen entfernen oder Nachrichten in
   ausgewählten Kanälen bereinigen.
-- **Qs-Phasen:** Pro Textkanal werden eine vorhandene Qs-Rolle, ein Datum mit
-  Zeitzone und vier oder fünf frei wählbare Startstunden von 0 bis 23 Uhr
+- **Qs-Phasen:** Pro Textkanal werden eine vorhandene Qs-Rolle, ein Datum in der
+  gemeinsamen Server-Zeitzone und vier oder fünf frei wählbare Startstunden von 0 bis 23 Uhr
   konfiguriert. Jede Phase dauert ein bis drei Stunden und liegt vollständig
   innerhalb einer Eruption mit eigenem Startzeitstempel und festen 24 Stunden
   Dauer. Die Hauptübersicht
@@ -35,7 +35,8 @@ Die aktuell eingebundenen Funktionen umfassen:
 - **Exporte:** Registrierungsdaten und Spendenzyklen können als JSON exportiert
   werden, sofern ein Exportkanal eingerichtet ist.
 - **Moderationswerkzeuge:** `/purge` bereinigt Nachrichten im aktuellen
-  Textkanal oder Thread; `/about-bot` zeigt Bot-Informationen.
+  Textkanal oder Thread; `/set-timezone` setzt die gemeinsame IANA-Zeitzone des
+  Servers; `/about-bot` zeigt Bot-Informationen.
 - **Sprachen und Emojis:** Discord-Befehle unterstützen deutsche und englische
   Lokalisierungen. Application-Emojis ergänzen die Spendenübersichten.
 - **Ressourcenprotokollierung:** Das optionale Monitoring protokolliert
@@ -164,6 +165,7 @@ Moderatoren steht in der [Moderator-Anleitung](moderator-anleitung.txt).
 | --- | --- |
 | `/about-bot` | Zeigt Informationen zum Bot an. Die Antwort ist standardmäßig privat. |
 | `/purge` | Bereinigt Nachrichten im aktuellen Textkanal oder Thread. `limit` steht standardmäßig auf 500; Bots und angepinnte Nachrichten werden standardmäßig übersprungen. Die Filter sind einstellbar. Erfordert die Rolle **Offiziere** oder **Moderator**. |
+| `/set-timezone` | Setzt die IANA-Zeitzone, die Module für lokale Datums- und Uhrzeiteingaben dieses Servers verwenden (zum Beispiel `Europe/Berlin`). Erfordert die Rolle **Offiziere** oder **Moderator**. |
 
 ### Ingame-Accounts
 
@@ -183,7 +185,7 @@ Enddatum an. Das Eruptionsdatum wird aus dem Startzeitstempel abgeleitet.
 
 | Befehl | Zweck |
 | --- | --- |
-| `/qs setup` | Klar gegliederte Einstellungen im privaten Menü anzeigen: genau eine bestehende Qs-Rolle, Eruptionsstart, gemeinsames Phasendatum/Zeitzone, vier oder fünf Phasen und je Phase Startstunde (0–23) sowie Dauer (1–3 h) auswählen. Erst **Speichern** übernimmt Änderungen. |
+| `/qs setup` | Klar gegliederte Einstellungen im privaten Menü anzeigen: genau eine bestehende Qs-Rolle, Eruptionsstart, gemeinsames Phasendatum in der Server-Zeitzone, vier oder fünf Phasen und je Phase Startstunde (0–23) sowie Dauer (1–3 h) auswählen. Erst **Speichern** übernimmt Änderungen. |
 | `/qs remove` | Nach Bestätigung das Qs-Tool, alle angelegten Phasenthreads, Qs-Übersichten und Daten dieses Kanals löschen. Hauptkanal, ausgewählte Rolle und fremde Nachrichten bleiben bestehen. |
 | `/qs reset` | Zuerst neue Eruptions-/Phasenzeitpunkte im Menü festlegen, anschließend die Bereinigung bestätigen: alle Nachrichten im Hauptkanal und Qs-Threads löschen und einen neuen Meldezyklus beginnen. |
 | `/qs ping` | Die konfigurierte Qs-Rolle im aktuellen Kanal gezielt benachrichtigen; höchstens einmal pro Minute und Kanal. |
@@ -207,7 +209,7 @@ zusätzlichen Start-Ping aus.
 
 Mitglieder mit der kanalbezogenen Qs-Rolle können sich unabhängig für mehrere
 Phasen an- oder abmelden. Anmeldebuttons zeigen Phasennummer und Zeitraum in der
-konfigurierten Zeitzone, etwa `Phase 1 : 22:00 – 01:00`; Threadtitel verwenden
+Server-Zeitzone, etwa `Phase 1 : 22:00 – 01:00`; Threadtitel verwenden
 weiterhin `Phase 1 - 22:00 – 01:00`. Teilnehmerübersichten erscheinen nur im
 jeweiligen Phasenthread als eigenständige Embed-Nachricht, nicht in der
 Hauptübersicht. Teilnehmerlisten und Basenmeldungen sind fortlaufend ab 1
@@ -323,8 +325,8 @@ Rush-Spenden verwenden die Optionen **1h**, **8h** und **24h**. Der Preis hängt
 von der bereits im aktuellen Zyklus gespendeten Beschleunigung ab. Ein
 optionales Ziel kann eingerichtet werden; verfügbare Schaltflächen richten sich
 danach, ob eine Spende das Ziel oder die verbleibende Zeit überschreiten würde.
-Die Datums- und Zeiteingabe akzeptiert regionale Zeitzonen und berücksichtigt
-Sommerzeit.
+Die Datums- und Zeiteingabe verwendet die mit `/set-timezone` konfigurierte
+Server-Zeitzone und berücksichtigt Sommerzeit.
 
 | Befehl | Zweck |
 | --- | --- |

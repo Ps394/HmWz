@@ -4,12 +4,13 @@ import calendar
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 import discord
 
 from hmwz.i18n import t
 from hmwz.ui.components.ephemeral_view import EphemeralView
+from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE
 
 from .repository import QueueConfiguration, QueueMode
 from .rules import season_start_timestamp, valid_run_range
@@ -38,7 +39,7 @@ class QueueSetupDraft:
     season_goal_limit: int = 1
     season_goal_description: str = ""
     season_start_date: str = ""
-    timezone: str = "Europe/Berlin"
+    timezone: str = DEFAULT_GUILD_TIMEZONE
     season_duration_hours: int = 24
     season_tasks: list[tuple[str, int]] = field(default_factory=list)
 
@@ -50,6 +51,7 @@ async def create_draft(
     mode: QueueMode,
     configuration: QueueConfiguration | None,
 ) -> QueueSetupDraft:
+    timezone = await module.client.get_guild_timezone(module.guild.id)
     draft = QueueSetupDraft(
         module=module,
         channel_id=channel_id,
@@ -64,7 +66,7 @@ async def create_draft(
             configuration.confirmation_delay_minutes if configuration else 30
         ),
         ping_participants=configuration.ping_participants if configuration else False,
-        timezone=configuration.timezone if configuration else "Europe/Berlin",
+        timezone=timezone,
         stage_prefix=configuration.stage_prefix if configuration else "",
         season_duration_hours=(
             configuration.season_duration_hours if configuration else 24
@@ -72,11 +74,7 @@ async def create_draft(
         season_start_date=(
             configuration.season_start_date
             if configuration and configuration.season_start_date
-            else datetime.now(
-                ZoneInfo(configuration.timezone if configuration else "Europe/Berlin")
-            )
-            .date()
-            .isoformat()
+            else datetime.now(ZoneInfo(timezone)).date().isoformat()
         ),
     )
     if configuration is None or configuration.mode != mode:
@@ -419,6 +417,9 @@ class QueueConfigView(discord.ui.View):
         )
 
     async def save(self, interaction: discord.Interaction) -> None:
+        self.draft.timezone = await self.draft.module.client.get_guild_timezone(
+            self.draft.module.guild.id
+        )
         if self.draft.mode == "stages" and not self.draft.stages:
             await interaction.response.send_message(
                 t(interaction, "queue.error.invalid_stage_count"), ephemeral=True
@@ -463,7 +464,6 @@ class QueueConfigView(discord.ui.View):
             season_start_date=(
                 self.draft.season_start_date if self.draft.mode == "seasons" else None
             ),
-            timezone=self.draft.timezone,
             season_duration_hours=self.draft.season_duration_hours,
             season_tasks=tuple(self.draft.season_tasks),
             confirmed_mode_change=self.draft.mode_change_confirmed,
@@ -842,21 +842,6 @@ class QueueSeasonDaysPageButton(discord.ui.Button):
         )
 
 
-class QueueSeasonTimezoneButton(discord.ui.Button):
-    def __init__(self, schedule_view: QueueSeasonScheduleView) -> None:
-        super().__init__(
-            label=t(schedule_view.draft.module.guild, "queue.wizard.edit_timezone"),
-            style=discord.ButtonStyle.secondary,
-            row=2,
-        )
-        self.schedule_view = schedule_view
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_modal(
-            QueueSeasonTimezoneModal(self.schedule_view)
-        )
-
-
 class QueueSeasonScheduleApplyButton(discord.ui.Button):
     def __init__(self, schedule_view: QueueSeasonScheduleView) -> None:
         super().__init__(
@@ -904,7 +889,6 @@ class QueueSeasonScheduleView(discord.ui.View):
         self.add_item(QueueSeasonDaysSelect(self))
         if days_in_month > 25:
             self.add_item(QueueSeasonDaysPageButton(self))
-        self.add_item(QueueSeasonTimezoneButton(self))
         self.add_item(QueueSeasonScheduleApplyButton(self))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -914,40 +898,6 @@ class QueueSeasonScheduleView(discord.ui.View):
             t(interaction, "queue.wizard.owner_only"), ephemeral=True
         )
         return False
-
-
-class QueueSeasonTimezoneModal(discord.ui.Modal):
-    def __init__(self, schedule_view: QueueSeasonScheduleView) -> None:
-        super().__init__(
-            title=t(schedule_view.draft.module.guild, "queue.wizard.timezone_title")[
-                :45
-            ]
-        )
-        self.schedule_view = schedule_view
-        self.timezone_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(schedule_view.draft.module.guild, "queue.wizard.timezone_label")[
-                :45
-            ],
-            default=schedule_view.draft.timezone,
-            placeholder="Europe/Berlin",
-            max_length=100,
-        )
-        self.add_item(self.timezone_input)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        timezone_name = self.timezone_input.value.strip()
-        try:
-            ZoneInfo(timezone_name)
-        except (ValueError, ZoneInfoNotFoundError):
-            await interaction.response.send_message(
-                t(interaction, "queue.error.invalid_timezone"), ephemeral=True
-            )
-            return
-        self.schedule_view.draft.timezone = timezone_name
-        await interaction.response.send_message(
-            t(interaction, "queue.wizard.timezone_saved", timezone=timezone_name),
-            ephemeral=True,
-        )
 
 
 class QueueSeasonTasksModal(discord.ui.Modal):

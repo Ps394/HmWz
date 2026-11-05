@@ -7,6 +7,7 @@ import discord
 
 from hmwz.i18n import t
 from hmwz.ui.messages import send_temporary_response as _send_temporary_response
+from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE
 
 from ....models import (
     DEFAULT_DONATION_CHOICES,
@@ -22,7 +23,6 @@ from ....type.rush.setup import (
 )
 from ....type.rush.pricing import RUSH_DURATIONS_HOURS
 from ....type.rush.pricing import validate_rush_target
-from ....type.rush.validation import COMMON_DONATION_TIMEZONES, donation_timezone
 from .configuration_message import donation_setup_panel
 from .draft import DonationSetupDraft
 
@@ -52,6 +52,7 @@ class DonationSetupKindSelect(discord.ui.Select):
         owner_id: int,
         channel_configuration: DonationChannel | None,
         donation_type: DonationType | None,
+        timezone_name: str = DEFAULT_GUILD_TIMEZONE,
     ) -> None:
         super().__init__(
             placeholder=t(module.guild, "donation.setup.kind_prompt"),
@@ -81,6 +82,7 @@ class DonationSetupKindSelect(discord.ui.Select):
         self.owner_id = owner_id
         self.channel_configuration = channel_configuration
         self.donation_type = donation_type
+        self.timezone_name = timezone_name
 
     async def callback(self, interaction: discord.Interaction) -> None:
         kind = self._selected_kind()
@@ -158,9 +160,7 @@ class DonationSetupKindSelect(discord.ui.Select):
                 configuration.show_ranking if configuration is not None else False
             ),
             rush_start_at=rush_start_at,
-            timezone_name=(
-                configuration.timezone_name if configuration is not None else "UTC"
-            ),
+            timezone_name=self.timezone_name,
             show_donations=(
                 configuration.show_donations if configuration is not None else True
             ),
@@ -204,6 +204,7 @@ class DonationSetupKindView(DonationSetupOwnerView):
         owner_id: int,
         channel_configuration: DonationChannel | None = None,
         donation_type: DonationType | None = None,
+        timezone_name: str = DEFAULT_GUILD_TIMEZONE,
     ) -> None:
         super().__init__(owner_id, timeout=180)
         self.add_item(
@@ -213,6 +214,7 @@ class DonationSetupKindView(DonationSetupOwnerView):
                 owner_id,
                 channel_configuration,
                 donation_type,
+                timezone_name,
             )
         )
 
@@ -373,9 +375,6 @@ class DonationSetupView(DonationSetupOwnerView):
         self.clear_items()
         draft = self.draft
         row = 0
-        if draft.kind == "time_reduction":
-            self.add_item(DonationTimezoneSelect(self))
-            row = 1
         self.add_item(DonationSetupButton(self, "content", row=row))
         if draft.kind == "simple":
             self.add_item(DonationSetupButton(self, "values", row=0))
@@ -487,7 +486,6 @@ async def _save_setup(
         recent_limit=draft.recent_limit,
         show_ranking=draft.show_ranking,
         rush_start_at=(draft.rush_start_at if draft.kind == "time_reduction" else None),
-        timezone_name=draft.timezone_name,
         show_donations=draft.show_donations,
         donations_enabled=draft.donations_enabled,
         export_channel_id=draft.export_channel_id,
@@ -497,48 +495,6 @@ async def _save_setup(
         await _send_setup_followup_error(interaction, "donation.error.setup_save")
         return False
     return True
-
-
-class DonationTimezoneSelect(discord.ui.Select):
-    """Choose the setup's input timezone without shifting saved absolute instants."""
-
-    def __init__(self, setup_view: DonationSetupView) -> None:
-        self.setup_view = setup_view
-        draft = setup_view.draft
-        options = [
-            discord.SelectOption(
-                label=t(draft.module.guild, key),
-                value=name,
-                description=name,
-                default=name == draft.timezone_name,
-            )
-            for name, key in COMMON_DONATION_TIMEZONES
-        ]
-        if draft.timezone_name not in {option.value for option in options}:
-            options.append(
-                discord.SelectOption(
-                    label=draft.timezone_name,
-                    value=draft.timezone_name,
-                    default=True,
-                )
-            )
-        super().__init__(
-            placeholder=t(draft.module.guild, "donation.setup.timezone"),
-            options=options,
-            row=0,
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        timezone_name = self.values[0]
-        try:
-            donation_timezone(timezone_name)
-        except ValueError:
-            await _send_temporary_response(
-                interaction, t(interaction, "donation.error.invalid_timezone")
-            )
-            return
-        self.setup_view.draft.timezone_name = timezone_name
-        await self.setup_view.refresh(interaction)
 
 
 async def _send_setup_followup_error(

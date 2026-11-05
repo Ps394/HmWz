@@ -368,7 +368,6 @@ class DonationRepository(sqlite_db.Base):
                     else None
                 ),
                 current_cycle=row["CurrentCycle"],
-                timezone_name=row["Timezone"],
                 show_donations=bool(row["ShowDonations"]),
                 donations_enabled=bool(row["DonationsEnabled"]),
                 export_channel_id=row["ExportChannel"],

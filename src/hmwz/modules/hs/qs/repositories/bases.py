@@ -9,6 +9,10 @@ class BaseLimitReached(ValueError):
     """The event already has reports for all forty destroyed bases."""
 
 
+class DuplicateBaseReport(ValueError):
+    """The member has already reported a destroyed base for this event."""
+
+
 class BaseReportRepository(Base):
     """Enforce one destroyed-base report per member."""
 
@@ -72,6 +76,8 @@ class BaseReportRepository(Base):
         created_at: int,
     ) -> None:
         """Save a player's report once, enforcing the forty-base limit atomically."""
+        limit_reached = False
+        duplicate_report = False
         async with self.database.connect() as connection:
             await connection.execute("BEGIN IMMEDIATE")
             async with connection.execute(
@@ -80,20 +86,31 @@ class BaseReportRepository(Base):
             ) as cursor:
                 row = await cursor.fetchone()
             if row is not None and row[0] >= BASE_TOTAL:
-                raise BaseLimitReached("All forty bases have already been reported.")
-            await connection.execute(
-                "INSERT INTO HsQsBases (Guild, Channel, Phase, Member, DisplayName, CreatedAt) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    guild_id,
-                    channel_id,
-                    phase_index,
-                    member_id,
-                    display_name,
-                    created_at,
-                ),
-            )
+                limit_reached = True
+            else:
+                async with connection.execute(
+                    "SELECT 1 FROM HsQsBases WHERE Guild=? AND Channel=? AND Member=?",
+                    (guild_id, channel_id, member_id),
+                ) as cursor:
+                    duplicate_report = await cursor.fetchone() is not None
+                if not duplicate_report:
+                    await connection.execute(
+                        "INSERT INTO HsQsBases (Guild, Channel, Phase, Member, DisplayName, CreatedAt) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            guild_id,
+                            channel_id,
+                            phase_index,
+                            member_id,
+                            display_name,
+                            created_at,
+                        ),
+                    )
             await connection.commit()
+        if limit_reached:
+            raise BaseLimitReached("All forty bases have already been reported.")
+        if duplicate_report:
+            raise DuplicateBaseReport("This member has already reported a base.")
 
     async def withdraw(
         self, guild_id: int, channel_id: int, phase_index: int, member_id: int

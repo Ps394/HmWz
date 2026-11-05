@@ -24,7 +24,7 @@ from .repository import (
     QueueRun,
     QueueSeason,
 )
-from .rules import can_start_early, valid_run_range
+from .rules import can_start_early, season_start_timestamp, valid_run_range
 from .views import (
     EarlyVoteView,
     QueueOverviewView,
@@ -107,7 +107,6 @@ class QueueModule(BasicModule):
         season_goal_limit: int,
         season_goal_description: str,
         season_start_date: str | None = None,
-        timezone: str = "Europe/Berlin",
         stage_prefix: str = "",
         season_duration_hours: int = 24,
         season_tasks: tuple[tuple[str, int], ...] = (),
@@ -115,6 +114,7 @@ class QueueModule(BasicModule):
     ) -> bool:
         lock = self._queue_locks.setdefault(channel_id, asyncio.Lock())
         async with lock:
+            timezone = await self.client.get_guild_timezone(self.guild.id)
             return await self._configure_locked(
                 channel_id=channel_id,
                 title=title,
@@ -151,8 +151,8 @@ class QueueModule(BasicModule):
         seasons: tuple[str, ...],
         season_goal_limit: int,
         season_goal_description: str,
+        timezone: str,
         season_start_date: str | None = None,
-        timezone: str = "Europe/Berlin",
         stage_prefix: str = "",
         season_duration_hours: int = 24,
         season_tasks: tuple[tuple[str, int], ...] = (),
@@ -271,10 +271,16 @@ class QueueModule(BasicModule):
         existing_seasons = await self.queues.get_seasons(
             guild=self.guild, channel_id=channel_id
         )
+        expected_starts = {
+            season: season_start_timestamp(start_date, season, timezone)
+            for season in seasons
+        }
+        existing_starts = {season.name: season.starts_at for season in existing_seasons}
         return (
             existing.season_start_date != start_date
-            or existing.timezone != timezone
             or {season.name for season in existing_seasons} != set(seasons)
+            or any(start is None for start in expected_starts.values())
+            or existing_starts != expected_starts
         )
 
     async def _save_mode_configuration(

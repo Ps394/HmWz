@@ -120,17 +120,11 @@ class QsRoleSelection(EntitySelectionView):
 
 
 class DateModal(discord.ui.Modal):
-    """Collect an event date and explicit timezone."""
+    """Collect an event date using the guild's configured timezone."""
 
     def __init__(self, panel: QsSetupView) -> None:
         super().__init__(title=t(panel.module.guild, "qs.event.date_title"))
         self.panel = panel
-        self.timezone: discord.ui.TextInput[DateModal] = discord.ui.TextInput(
-            label=t(panel.module.guild, "qs.event.timezone"),
-            default=panel.timezone,
-            max_length=40,
-        )
-        self.add_item(self.timezone)
         self.eruption = TimestampInput(
             panel.module.guild,
             label=t(panel.module.guild, "qs.admin.eruption_start"),
@@ -143,20 +137,22 @@ class DateModal(discord.ui.Modal):
         """Reject invalid, missing or ambiguous local phase times."""
         if not await self.panel.interaction_check(interaction):
             return
-        timezone = self.timezone.value.strip()
         try:
-            self.eruption.timezone_name = timezone
             instant = self.eruption.parse()
             if instant is None:
                 raise ValueError("Eruption start required.")
             eruption_start = int(instant.timestamp())
-            date = instant.astimezone(resolve_timezone(timezone)).date().isoformat()
+            date = (
+                instant.astimezone(resolve_timezone(self.panel.timezone))
+                .date()
+                .isoformat()
+            )
             validate_schedule(
                 eruption_start,
                 phase_starts(
                     date,
                     tuple(self.panel.hours),
-                    timezone,
+                    self.panel.timezone,
                     eruption_start=eruption_start,
                 ),
                 tuple(self.panel.durations),
@@ -166,7 +162,7 @@ class DateModal(discord.ui.Modal):
                 interaction, t(interaction, "qs.event.invalid_schedule")
             )
             return
-        self.panel.date, self.panel.timezone = date, timezone
+        self.panel.date = date
         self.panel.eruption_start = eruption_start
         await self.panel.update(interaction)
 
@@ -426,7 +422,6 @@ class SetupButton(LocalizedButton):
                 action="reset",
                 date=self.panel.date,
                 hours=tuple(self.panel.hours),
-                timezone=self.panel.timezone,
                 eruption_start=self.panel.eruption_start,
                 durations=tuple(self.panel.durations),
             )
@@ -445,7 +440,6 @@ class SetupButton(LocalizedButton):
             self.panel.role_id,
             self.panel.date,
             tuple(self.panel.hours),
-            self.panel.timezone,
             eruption_start=self.panel.eruption_start,
             durations=tuple(self.panel.durations),
         )
@@ -460,15 +454,24 @@ async def setup_view(
 ) -> QsSetupView:
     """Load an existing event draft or choose sensible editable defaults."""
     configuration = await module.qs.get(module.guild.id, channel_id)
-    timezone = configuration.timezone if configuration is not None else "Europe/Berlin"
+    timezone = await module.client.get_guild_timezone(module.guild.id)
     phases = await module.qs.phases(module.guild.id, channel_id)
+    eruption_start = (
+        configuration.eruption_start
+        if configuration is not None
+        else int(
+            datetime.now(resolve_timezone(timezone))
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+            .timestamp()
+        )
+    )
     return QsSetupView(
         module,
         channel_id,
         owner_id,
-        date=configuration.date
-        if configuration is not None
-        else datetime.now(resolve_timezone(timezone)).strftime("%Y-%m-%d"),
+        date=datetime.fromtimestamp(eruption_start, resolve_timezone(timezone))
+        .date()
+        .isoformat(),
         timezone=timezone,
         hours=tuple(
             datetime.fromtimestamp(phase.starts_at, resolve_timezone(timezone)).hour
@@ -477,13 +480,7 @@ async def setup_view(
         if phases
         else (0, 2, 4, 6, 8),
         role_id=configuration.role_id if configuration is not None else None,
-        eruption_start=configuration.eruption_start
-        if configuration is not None
-        else int(
-            datetime.now(resolve_timezone(timezone))
-            .replace(hour=0, minute=0, second=0, microsecond=0)
-            .timestamp()
-        ),
+        eruption_start=eruption_start,
         durations=tuple(phase.duration_hours for phase in phases)
         if phases
         else (2,) * 5,

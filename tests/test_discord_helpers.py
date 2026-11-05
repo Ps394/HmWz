@@ -118,8 +118,19 @@ async def test_purge_disables_bulk_only_for_threads(in_thread: bool) -> None:
         == messages
     )
     channel.purge.assert_awaited_once_with(
-        limit=None, bulk=not in_thread, check=check, reason="reset"
+        limit=None,
+        bulk=not in_thread,
+        check=channel.purge.await_args.kwargs["check"],
+        reason="reset",
     )
+    delete_check = channel.purge.await_args.kwargs["check"]
+    regular_message = Mock(spec=discord.Message)
+    regular_message.is_system.return_value = False
+    system_message = Mock(spec=discord.Message)
+    system_message.is_system.return_value = True
+    assert delete_check(regular_message)
+    assert not delete_check(system_message)
+    check.assert_called_once_with(regular_message)
 
 
 @pytest.mark.asyncio

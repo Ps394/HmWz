@@ -82,9 +82,10 @@ Im Setup-Menü stehen folgende Einstellungen zur Verfügung:
 
 * **Titel & Text:** Titel und Beschreibung der öffentlichen Übersicht.
 * **Spendenwerte:** Einheit und optionale Auswahlwerte für einfache Spenden.
-* **Zeitzone:** Bei Rush-Spenden die Zeitzone für die Datums- und Zeiteingabe.
-  Die Anzeige von Discord-Zeitstempeln richtet sich anschließend nach der
-  lokalen Zeitzone der jeweiligen Person.
+* **Server-Zeitzone:** Lokale Datums- und Uhrzeiteingaben bei Rush-Spenden
+  verwenden die globale Guild-Zeitzone. Moderatoren setzen sie mit
+  `/set-timezone`, zum Beispiel `Europe/Berlin`. Die Anzeige von Discord-
+  Zeitstempeln richtet sich anschließend nach der lokalen Zeitzone der Person.
 * **Rush-Start:** Startdatum und -uhrzeit des Rush-Zyklus.
 * **Zielzeit:** Optionaler frühester Endzeitpunkt. Spenden können die Rush-Zeit
   nicht über dieses Ziel hinaus verkürzen. Das Ziel muss nach dem Start und

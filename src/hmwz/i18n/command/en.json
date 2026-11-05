@@ -1,8 +1,10 @@
 {
-  "parameter.description.ephemeral": "Whether the response should be private (default: true)",
   "command.description.wz.about": "Information about the bot and its features",
   "command.description.wz.purge": "Delete up to 500 messages in the current channel",
-  "parameter.description.wz.purge.limit": "Maximum number of messages to check (default: 500)",
+  "command.description.wz.set_timezone": "Set the timezone used by this server",
+  "parameter.description.ephemeral": "Whether the response should be private (default: true)",
   "parameter.description.wz.purge.ignore_bots": "Skip messages from bots (default: true)",
-  "parameter.description.wz.purge.ignore_pinned": "Skip pinned messages (default: true)"
+  "parameter.description.wz.purge.ignore_pinned": "Skip pinned messages (default: true)",
+  "parameter.description.wz.purge.limit": "Maximum number of messages to check (default: 500)",
+  "parameter.description.wz.set_timezone.timezone": "IANA timezone, for example Europe/Berlin"
 }

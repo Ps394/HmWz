@@ -152,9 +152,10 @@ async def environment(tmp_path: Path, notification_worker: object) -> SimpleName
         return threads[channel_id]
 
     client.fetch_channel = AsyncMock(side_effect=fetch_channel)
+    client.get_guild_timezone = AsyncMock(return_value="UTC")
     guild.fetch_channel = AsyncMock(side_effect=fetch_channel)
     module = QsModule(guild, client)
-    assert await module.configure(20, 30, "2026-11-01", (0, 2, 4, 6, 22), "UTC")
+    assert await module.configure(20, 30, "2026-11-01", (0, 2, 4, 6, 22))
     return SimpleNamespace(
         module=module,
         guild=guild,
@@ -565,16 +566,8 @@ async def test_setup_draft_editing_and_save_end_to_end(
     picker = QsRoleSelection(panel)
     await picker.select_entities(context, [31])
     modal = DateModal(panel)
-    with (
-        patch.object(
-            discord.ui.TextInput,
-            "value",
-            new_callable=PropertyMock,
-            return_value="UTC",
-        ),
-        patch.object(
-            modal.eruption, "parse", return_value=datetime(2026, 11, 2, tzinfo=UTC)
-        ),
+    with patch.object(
+        modal.eruption, "parse", return_value=datetime(2026, 11, 2, tzinfo=UTC)
     ):
         await modal.on_submit(context)
     configuration = await environment.module.qs.get(10, 20)
@@ -774,7 +767,6 @@ async def test_reset_preserves_threads_clears_all_messages_data_and_notification
         20,
         "2026-11-02",
         (0, 3, 6, 22),
-        "UTC",
         eruption_start=1793577600,
         durations=(3, 1, 2, 2),
     )
@@ -783,13 +775,20 @@ async def test_reset_preserves_threads_clears_all_messages_data_and_notification
         phase.thread_id for phase in phases[:4]
     ]
     assert len(environment.threads) == 4
-    environment.channel.purge.assert_awaited_once_with(
-        limit=None, bulk=True, reason="Qs cycle reset"
-    )
+    environment.channel.purge.assert_awaited_once()
+    channel_purge = environment.channel.purge.await_args.kwargs
+    assert channel_purge["limit"] is None
+    assert channel_purge["bulk"] is True
+    assert channel_purge["reason"] == "Qs cycle reset"
+    assert callable(channel_purge["check"])
     for phase in new_phases:
-        environment.threads[phase.thread_id].purge.assert_awaited_once_with(
-            limit=None, bulk=False, reason="Qs cycle reset"
-        )
+        purge = environment.threads[phase.thread_id].purge
+        purge.assert_awaited_once()
+        thread_purge = purge.await_args.kwargs
+        assert thread_purge["limit"] is None
+        assert thread_purge["bulk"] is False
+        assert thread_purge["reason"] == "Qs cycle reset"
+        assert callable(thread_purge["check"])
     assert await module.qs.members(10, 20, 1) == ()
     assert await module.qs.reports(10, 20) == ()
     configuration = await module.qs.get(10, 20)
@@ -832,7 +831,6 @@ async def test_reset_rejects_schedule_before_deleting_anything(
             20,
             "2026-11-02",
             (0, 3, 6, 23),
-            "UTC",
             eruption_start=1793577600,
             durations=(1, 2, 3, 3),
         )
@@ -861,7 +859,6 @@ async def test_partial_cleanup_blocks_restoration_and_is_retryable(
             20,
             "2026-11-02",
             (0, 2, 4, 6, 22),
-            "UTC",
             eruption_start=1793577600,
             durations=(2,) * 5,
         )
@@ -1071,7 +1068,7 @@ async def test_setup_refuses_to_drop_phase_with_reported_bases(
 ) -> None:
     module = environment.module
     await module.qs.report(10, 20, 5, 100, "Player", 1)
-    assert not await module.configure(20, 30, "2026-11-01", (0, 2, 4, 6), "UTC")
+    assert not await module.configure(20, 30, "2026-11-01", (0, 2, 4, 6))
     assert len(await module.qs.phases(10, 20)) == 5
     assert len(environment.threads) == 5
     assert len(await module.qs.reports(10, 20)) == 1
@@ -1088,7 +1085,6 @@ async def test_evening_schedule_saved_displayed_and_reset_consistently(
         30,
         "2026-11-01",
         (22, 8, 12, 16, 19),
-        "UTC",
         eruption_start=start,
         durations=(3, 3, 3, 3, 2),
     )
@@ -1104,7 +1100,6 @@ async def test_evening_schedule_saved_displayed_and_reset_consistently(
         20,
         "2026-11-02",
         (22, 8, 12, 16, 19),
-        "UTC",
         eruption_start=start + 86400,
         durations=(3, 3, 3, 3, 2),
     )
@@ -1200,29 +1195,41 @@ async def test_signup_buttons_show_phase_period_in_configured_timezone(
 
 
 @pytest.mark.asyncio
-async def test_refresh_publishes_period_buttons_using_event_timezone(
+async def test_guild_timezone_update_refreshes_phase_period_buttons(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
+    environment.client.get_guild_timezone = AsyncMock(return_value="UTC")
     start = int(datetime(2026, 11, 1, 21, tzinfo=UTC).timestamp())
     assert await module.configure(
         20,
         30,
         "2026-11-01",
         (22, 8, 12, 16),
-        "Europe/Berlin",
         durations=(3, 2, 2, 2),
         eruption_start=start,
     )
     assert await module._refresh(20)
     configuration = await module.qs.get(10, 20)
-    phases = await module.qs.phases(10, 20)
     overview = module._views[configuration.message_id]
     assert [button.label for button in overview.children] == [
         "Phase 1 : 22:00 – 01:00",
         "Phase 2 : 08:00 – 10:00",
         "Phase 3 : 12:00 – 14:00",
         "Phase 4 : 16:00 – 18:00",
+    ]
+
+    environment.client.get_guild_timezone.return_value = "Europe/Berlin"
+    assert await module.on_guild_timezone_update()
+
+    configuration = await module.qs.get(10, 20)
+    phases = await module.qs.phases(10, 20)
+    overview = module._views[configuration.message_id]
+    assert [button.label for button in overview.children] == [
+        "Phase 1 : 23:00 – 02:00",
+        "Phase 2 : 09:00 – 11:00",
+        "Phase 3 : 13:00 – 15:00",
+        "Phase 4 : 17:00 – 19:00",
     ]
     for phase, button in zip(phases, overview.children):
         thread = module._views[phase.message_id]

@@ -1,6 +1,6 @@
 {
-  "group.description.queue": "Manage channel-based queues and runs",
-  "command.description.queue.setup": "Configure a queue using an interactive dialog.",
   "command.description.queue.remove": "Remove the queue in the current channel.",
-  "command.description.queue.reset": "Reset a season queue, registrations, counters, and messages."
+  "command.description.queue.reset": "Reset a season queue, registrations, counters, and messages.",
+  "command.description.queue.setup": "Configure a queue using an interactive dialog.",
+  "group.description.queue": "Manage channel-based queues and runs"
 }

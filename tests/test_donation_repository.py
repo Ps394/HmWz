@@ -101,7 +101,7 @@ async def test_donation_types_channels_and_entries_are_persisted(
     assert channel.overview_message_id == 12345
     assert channel.ranking_message_id == 12346
     assert channel.history_message_id == 12347
-    assert channel.timezone_name == "America/New_York"
+    assert not hasattr(channel, "timezone_name")
     assert not channel.show_donations
     assert channel.donations_enabled
     assert channel.export_channel_id == 321
@@ -385,7 +385,7 @@ async def test_donation_schema_migrates_legacy_overview_and_entry_tables(
     )
     assert channel is not None
     assert channel.history_message_id is None
-    assert channel.timezone_name == "UTC"
+    assert not hasattr(channel, "timezone_name")
     assert channel.show_donations
     assert channel.donations_enabled
 

@@ -48,12 +48,13 @@ async def reset(interaction: discord.Interaction) -> None:
         return
 
     if donation_type.kind == "time_reduction":
+        timezone_name = await module.client.get_guild_timezone(guild.id)
         await interaction.response.send_modal(
             DonationRushResetModal(
                 module,
                 channel_id,
                 interaction.user.id,
-                timezone_name=configuration.timezone_name,
+                timezone_name=timezone_name,
             )
         )
         return

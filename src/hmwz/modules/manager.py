@@ -93,6 +93,10 @@ class Manager:
                 if handler is not None:
                     await handler()
 
+    async def on_guild_timezone_update(self, guild: discord.Guild) -> bool:
+        """Refresh modules after a guild's shared timezone changes."""
+        return await self._dispatch(guild, "on_guild_timezone_update")
+
     async def init_guild(self, guild: discord.Guild) -> None:
         """Run startup synchronization and message restoration for a guild.
 

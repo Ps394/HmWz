@@ -19,7 +19,6 @@ from hmwz.modules.donation.commands.setup.config.view import (
     DonationSetupKindSelect,
     DonationSetupView,
     DonationSetupButton,
-    DonationTimezoneSelect,
 )
 from hmwz.modules.donation.models import DonationChannel, DonationType
 from hmwz.modules.donation.module import DonationModule
@@ -38,7 +37,8 @@ from hmwz.sqlite_db import Database
 def draft() -> DonationSetupDraft:
     return DonationSetupDraft(
         module=cast(
-            DonationModule, SimpleNamespace(guild=SimpleNamespace(locale="de"))
+            DonationModule,
+            SimpleNamespace(guild=SimpleNamespace(id=123, locale="de")),
         ),
         channel_id=456,
         owner_id=789,
@@ -52,6 +52,7 @@ def draft() -> DonationSetupDraft:
         recent_limit=20,
         show_ranking=False,
         rush_start_at=datetime(2026, 10, 31, 12, tzinfo=UTC),
+        timezone_name="UTC",
         accelerated_hours=50,
     )
 
@@ -110,7 +111,7 @@ def test_embed_shows_content_accelerated_end_and_input_timezone(
         draft.rush_start_at + timedelta(hours=216 - 50), "F"
     )
     assert fields["All-Time-Spendencharts"] == "deaktiviert"
-    assert fields["Zeitzone der Zeiteingabe"].startswith("UTC\n")
+    assert fields["Server-Zeitzone"].startswith("UTC\n")
     assert not any("Auswahlwerte" in name for name in fields)
 
 
@@ -331,23 +332,18 @@ async def test_invalid_timestamp_notifies_without_saving(
 
 
 @pytest.mark.asyncio
-async def test_timezone_selection_changes_input_zone_not_saved_instants(
+async def test_setup_uses_guild_timezone_without_module_timezone_control(
     draft: DonationSetupDraft,
 ) -> None:
+    draft.timezone_name = "Europe/Berlin"
     view = DonationSetupView(draft)
     interaction = Mock(spec=discord.Interaction)
     interaction.response.edit_message = AsyncMock()
     start = draft.rush_start_at
     draft.target_at = rush_end_at(start, 51)
     target = draft.target_at
-    select = next(
-        item for item in view.children if isinstance(item, DonationTimezoneSelect)
-    )
-    assert len(select.options) <= 25
-    assert next(option.value for option in select.options if option.default) == "UTC"
-    select._values = ["Europe/Berlin"]
-    await select.callback(interaction)
     assert draft.timezone_name == "Europe/Berlin"
+    assert not any(isinstance(item, discord.ui.Select) for item in view.children)
     assert draft.rush_start_at == start and draft.target_at == target
     modal = DonationRushStartModal(view)
     assert modal.timestamp_input.default == "2026-10-31 13:00"
@@ -355,29 +351,19 @@ async def test_timezone_selection_changes_input_zone_not_saved_instants(
     await modal.on_submit(interaction)
     assert draft.rush_start_at == datetime(2026, 10, 31, 13, tzinfo=UTC)
     assert draft.target_at == target
-    current = next(
-        item for item in view.children if isinstance(item, DonationTimezoneSelect)
-    )
-    assert (
-        next(option.value for option in current.options if option.default)
-        == "Europe/Berlin"
-    )
     fields = interaction.response.edit_message.await_args.kwargs["embed"].fields
-    assert next(
-        f.value for f in fields if f.name == "Zeitzone der Zeiteingabe"
-    ).startswith("Europe/Berlin\n")
+    assert next(f.value for f in fields if f.name == "Server-Zeitzone").startswith(
+        "Europe/Berlin\n"
+    )
 
 
 @pytest.mark.asyncio
-async def test_stored_custom_timezone_is_preserved_in_setup(
+async def test_setup_does_not_expose_a_per_channel_timezone(
     draft: DonationSetupDraft,
 ) -> None:
     draft.timezone_name = "UTC+1"
     view = DonationSetupView(draft)
-    select = next(
-        item for item in view.children if isinstance(item, DonationTimezoneSelect)
-    )
-    assert next(option.value for option in select.options if option.default) == "UTC+1"
+    assert not any(isinstance(item, discord.ui.Select) for item in view.children)
     assert DonationRushStartModal(view).timestamp_input.default == "2026-10-31 13:00"
 
 
@@ -392,7 +378,7 @@ async def test_timezone_and_parsed_instants_survive_save_and_reopening(
     assert await repository.ensure_schema()
     module = cast(DonationModule, SimpleNamespace(guild=guild))
     interaction = cast(discord.Interaction, SimpleNamespace(locale="de"))
-    selector = DonationSetupKindSelect(module, 456, 789, None, None)
+    selector = DonationSetupKindSelect(module, 456, 789, None, None, "Europe/Berlin")
     draft = selector.create_draft("time_reduction", interaction)
     assert draft.rush_start_at.second == draft.rush_start_at.microsecond == 0
     draft.timezone_name = "Europe/Berlin"
@@ -415,10 +401,9 @@ async def test_timezone_and_parsed_instants_survive_save_and_reopening(
     )
     stored = await repository.get_channel(guild=guild, channel_id=456)
     assert stored is not None
-    reopened = DonationSetupKindSelect(module, 456, 789, stored, None).create_draft(
-        "time_reduction",
-        interaction,
-    )
+    reopened = DonationSetupKindSelect(
+        module, 456, 789, stored, None, "Europe/Berlin"
+    ).create_draft("time_reduction", interaction)
     assert reopened.timezone_name == "Europe/Berlin"
     assert reopened.rush_start_at == datetime(2026, 10, 31, 11, tzinfo=UTC)
     assert reopened.target_at == datetime(2026, 11, 8, 11, tzinfo=UTC)
@@ -436,6 +421,10 @@ async def test_reset_command_uses_configured_timezone_and_local_input(
 
     module = Mock(spec=DonationModule)
     module.guild = draft.module.guild
+    module.guild.id = 123
+    module.client = SimpleNamespace(
+        get_guild_timezone=AsyncMock(return_value="Europe/Berlin")
+    )
     module.donations = Mock(spec=DonationRepository)
     module.donations.get_channel = AsyncMock(
         return_value=SimpleNamespace(timezone_name="Europe/Berlin")
@@ -529,6 +518,9 @@ async def test_setup_command_sends_embed_with_current_cycle_time_savings(
     channel.id = 456
     module = Mock(spec=DonationModule)
     module.guild = draft.module.guild
+    module.client = SimpleNamespace(
+        get_guild_timezone=AsyncMock(return_value="Europe/Berlin")
+    )
     module.sync = AsyncMock(return_value=True)
     module.donations = SimpleNamespace(
         get_channel=AsyncMock(
@@ -571,6 +563,9 @@ async def test_new_setup_command_also_uses_an_embed(draft: DonationSetupDraft) -
     channel.mention = "<#456>"
     module = Mock(spec=DonationModule)
     module.guild = draft.module.guild
+    module.client = SimpleNamespace(
+        get_guild_timezone=AsyncMock(return_value="Europe/Berlin")
+    )
     module.sync = AsyncMock(return_value=True)
     module.donations = SimpleNamespace(
         get_channel=AsyncMock(return_value=None),

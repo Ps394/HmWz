@@ -36,7 +36,6 @@ class DonationChannel:
     rush_start_at: datetime | None = None
     current_cycle: int = 1
     history_message_id: int | None = None
-    timezone_name: str = "UTC"
     show_donations: bool = True
     donations_enabled: bool = True
     export_channel_id: int | None = None

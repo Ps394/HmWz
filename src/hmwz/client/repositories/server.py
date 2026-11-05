@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import discord
 
 from hmwz import sqlite_db
+from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE, validate_iana_timezone
 
 
 class ServerRepository(sqlite_db.Base):
@@ -29,6 +30,7 @@ class ServerRepository(sqlite_db.Base):
 
         Guild: str = "Guild"
         Name: str = "Name"
+        TimeZone: str = "TimeZone"
 
     @property
     def table(self) -> str:
@@ -41,9 +43,56 @@ class ServerRepository(sqlite_db.Base):
         return f"""
         CREATE TABLE IF NOT EXISTS {self.table_name} (
             {self.TableCols.Guild} INTEGER PRIMARY KEY,
-            {self.TableCols.Name} TEXT
+            {self.TableCols.Name} TEXT,
+            {self.TableCols.TimeZone} TEXT NOT NULL
+                DEFAULT '{DEFAULT_GUILD_TIMEZONE}'
         ) WITHOUT ROWID
         """
+
+    async def ensure_schema(self) -> bool:
+        """Add the guild timezone column to databases created by older versions."""
+        return await self.ensure_columns(
+            (
+                (
+                    self.TableCols.TimeZone,
+                    f"TEXT NOT NULL DEFAULT '{DEFAULT_GUILD_TIMEZONE}'",
+                ),
+            )
+        )
+
+    async def get_timezone(self, guild_id: int) -> str:
+        """Return a guild's configured timezone or the shared default."""
+        row = await self.database.fetch_one(
+            f"SELECT {self.TableCols.TimeZone} FROM {self.table_name} "
+            f"WHERE {self.TableCols.Guild} = ?",
+            (guild_id,),
+        )
+        return (
+            row[self.TableCols.TimeZone] if row is not None else DEFAULT_GUILD_TIMEZONE
+        )
+
+    async def set_timezone(self, guild: discord.Guild, timezone_name: str) -> bool:
+        """Persist a validated IANA timezone for a guild."""
+        timezone_name = validate_iana_timezone(timezone_name)
+        try:
+            return await self.database.execute(
+                f"""
+                INSERT INTO {self.table_name}
+                    ({self.TableCols.Guild}, {self.TableCols.Name}, {self.TableCols.TimeZone})
+                VALUES (?, ?, ?)
+                ON CONFLICT({self.TableCols.Guild}) DO UPDATE SET
+                    {self.TableCols.Name} = excluded.{self.TableCols.Name},
+                    {self.TableCols.TimeZone} = excluded.{self.TableCols.TimeZone}
+                """,
+                (guild.id, guild.name, timezone_name),
+            )
+        except Exception:
+            self.logger.exception(
+                "%s Failed to save guild timezone %s.",
+                self.log_prefix(guild),
+                timezone_name,
+            )
+            return False
 
     async def add(self, *, guild: discord.Guild) -> bool:
         """

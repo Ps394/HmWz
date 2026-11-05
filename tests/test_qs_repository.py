@@ -2,12 +2,14 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 
-import aiosqlite
 import pytest
 
 from hmwz.modules.hs.qs.models import Phase, phase_starts, validate_schedule
 from hmwz.modules.hs.qs.repositories import QsRepository
-from hmwz.modules.hs.qs.repositories.bases import BaseLimitReached
+from hmwz.modules.hs.qs.repositories.bases import (
+    BaseLimitReached,
+    DuplicateBaseReport,
+)
 from hmwz.sqlite_db import Database
 from hmwz.ui.components.timestamp_input import parse_local_datetime, resolve_timezone
 
@@ -111,7 +113,7 @@ async def test_report_once_per_member_and_base_across_phases(
     repository: QsRepository,
 ) -> None:
     await repository.report(10, 20, 1, 100, "Player", 123)
-    with pytest.raises(aiosqlite.IntegrityError):
+    with pytest.raises(DuplicateBaseReport):
         await repository.report(10, 20, 5, 100, "Player", 124)
     await repository.report(10, 20, 2, 101, "Player", 125)
     assert len(await repository.reports(10, 20)) == 2
@@ -126,7 +128,7 @@ async def test_concurrent_member_reports_cannot_double_count(
         repository.report(10, 20, 2, 100, "Player", 124),
         return_exceptions=True,
     )
-    assert sum(isinstance(result, aiosqlite.IntegrityError) for result in results) == 1
+    assert sum(isinstance(result, DuplicateBaseReport) for result in results) == 1
     assert len(await repository.reports(10, 20)) == 1
 
 

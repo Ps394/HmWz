@@ -146,7 +146,7 @@ async def test_rush_setup_menu_splits_configuration_into_sections() -> None:
         "export",
         "save",
     ]
-    assert sum(isinstance(item, discord.ui.Select) for item in view.children) == 1
+    assert sum(isinstance(item, discord.ui.Select) for item in view.children) == 0
     assert draft.time_reductions == tuple(f"{hours}h" for hours in RUSH_DURATIONS_HOURS)
     assert RUSH_BUTTON_DURATIONS_HOURS == (24, 8, 1)
 

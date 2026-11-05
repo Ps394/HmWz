@@ -56,6 +56,7 @@ async def setup(interaction: discord.Interaction) -> None:
         guild=guild, channel_id=channel.id
     )
     donation_type = await module.donations.get_type(guild=guild, channel_id=channel.id)
+    timezone_name = await module.client.get_guild_timezone(guild.id)
     if donation_type is not None:
         kind_select = DonationSetupKindSelect(
             module,
@@ -63,6 +64,7 @@ async def setup(interaction: discord.Interaction) -> None:
             interaction.user.id,
             configuration,
             donation_type,
+            timezone_name,
         )
         draft = kind_select.create_draft(donation_type.kind, interaction)
         summary = await module.donations.get_summary(
@@ -101,6 +103,7 @@ async def setup(interaction: discord.Interaction) -> None:
             interaction.user.id,
             configuration,
             donation_type,
+            timezone_name,
         ),
         ephemeral=True,
     )

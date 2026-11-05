@@ -1,11 +1,11 @@
 {
-  "group.description.registration.group": "Registration commands",
   "command.description.wz.registration.csv": "Export registrations as CSV",
-  "command.description.wz.registration.register": "Sign up for a WZ event",
   "command.description.wz.registration.deregister": "Deregister an in-game account from a WZ event",
-  "command.description.wz.registration.reset": "Remove non-permanent registrations and purge the registration and configured channels by default.",
-  "command.description.wz.registration.snapshot": "Export a JSON snapshot of this channel's registrations",
   "command.description.wz.registration.purge": "Confirm channels before deleting up to 500 messages in each.",
+  "command.description.wz.registration.register": "Sign up for a WZ event",
+  "command.description.wz.registration.reset": "Remove non-permanent registrations and purge the registration and configured channels by default.",
   "command.description.wz.registration.setup": "Configure this channel's registration with guided dialogs.",
-  "command.description.wz.setup.registration.remove": "Remove this channel's registration, sign-ups, and assigned roles."
+  "command.description.wz.registration.snapshot": "Export a JSON snapshot of this channel's registrations",
+  "command.description.wz.setup.registration.remove": "Remove this channel's registration, sign-ups, and assigned roles.",
+  "group.description.registration.group": "Registration commands"
 }

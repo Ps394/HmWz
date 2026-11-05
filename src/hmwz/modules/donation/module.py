@@ -124,7 +124,6 @@ class DonationModule(
         recent_limit: int = 20,
         show_ranking: bool = False,
         rush_start_at: datetime | None = None,
-        timezone_name: str = "UTC",
         show_donations: bool = True,
         donations_enabled: bool = True,
         export_channel_id: int | None = None,
@@ -132,6 +131,7 @@ class DonationModule(
     ) -> bool:
         """Persist the channel's single-unit donation setup and publish it."""
         async with self._cycle_lock(channel_id):
+            timezone_name = await self.client.get_guild_timezone(self.guild.id)
             history_units = await self.donations.get_history_units(
                 guild=self.guild, channel_id=channel_id
             )
