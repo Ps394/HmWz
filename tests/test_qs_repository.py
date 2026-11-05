@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from hmwz.modules.hs.qs.models import Phase, phase_starts, validate_schedule
+from hmwz.modules.hs.qs.models import (
+    Phase,
+    PingSettings,
+    phase_starts,
+    validate_schedule,
+)
 from hmwz.modules.hs.qs.repositories import QsRepository
 from hmwz.modules.hs.qs.repositories.bases import (
     BaseLimitReached,
@@ -46,6 +51,38 @@ async def test_independent_schema_and_exact_five_phases(
     assert [phase.index for phase in phases] == [1, 2, 3, 4, 5]
     assert all(phase.ends_at - phase.starts_at == 7200 for phase in phases)
     assert not await repository.database.fetch_all("PRAGMA foreign_key_check")
+
+
+@pytest.mark.asyncio
+async def test_ping_settings_schema_upgrade_and_preservation(
+    repository: QsRepository,
+) -> None:
+    for column in ("PingStart", "PingEnd", "PingGoal", "PingPhaseStart"):
+        assert await repository.database.execute(
+            f"ALTER TABLE HsQsEvents DROP COLUMN {column}"
+        )
+    assert await repository.ensure_schema()
+    configuration = await repository.get(10, 20)
+    assert configuration is not None
+    assert configuration.ping_settings == PingSettings()
+    settings = PingSettings(start=False, goal=False, phase_start=False)
+    await repository.configure(
+        10, 20, 30, "2026-11-01", "UTC", (0,) * 5, ping_settings=settings
+    )
+    assert await repository.ensure_schema()
+    restored = QsRepository(repository.database)
+    assert (await restored.all(10))[0].ping_settings == settings
+    for reset in (False, True):
+        await restored.configure(
+            10, 20, 30, "2026-11-02", "UTC", (86400,) * 4, reset=reset
+        )
+        current = await restored.get(10, 20)
+        assert current is not None
+        assert current.ping_settings == settings
+    await restored.configure(10, 21, 30, "2026-11-02", "UTC", (86400,) * 4)
+    other = await restored.get(10, 21)
+    assert other is not None
+    assert other.ping_settings == PingSettings()
 
 
 @pytest.mark.asyncio

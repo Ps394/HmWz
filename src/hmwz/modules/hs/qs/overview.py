@@ -70,9 +70,12 @@ def overview_embed(
     )
     for phase in phases:
         embed.add_field(
-            name=f"{phase_label(guild, phase)} ({len(members[phase.index])})",
+            name=phase_label(guild, phase),
             value=(
-                f"<t:{phase.starts_at}:F> – <t:{phase.ends_at}:t>\n"
+                "👥 **"
+                + t(guild, "qs.event.signup_count", count=len(members[phase.index]))
+                + "**\n"
+                + f"<t:{phase.starts_at}:F> – <t:{phase.ends_at}:t>\n"
                 + (f"<#{phase.thread_id}>\n" if phase.thread_id is not None else "")
             ),
             inline=False,

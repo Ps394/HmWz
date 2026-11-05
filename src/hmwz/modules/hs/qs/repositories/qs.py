@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hmwz.sqlite_db import Base, Database
 
-from ..models import BaseReport, Configuration, Phase, validate_schedule
+from ..models import BaseReport, Configuration, Phase, PingSettings, validate_schedule
 from .bases import BaseReportRepository
 from .members import MemberRepository
 from .phases import PhaseRepository
@@ -37,6 +37,10 @@ class QsRepository(Base):
                 StartNotified INTEGER NOT NULL DEFAULT 0,
                 EndNotified INTEGER NOT NULL DEFAULT 0,
                 State TEXT NOT NULL DEFAULT 'active',
+                PingStart INTEGER NOT NULL DEFAULT 1,
+                PingEnd INTEGER NOT NULL DEFAULT 1,
+                PingGoal INTEGER NOT NULL DEFAULT 1,
+                PingPhaseStart INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (Guild, Channel),
                 FOREIGN KEY (Guild) REFERENCES Servers (Guild) ON DELETE CASCADE
             ) WITHOUT ROWID
@@ -54,6 +58,10 @@ class QsRepository(Base):
                 ("StartNotified", "INTEGER NOT NULL DEFAULT 0"),
                 ("EndNotified", "INTEGER NOT NULL DEFAULT 0"),
                 ("State", "TEXT NOT NULL DEFAULT 'active'"),
+                ("PingStart", "INTEGER NOT NULL DEFAULT 1"),
+                ("PingEnd", "INTEGER NOT NULL DEFAULT 1"),
+                ("PingGoal", "INTEGER NOT NULL DEFAULT 1"),
+                ("PingPhaseStart", "INTEGER NOT NULL DEFAULT 1"),
             )
         ):
             return False
@@ -87,6 +95,7 @@ class QsRepository(Base):
         eruption_start: int | None = None,
         durations: tuple[int, ...] | None = None,
         reset: bool = False,
+        ping_settings: PingSettings | None = None,
     ) -> None:
         """Create or update an event atomically, preserving signups and reports."""
         durations = durations if durations is not None else (2,) * len(starts)
@@ -106,6 +115,19 @@ class QsRepository(Base):
                     EruptionStart=excluded.EruptionStart""",
                 (guild_id, channel_id, role_id, date, timezone, eruption_start),
             )
+            if ping_settings is not None:
+                await connection.execute(
+                    "UPDATE HsQsEvents SET PingStart=?, PingEnd=?, PingGoal=?, "
+                    "PingPhaseStart=? WHERE Guild=? AND Channel=?",
+                    (
+                        ping_settings.start,
+                        ping_settings.end,
+                        ping_settings.goal,
+                        ping_settings.phase_start,
+                        guild_id,
+                        channel_id,
+                    ),
+                )
             if reset:
                 await connection.execute(
                     "DELETE FROM HsQsMembers WHERE Guild=? AND Channel=?",
@@ -160,6 +182,12 @@ class QsRepository(Base):
                 bool(row["StartNotified"]),
                 bool(row["EndNotified"]),
                 row["State"],
+                PingSettings(
+                    start=bool(row["PingStart"]),
+                    end=bool(row["PingEnd"]),
+                    goal=bool(row["PingGoal"]),
+                    phase_start=bool(row["PingPhaseStart"]),
+                ),
             )
             if row is not None
             else None
@@ -181,6 +209,12 @@ class QsRepository(Base):
                 bool(row["StartNotified"]),
                 bool(row["EndNotified"]),
                 row["State"],
+                PingSettings(
+                    start=bool(row["PingStart"]),
+                    end=bool(row["PingEnd"]),
+                    goal=bool(row["PingGoal"]),
+                    phase_start=bool(row["PingPhaseStart"]),
+                ),
             )
             for row in rows
         )

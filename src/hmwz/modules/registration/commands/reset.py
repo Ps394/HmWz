@@ -176,6 +176,10 @@ async def reset(
                     for other in all_member_registrations or ()
                 )
             }
+
+            
+            await module.export_registration_snapshot(channel_id, "sync")
+
             await _remove_registration_roles(guild, roles_to_remove)
 
             success = await module.registrations.remove(

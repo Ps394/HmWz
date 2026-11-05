@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from .constants import ERUPTION_SECONDS
+from .ping_settings import PingSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,7 @@ class Configuration:
     start_notified: bool = False
     end_notified: bool = False
     state: str = "active"
+    ping_settings: PingSettings = PingSettings()
 
     @property
     def eruption_end(self) -> int:

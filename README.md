@@ -185,9 +185,9 @@ Enddatum an. Das Eruptionsdatum wird aus dem Startzeitstempel abgeleitet.
 
 | Befehl | Zweck |
 | --- | --- |
-| `/qs setup` | Klar gegliederte Einstellungen im privaten Menü anzeigen: genau eine bestehende Qs-Rolle, Eruptionsstart, gemeinsames Phasendatum in der Server-Zeitzone, vier oder fünf Phasen und je Phase Startstunde (0–23) sowie Dauer (1–3 h) auswählen. Erst **Speichern** übernimmt Änderungen. |
+| `/qs setup` | Private Übersicht mit **QS-Rolle**, **Eruptionsstart festlegen**, **Phasen Einstellung**, **Ping Einstellungen**, **Speichern** und **Abbrechen**. Im Phasen-Untermenü vier oder fünf Phasen und je Phase Startstunde (0–23) sowie Dauer (1–3 h) auswählen. **Zurück** führt ohne Verlust des Entwurfs ins Hauptmenü. Die Übersicht bleibt sichtbar; erst **Speichern** übernimmt Änderungen, **Abbrechen** verwirft den Entwurf. |
 | `/qs remove` | Nach Bestätigung das Qs-Tool, alle angelegten Phasenthreads, Qs-Übersichten und Daten dieses Kanals löschen. Hauptkanal, ausgewählte Rolle und fremde Nachrichten bleiben bestehen. |
-| `/qs reset` | Zuerst neue Eruptions-/Phasenzeitpunkte im Menü festlegen, anschließend die Bereinigung bestätigen: alle Nachrichten im Hauptkanal und Qs-Threads löschen und einen neuen Meldezyklus beginnen. |
+| `/qs reset` | Menü mit **Eruptionsstart festlegen**, **Phasen Einstellung** und **Bestätigung**. Erst im anschließenden Warnungsdialog die Bereinigung bestätigen: alle Nachrichten im Hauptkanal und Qs-Threads löschen und einen neuen Meldezyklus beginnen. QS-Rolle und Ping-Einstellungen bleiben erhalten. |
 | `/qs ping` | Die konfigurierte Qs-Rolle im aktuellen Kanal gezielt benachrichtigen; höchstens einmal pro Minute und Kanal. |
 
 Alle Befehle erfordern die Moderator-/Offiziersrollen wie die WZ-Einrichtung.
@@ -206,9 +206,18 @@ im jeweiligen Phasenthread erwähnt, nicht die gesamte Qs-Rolle.
 Verpasste Phasenstarts werden nach einem Ausfall nicht nachgeholt. Leere
 Teilnehmerlisten erzeugen keine Nachricht; spätere Anmeldungen lösen keinen
 zusätzlichen Start-Ping aus.
+Unter **Ping Einstellungen** lassen sich Eruptionsstart, Eruptionsende,
+Phasenziel und Teilnehmer-Pings bei Phasenstart unabhängig ein-/ausschalten.
+Standardmäßig sind alle vier aktiv. Die Übersicht zeigt den Entwurfsstatus;
+Änderungen werden zusammen mit dem Setup gespeichert und über Neustarts und
+Resets beibehalten. Deaktivierte Benachrichtigungen werden nicht nachgeholt,
+wenn ihr Auslösezeitpunkt bzw. Ziel bereits bei einem Prüflauf verarbeitet wurde.
+Der manuelle Befehl `/qs ping` bleibt davon unberührt.
 
 Mitglieder mit der kanalbezogenen Qs-Rolle können sich unabhängig für mehrere
-Phasen an- oder abmelden. Anmeldebuttons zeigen Phasennummer und Zeitraum in der
+Phasen an- oder abmelden. Die Hauptübersicht zeigt pro Phase die Anmeldezahl
+in einer eigenen, fett hervorgehobenen Zeile mit 👥 und „Anmeldungen: …“.
+Anmeldebuttons zeigen Phasennummer und Zeitraum in der
 Server-Zeitzone, etwa `Phase 1 : 22:00 – 01:00`; Threadtitel verwenden
 weiterhin `Phase 1 - 22:00 – 01:00`. Teilnehmerübersichten erscheinen nur im
 jeweiligen Phasenthread als eigenständige Embed-Nachricht, nicht in der

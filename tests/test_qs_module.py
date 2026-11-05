@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
@@ -12,11 +13,17 @@ import pytest
 from hmwz.client import Client
 from hmwz.i18n import RuntimeLocalizations
 from hmwz.modules.hs.qs.commands import QsGroup
-from hmwz.modules.hs.qs.models import BaseReport, Phase
+from hmwz.modules.hs.qs.models import BaseReport, Configuration, Phase, PingSettings
+from hmwz.modules.hs.qs.models.ping_settings import PING_EVENTS, PingEvent
 from hmwz.modules.hs.qs.commands.maintenance import QsMaintenanceConfirmation
 from hmwz.modules.hs.qs.module import QsModule
 from hmwz.modules.hs.qs.notifications import QsNotifications
-from hmwz.modules.hs.qs.overview import bases_embeds, member_list, phase_embed
+from hmwz.modules.hs.qs.overview import (
+    bases_embeds,
+    member_list,
+    overview_embed,
+    phase_embed,
+)
 from hmwz.modules.hs.qs.setup import (
     HourSelect,
     DateModal,
@@ -24,6 +31,8 @@ from hmwz.modules.hs.qs.setup import (
     PhaseSelect,
     PhaseCountSelect,
     QsRoleSelection,
+    QsSetupView,
+    PingButton,
     setup_view,
     SetupButton,
 )
@@ -204,6 +213,297 @@ def interaction(
     return context
 
 
+def setup_button(panel: QsSetupView, action: str) -> SetupButton:
+    return next(
+        item
+        for item in panel.children
+        if isinstance(item, SetupButton) and item.action == action
+    )
+
+
+@pytest.mark.parametrize(
+    ("locale", "label"),
+    [
+        (discord.Locale.german, "Anmeldungen"),
+        (discord.Locale.american_english, "Signups"),
+    ],
+)
+@pytest.mark.parametrize("count", [0, 1, 12, 100])
+def test_main_overview_highlights_localized_signup_count(
+    locale: discord.Locale,
+    label: str,
+    count: int,
+) -> None:
+    guild = Mock(spec=discord.Guild, preferred_locale=locale)
+    phase = Phase(1, 1793491200, 42, None)
+    embed = overview_embed(
+        guild,
+        Configuration(20, 30, "2026-11-01", None, None),
+        (phase,),
+        {1: tuple(range(count))},
+        0,
+    )
+    field = embed.fields[0]
+    assert field.name == "Phase 1"
+    assert field.value.splitlines() == [
+        f"👥 **{label}: {count}**",
+        f"<t:{phase.starts_at}:F> – <t:{phase.ends_at}:t>",
+        "<#42>",
+    ]
+    assert not field.inline
+    assert len(field.value) <= 1024
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reset_mode", [False, True])
+@pytest.mark.parametrize(
+    "locale", [discord.Locale.german, discord.Locale.american_english]
+)
+async def test_setup_menu_keeps_overview_and_separates_phase_controls(
+    environment: SimpleNamespace,
+    reset_mode: bool,
+    locale: discord.Locale,
+) -> None:
+    environment.guild.preferred_locale = locale
+    panel = await setup_view(environment.module, 20, 100, reset_mode=reset_mode)
+    if locale == discord.Locale.german:
+        expected = (
+            ["Eruptionsstart festlegen", "Phasen Einstellung", "Bestätigung"]
+            if reset_mode
+            else [
+                "QS-Rolle",
+                "Eruptionsstart festlegen",
+                "Phasen Einstellung",
+                "Ping Einstellungen",
+                "Speichern",
+                "Abbrechen",
+            ]
+        )
+    else:
+        expected = (
+            ["Set eruption start", "Phase settings", "Confirmation"]
+            if reset_mode
+            else [
+                "QS role",
+                "Set eruption start",
+                "Phase settings",
+                "Ping settings",
+                "Save",
+                "Cancel",
+            ]
+        )
+    assert [item.label for item in panel.children] == expected
+    assert all(isinstance(item, SetupButton) and item.emoji for item in panel.children)
+    assert all(len(row["components"]) <= 5 for row in panel.to_components())
+    summary = panel.embed().to_dict()["fields"]
+    assert all(len(field["value"]) <= 1024 for field in summary)
+    assert len(panel.embed()) <= 6000
+    context = interaction(environment)
+    await setup_button(panel, "phases").callback(context)
+    assert [type(item) for item in panel.children] == [
+        PhaseCountSelect,
+        PhaseSelect,
+        HourSelect,
+        DurationSelect,
+        SetupButton,
+    ]
+    assert (
+        context.response.edit_message.await_args.kwargs["embed"].to_dict()["fields"]
+        == summary
+    )
+    await setup_button(panel, "back").callback(context)
+    assert [item.label for item in panel.children] == expected
+    assert panel.embed().to_dict()["fields"] == summary
+    panel.stop()
+
+
+@pytest.mark.asyncio
+async def test_setup_role_and_date_actions_keep_the_overview(
+    environment: SimpleNamespace,
+) -> None:
+    panel = await setup_view(environment.module, 20, 100)
+    context = interaction(environment)
+    await setup_button(panel, "role").callback(context)
+    arguments = context.response.edit_message.await_args.kwargs
+    assert arguments["embed"].to_dict()["fields"] == panel.embed().to_dict()["fields"]
+    picker = arguments["view"]
+    assert isinstance(picker, QsRoleSelection)
+    back = next(item for item in picker.children if isinstance(item, SetupButton))
+    await back.callback(context)
+    assert picker.is_finished()
+    assert context.response.edit_message.await_args.kwargs["view"] is panel
+    await setup_button(panel, "date").callback(context)
+    modal = context.response.send_modal.await_args.args[0]
+    assert isinstance(modal, DateModal)
+    with patch.object(
+        modal.eruption, "parse", return_value=datetime(2026, 11, 2, tzinfo=UTC)
+    ):
+        await modal.on_submit(context)
+    assert panel.date == "2026-11-02"
+    assert context.response.edit_message.await_args.kwargs["view"] is panel
+    assert len(panel.children) == 6
+    panel.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event", PING_EVENTS)
+async def test_ping_settings_are_draft_only_until_save(
+    environment: SimpleNamespace,
+    event: PingEvent,
+) -> None:
+    panel = await setup_view(environment.module, 20, 100)
+    context = interaction(environment)
+    await setup_button(panel, "pings").callback(context)
+    assert len(panel.children) == 5
+    toggle = next(
+        item
+        for item in panel.children
+        if isinstance(item, PingButton) and item.event == event
+    )
+    await toggle.callback(context)
+    assert not panel.ping_settings.is_enabled(event)
+    summary = next(
+        field for field in panel.embed().fields if field.name == "Automatische Pings"
+    )
+    assert "Aus" in summary.value
+    configuration = await environment.module.qs.get(10, 20)
+    assert configuration.ping_settings == PingSettings()
+    await setup_button(panel, "back").callback(context)
+    with patch.object(panel, "finish", AsyncMock()):
+        await setup_button(panel, "save").callback(context)
+    restored = await setup_view(environment.module, 20, 100)
+    assert restored.ping_settings == replace(PingSettings(), **{event: False})
+    panel.stop()
+    restored.stop()
+
+
+@pytest.mark.asyncio
+async def test_setup_cancel_discards_all_draft_changes_and_rejects_strangers(
+    environment: SimpleNamespace,
+) -> None:
+    panel = await setup_view(environment.module, 20, 100)
+    context = interaction(environment)
+    await setup_button(panel, "pings").callback(context)
+    toggle = next(item for item in panel.children if isinstance(item, PingButton))
+    await toggle.callback(interaction(environment, member_id=101))
+    assert panel.ping_settings == PingSettings()
+    await toggle.callback(context)
+    await setup_button(panel, "back").callback(context)
+    panel.role_id = 31
+    panel.hours[0] = 1
+    await setup_button(panel, "cancel").callback(context)
+    context.delete_original_response.assert_awaited_once()
+    assert panel.is_finished()
+    restored = await setup_view(environment.module, 20, 100)
+    assert restored.role_id == 30
+    assert restored.hours[0] == 0
+    assert restored.ping_settings == PingSettings()
+    restored.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disabled_event", PING_EVENTS)
+async def test_automatic_ping_switches_are_independent_and_manual_ping_is_unaffected(
+    environment: SimpleNamespace,
+    disabled_event: PingEvent,
+) -> None:
+    module = environment.module
+    settings = replace(PingSettings(), **{disabled_event: False})
+    assert await module.configure(
+        20, 30, "2026-11-01", (0, 2, 4, 6, 22), ping_settings=settings
+    )
+    phase = (await module.qs.phases(10, 20))[0]
+    assert await module.qs.toggle(10, 20, 1, 100)
+    thread = environment.threads[phase.thread_id]
+    for event in PING_EVENTS:
+        sends = environment.channel.send.await_count
+        thread_sends = thread.send.await_count
+        if event == "phase_start":
+            assert await module.ping_participants(20, phase)
+            assert thread.send.await_count - thread_sends == (event != disabled_event)
+            assert environment.channel.send.await_count == sends
+        else:
+            assert await module.ping(20, event=event, phase_index=1)
+            assert environment.channel.send.await_count - sends == (
+                event != disabled_event
+            )
+            assert thread.send.await_count == thread_sends
+    sends = environment.channel.send.await_count
+    assert await module.ping(20)
+    assert environment.channel.send.await_count == sends + 1
+
+
+@pytest.mark.asyncio
+async def test_disabled_notifications_are_consumed_and_settings_survive_reset(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    settings = PingSettings(False, False, False, False)
+    assert await module.configure(
+        20, 30, "2026-11-01", (0, 2, 4, 6, 22), ping_settings=settings
+    )
+    assert await module.qs.toggle(10, 20, 1, 100)
+    for number in range(8):
+        await module.qs.report(10, 20, 1, number, f"Player {number}", number)
+    configuration = await module.qs.get(10, 20)
+    start, end = configuration.eruption_start, configuration.eruption_end
+    sends = environment.channel.send.await_count
+    thread_sends = sum(
+        thread.send.await_count for thread in environment.threads.values()
+    )
+    await module.notifications.tick(start + 1, start - 1)
+    await module.notifications.tick(end + 1, start + 1)
+    assert environment.channel.send.await_count == sends
+    assert (
+        sum(thread.send.await_count for thread in environment.threads.values())
+        == thread_sends
+    )
+    current = await module.qs.get(10, 20)
+    assert current.start_notified and current.end_notified
+    phases = await module.qs.phases(10, 20)
+    assert all(phase.start_notified for phase in phases)
+    assert phases[0].goal_notified
+    assert not module.notifications.pending
+    await module.qs.configure(
+        10,
+        20,
+        30,
+        "2026-11-01",
+        "UTC",
+        tuple(phase.starts_at for phase in phases),
+        ping_settings=PingSettings(),
+    )
+    await module.notifications.tick(end + 31, end + 1)
+    assert environment.channel.send.await_count == sends
+    assert (
+        sum(thread.send.await_count for thread in environment.threads.values())
+        == thread_sends
+    )
+    await module.qs.configure(
+        10,
+        20,
+        30,
+        "2026-11-01",
+        "UTC",
+        tuple(phase.starts_at for phase in phases),
+        ping_settings=settings,
+    )
+    panel = await setup_view(module, 20, 100, reset_mode=True)
+    context = interaction(environment)
+    panel.date, panel.eruption_start = "2026-11-02", end
+    await setup_button(panel, "save").callback(context)
+    confirmation = context.response.edit_message.await_args.kwargs["view"]
+    environment.channel.purge.assert_not_awaited()
+    with patch.object(confirmation, "finish", AsyncMock()):
+        await confirmation.confirm.callback(context)
+    current = await module.qs.get(10, 20)
+    assert current.eruption_start == end
+    assert current.ping_settings == settings
+    assert not current.start_notified and not current.end_notified
+    assert not await module.qs.reports(10, 20)
+    panel.stop()
+
+
 @pytest.mark.asyncio
 async def test_setup_creates_exact_five_threads_and_persistent_views(
     environment: SimpleNamespace,
@@ -219,8 +519,11 @@ async def test_setup_creates_exact_five_threads_and_persistent_views(
     assert "0 / 40" in embed.description
     assert len(embed.fields) == 5
     assert [field.name for field in embed.fields] == [
-        f"Phase {index} (0)" for index in range(1, 6)
+        f"Phase {index}" for index in range(1, 6)
     ]
+    assert all(
+        field.value.startswith("👥 **Anmeldungen: 0**\n") for field in embed.fields
+    )
     assert len(overview.sent_kwargs["view"].children) == 5
     assert all(
         len(environment.messages[phase.message_id].sent_kwargs["view"].children) == 2
@@ -465,6 +768,7 @@ async def test_setup_uses_project_role_picker_and_all_24_hours(
     environment: SimpleNamespace,
 ) -> None:
     panel = await setup_view(environment.module, 20, 100)
+    await setup_button(panel, "phases").callback(interaction(environment))
     assert (
         next(item for item in panel.children if isinstance(item, HourSelect))
         .options[-1]
@@ -551,6 +855,7 @@ async def test_setup_draft_editing_and_save_end_to_end(
 ) -> None:
     panel = await setup_view(environment.module, 20, 100)
     context = interaction(environment)
+    await setup_button(panel, "phases").callback(context)
     phase_select = next(
         item for item in panel.children if isinstance(item, PhaseSelect)
     )
@@ -563,6 +868,7 @@ async def test_setup_draft_editing_and_save_end_to_end(
         discord.ui.Select, "values", new_callable=PropertyMock, return_value=["22"]
     ):
         await hour_select.callback(context)
+    await setup_button(panel, "back").callback(context)
     picker = QsRoleSelection(panel)
     await picker.select_entities(context, [31])
     modal = DateModal(panel)
@@ -698,6 +1004,7 @@ async def test_four_phases_and_durations_saved_from_setup(
 ) -> None:
     panel = await setup_view(environment.module, 20, 100)
     context = interaction(environment)
+    await setup_button(panel, "phases").callback(context)
     selector = next(
         item for item in panel.children if isinstance(item, PhaseCountSelect)
     )
@@ -719,6 +1026,7 @@ async def test_four_phases_and_durations_saved_from_setup(
         discord.ui.Select, "values", new_callable=PropertyMock, return_value=["3"]
     ):
         await duration.callback(context)
+    await setup_button(panel, "back").callback(context)
     with patch.object(panel, "finish", AsyncMock()):
         save = next(
             item
@@ -1272,8 +1580,10 @@ async def test_participant_lists_are_only_posted_in_their_phase_threads(
     assert "<@101>" not in str(overview.to_dict())
     for phase in await module.qs.phases(10, 20):
         assert f"<#{phase.thread_id}>" in overview.fields[phase.index - 1].value
-        assert overview.fields[phase.index - 1].name == (
-            f"Phase {phase.index} ({1 if phase.index in (1, 2) else 0})"
+        field = overview.fields[phase.index - 1]
+        assert field.name == f"Phase {phase.index}"
+        assert field.value.splitlines()[0] == (
+            f"👥 **Anmeldungen: {1 if phase.index in (1, 2) else 0}**"
         )
         participants = environment.messages[phase.members_message_id]
         kwargs = (
@@ -1334,12 +1644,19 @@ async def test_main_overview_counts_track_join_leave_and_restart(
     configuration = await module.qs.get(10, 20)
     message = environment.messages[configuration.message_id]
     embed = message.edit.await_args.kwargs["embeds"][0]
-    assert [field.name for field in embed.fields[:2]] == ["Phase 1 (2)", "Phase 2 (1)"]
+    assert [field.name for field in embed.fields[:2]] == ["Phase 1", "Phase 2"]
+    assert [field.value.splitlines()[0] for field in embed.fields[:2]] == [
+        "👥 **Anmeldungen: 2**",
+        "👥 **Anmeldungen: 1**",
+    ]
     await module.toggle_phase(interaction(environment, member_id=100), 20, 1)
     restored = QsModule(environment.guild, environment.client)
     assert await restored.ensure()
     embed = message.edit.await_args.kwargs["embeds"][0]
-    assert [field.name for field in embed.fields[:2]] == ["Phase 1 (1)", "Phase 2 (1)"]
+    assert [field.name for field in embed.fields[:2]] == ["Phase 1", "Phase 2"]
+    assert all(
+        field.value.startswith("👥 **Anmeldungen: 1**\n") for field in embed.fields[:2]
+    )
     assert "<@100>" not in str(embed.to_dict())
     assert "<@101>" not in str(embed.to_dict())
 
@@ -1618,8 +1935,10 @@ async def test_burst_signups_patch_only_affected_lists_and_overview_once(
     embed = environment.messages[configuration.message_id].edit.await_args.kwargs[
         "embeds"
     ][0]
-    assert embed.fields[0].name == "Phase 1 (2)"
-    assert embed.fields[1].name == "Phase 2 (1)"
+    assert embed.fields[0].name == "Phase 1"
+    assert embed.fields[0].value.startswith("👥 **Anmeldungen: 2**\n")
+    assert embed.fields[1].name == "Phase 2"
+    assert embed.fields[1].value.startswith("👥 **Anmeldungen: 1**\n")
     assert not module._pending_updates
 
 
@@ -1706,8 +2025,8 @@ async def test_update_arriving_during_flush_is_not_lost(
         environment.messages[configuration.message_id]
         .edit.await_args.kwargs["embeds"][0]
         .fields[0]
-        .name
-        == "Phase 1 (2)"
+        .value.splitlines()[0]
+        == "👥 **Anmeldungen: 2**"
     )
 
 

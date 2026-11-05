@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from dataclasses import replace
+from typing import Literal
 
 import discord
 
@@ -20,7 +22,8 @@ from hmwz.ui.messages import (
 )
 from hmwz.ui.components.localized import LocalizedButton, LocalizedSelect
 
-from .models import phase_starts, validate_schedule
+from .models import PingSettings, phase_starts, validate_schedule
+from .models.ping_settings import PING_EVENTS, PingEvent
 from .module import QsModule
 
 
@@ -102,6 +105,7 @@ class QsRoleSelection(EntitySelectionView):
         )
         self.panel = panel
         self.message = panel.message
+        self.add_item(SetupButton(panel, "back", 4))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Recheck moderator privileges as well as ownership in the role picker."""
@@ -240,6 +244,7 @@ class QsSetupView(EphemeralView):
         eruption_start: int,
         durations: tuple[int, ...],
         reset_mode: bool = False,
+        ping_settings: PingSettings = PingSettings(),
     ) -> None:
         super().__init__(timeout=600)
         self.module = module
@@ -252,20 +257,36 @@ class QsSetupView(EphemeralView):
         self.eruption_start = eruption_start
         self.durations = list(durations)
         self.reset_mode = reset_mode
+        self.ping_settings = ping_settings
+        self.page: Literal["menu", "phases", "pings"] = "menu"
         self.selected_phase = 1
         self._rebuild()
 
     def _rebuild(self) -> None:
         self.clear_items()
-        self.add_item(PhaseCountSelect(self))
-        self.add_item(PhaseSelect(self))
-        self.add_item(HourSelect(self))
-        self.add_item(DurationSelect(self))
-        for action, row in (("role", 4), ("date", 4), ("save", 4)):
-            if action == "role" and self.reset_mode:
-                continue
-            button = SetupButton(self, action, row)
-            self.add_item(button)
+        if self.page == "phases":
+            self.add_item(PhaseCountSelect(self))
+            self.add_item(PhaseSelect(self))
+            self.add_item(HourSelect(self))
+            self.add_item(DurationSelect(self))
+            self.add_item(SetupButton(self, "back", 4))
+        elif self.page == "pings":
+            for index, event in enumerate(PING_EVENTS):
+                self.add_item(PingButton(self, event, index // 2))
+            self.add_item(SetupButton(self, "back", 2))
+        elif self.reset_mode:
+            for action in ("date", "phases", "save"):
+                self.add_item(SetupButton(self, action, 0))
+        else:
+            for action, row in (
+                ("role", 0),
+                ("date", 0),
+                ("phases", 0),
+                ("pings", 1),
+                ("save", 2),
+                ("cancel", 2),
+            ):
+                self.add_item(SetupButton(self, action, row))
 
     def content(self) -> str:
         """Show the chosen hours and durations before committing configuration."""
@@ -332,7 +353,14 @@ class QsSetupView(EphemeralView):
             )
         embed.add_field(
             name=t(self.module.guild, "qs.admin.pings"),
-            value=t(self.module.guild, "qs.admin.pings_summary"),
+            value="\n".join(
+                f"{'🔔' if self.ping_settings.is_enabled(event) else '🔕'} "
+                f"{t(self.module.guild, f'qs.admin.ping_setting_{event}')}: "
+                f"{t(self.module.guild, 'qs.admin.enabled' if self.ping_settings.is_enabled(event) else 'qs.admin.disabled')}"
+                for event in PING_EVENTS
+            )
+            + "\n\n"
+            + t(self.module.guild, "qs.admin.pings_summary"),
             inline=False,
         )
         embed.add_field(
@@ -359,15 +387,56 @@ class QsSetupView(EphemeralView):
         )
 
 
+class PingButton(LocalizedButton):
+    """Toggle one automatic notification in the unsaved draft."""
+
+    def __init__(self, panel: QsSetupView, event: PingEvent, row: int) -> None:
+        enabled = panel.ping_settings.is_enabled(event)
+        super().__init__(
+            panel.module.guild,
+            f"qs.admin.ping_setting_{event}",
+            row=row,
+            emoji="🔔" if enabled else "🔕",
+            style=discord.ButtonStyle.success
+            if enabled
+            else discord.ButtonStyle.secondary,
+        )
+        self.panel = panel
+        self.event = event
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Update the preview without persisting the notification switch."""
+        if not await self.panel.interaction_check(interaction):
+            return
+        self.panel.ping_settings = replace(
+            self.panel.ping_settings,
+            **{self.event: not self.panel.ping_settings.is_enabled(self.event)},
+        )
+        await self.panel.update(interaction)
+
+
 class SetupButton(LocalizedButton):
     """Edit draft metadata or save the complete event."""
 
     def __init__(self, panel: QsSetupView, action: str, row: int) -> None:
         super().__init__(
             panel.module.guild,
-            f"qs.event.setup_{action}",
+            "qs.event.setup_confirmation"
+            if action == "save" and panel.reset_mode
+            else f"qs.event.setup_{action}",
             row=row,
-            style=discord.ButtonStyle.success
+            emoji={
+                "role": "👥",
+                "date": "📅",
+                "phases": "⚙️",
+                "pings": "🔔",
+                "save": "✅",
+                "cancel": "❌",
+                "back": "↩️",
+            }[action],
+            style=discord.ButtonStyle.danger
+            if action == "save" and panel.reset_mode
+            else discord.ButtonStyle.success
             if action == "save"
             else discord.ButtonStyle.secondary,
         )
@@ -376,6 +445,22 @@ class SetupButton(LocalizedButton):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         """Open shared pickers or persist the fully validated setup."""
+        if not await self.panel.interaction_check(interaction):
+            return
+        if self.action == "cancel":
+            await self.panel.dismiss(interaction)
+            return
+        if self.action in ("phases", "pings", "back"):
+            if self.action == "phases":
+                self.panel.page = "phases"
+            elif self.action == "pings":
+                self.panel.page = "pings"
+            else:
+                self.panel.page = "menu"
+            if self.view is not None and self.view is not self.panel:
+                self.view.stop()
+            await self.panel.update(interaction)
+            return
         if self.action == "date":
             await send_modal(interaction, DateModal(self.panel))
             return
@@ -388,6 +473,7 @@ class SetupButton(LocalizedButton):
             await edit_interaction_response(
                 interaction,
                 content=t(interaction, "qs.event.choose_role"),
+                embed=self.panel.embed(),
                 view=QsRoleSelection(self.panel),
             )
             return
@@ -442,6 +528,7 @@ class SetupButton(LocalizedButton):
             tuple(self.panel.hours),
             eruption_start=self.panel.eruption_start,
             durations=tuple(self.panel.durations),
+            ping_settings=self.panel.ping_settings,
         )
         if success:
             await self.panel.finish(interaction, t(interaction, "qs.event.saved"))
@@ -485,4 +572,7 @@ async def setup_view(
         if phases
         else (2,) * 5,
         reset_mode=reset_mode,
+        ping_settings=configuration.ping_settings
+        if configuration is not None
+        else PingSettings(),
     )

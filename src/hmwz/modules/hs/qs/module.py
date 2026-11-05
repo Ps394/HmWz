@@ -28,7 +28,7 @@ from hmwz.utils.loaders import fetch_message, fetch_thread
 from hmwz.ui.threads import create_thread, edit_thread, delete_thread
 from hmwz.ui.components.timestamp_input import resolve_timezone
 
-from .models import Configuration, Phase, phase_starts, validate_schedule
+from .models import Configuration, Phase, PingSettings, phase_starts, validate_schedule
 from .maintenance import existing_thread, remove_event, reset_event
 from .notifications import QsNotifications
 from .overview import (
@@ -113,6 +113,7 @@ class QsModule(Module):
         *,
         eruption_start: int | None = None,
         durations: tuple[int, ...] | None = None,
+        ping_settings: PingSettings | None = None,
     ) -> bool:
         """Configure one event, preserving existing signups and base reports."""
         timezone = await self.client.get_guild_timezone(self.guild.id)
@@ -176,6 +177,7 @@ class QsModule(Module):
                     starts,
                     eruption_start=eruption_start,
                     durations=durations,
+                    ping_settings=ping_settings,
                 )
             except (aiosqlite.Error, discord.HTTPException, RuntimeError):
                 _logger.exception(
@@ -416,7 +418,15 @@ class QsModule(Module):
         )
 
     async def ping_participants(self, channel_id: int, phase: Phase) -> bool:
-        """Mention only enrolled players in their phase thread at phase start."""
+        """Mention enrolled players at phase start, or consume a disabled ping."""
+        configuration = await self.qs.get(self.guild.id, channel_id)
+        if configuration is None or configuration.state != "active":
+            _logger.warning(
+                "%s Participant ping has no active Qs event.", log_guild(self.guild)
+            )
+            return False
+        if not configuration.ping_settings.phase_start:
+            return True
         members = await self.qs.members(self.guild.id, channel_id, phase.index)
         if not members:
             return True
@@ -454,7 +464,7 @@ class QsModule(Module):
     async def ping(
         self, channel_id: int, *, event: str = "manual", phase_index: int | None = None
     ) -> bool:
-        """Send an intentional ping restricted to this channel's configured role."""
+        """Ping the configured role, or consume a disabled automatic notification."""
         configuration = await self.qs.get(self.guild.id, channel_id)
         channel = self.guild.get_channel(channel_id)
         if (
@@ -466,6 +476,12 @@ class QsModule(Module):
                 "%s Qs ping has no configured text channel.", log_guild(self.guild)
             )
             return False
+        if not {
+            "start": configuration.ping_settings.start,
+            "end": configuration.ping_settings.end,
+            "goal": configuration.ping_settings.goal,
+        }.get(event, True):
+            return True
         role = self.guild.get_role(configuration.role_id)
         if role is None:
             _logger.warning("%s Qs ping role no longer exists.", log_guild(self.guild))
