@@ -9,7 +9,7 @@ from typing import Final
 RUSH_DURATIONS_HOURS: tuple[int, ...] = (1, 8, 24)
 RUSH_BUTTON_DURATIONS_HOURS: tuple[int, ...] = (24, 8, 1)
 RUSH_BASE_PRICES: Final = {1: Decimal(28), 8: Decimal(223), 24: Decimal(667)}
-RUSH_PERIOD_DURATION = timedelta(days=9)
+RUSH_PERIOD_DURATION = timedelta(days=10)
 RUSH_DONATION_CUTOFF = RUSH_PERIOD_DURATION - timedelta(hours=24)
 
 

@@ -8,6 +8,7 @@ from typing import Literal
 
 import discord
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import t
 from hmwz.ui.components.entity_selection import EntitySelectionView
 from hmwz.ui.components.ephemeral_view import EphemeralView
@@ -30,9 +31,7 @@ from .module import QsModule
 def can_manage(member: discord.Member | discord.User) -> bool:
     """Match the project's moderator/officer role convention."""
     return isinstance(member, discord.Member) and any(
-        role.name
-        in {"Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"}
-        for role in member.roles
+        role.name in MODERATOR_ROLES for role in member.roles
     )
 
 

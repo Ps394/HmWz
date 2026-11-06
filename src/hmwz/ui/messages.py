@@ -142,15 +142,24 @@ async def dismiss_dialog(interaction: discord.Interaction) -> None:
         raise
 
 
+async def send_initial_response(
+    interaction: discord.Interaction, content: str | None = None, **kwargs: Any
+) -> None:
+    """Send an initial response without fetching the resulting message."""
+    kwargs.setdefault("ephemeral", True)
+    if content is None:
+        await interaction.response.send_message(**kwargs)
+    else:
+        await interaction.response.send_message(
+            emojis.render(content, interaction), **kwargs
+        )
+
+
 async def send_interaction_response(
     interaction: discord.Interaction, content: str | None = None, **kwargs: Any
 ) -> discord.InteractionMessage:
     """Send a private initial response; propagate failures to the caller."""
-    kwargs.setdefault("ephemeral", True)
-    await interaction.response.send_message(
-        emojis.render(content, interaction) if content is not None else None,
-        **kwargs,
-    )
+    await send_initial_response(interaction, content, **kwargs)
     return await interaction.original_response()
 
 
@@ -229,9 +238,7 @@ async def send_temporary_response(
     interaction: discord.Interaction, content: str, *, delay: float = 5
 ) -> None:
     """Send an ephemeral interaction response and remove it after the given delay."""
-    await interaction.response.send_message(
-        emojis.render(content, interaction), ephemeral=True
-    )
+    await send_initial_response(interaction, content)
     message = await interaction.original_response()
     await delete_message(message, delay=delay)
 

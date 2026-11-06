@@ -4,6 +4,8 @@ import discord
 from discord import app_commands
 from discord.app_commands import locale_str
 
+from hmwz.configuration import MODERATOR_ROLES
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.modules.donation.module import DonationModule
 from hmwz.ui.messages import send_temporary_response as _send_temporary_response
@@ -26,8 +28,7 @@ from .configuration_message import donation_setup_panel
         key="donation.setup.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
-
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.checks.bot_has_permissions(
     view_channel=True,
     send_messages=True,
@@ -78,7 +79,8 @@ async def setup(interaction: discord.Interaction) -> None:
             )
             return
         draft.accelerated_hours = summary.time_reduction_hours
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             embed=donation_setup_panel(draft, interaction),
             view=DonationSetupView(draft),
             ephemeral=True,
@@ -95,7 +97,8 @@ async def setup(interaction: discord.Interaction) -> None:
         value=channel.mention,
         inline=False,
     )
-    await interaction.response.send_message(
+    await send_initial_response(
+        interaction,
         embed=embed,
         view=DonationSetupKindView(
             module,

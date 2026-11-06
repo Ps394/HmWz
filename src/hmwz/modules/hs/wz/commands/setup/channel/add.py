@@ -4,6 +4,7 @@ import logging
 
 from discord import Interaction, app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.messages import send_followup, send_temporary_followup
 from hmwz.utils.interactions import log_interaction
@@ -15,7 +16,7 @@ from .selection import ChannelSelection, get_selectable_channels
 _logger = logging.getLogger(__name__)
 
 
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.command(
     name="add",
     description=app_commands.locale_str(

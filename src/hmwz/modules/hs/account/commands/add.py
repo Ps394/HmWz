@@ -4,6 +4,7 @@ import logging
 
 from discord import Interaction, app_commands
 
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.utils.interactions import log_interaction
 
@@ -32,15 +33,19 @@ async def account_add(interaction: Interaction, account: str) -> None:
     await interaction.response.defer(ephemeral=True)
     account = account.strip()
     if not account or len(account) > 100:
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.invalid"), ephemeral=True
+        await send_followup(
+            interaction,
+            t(interaction, "wz.registration.account.invalid"),
+            ephemeral=True,
         )
         return
     try:
         context = await get_member_context(interaction)
         if context is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
         guild, member, module = context
@@ -51,16 +56,19 @@ async def account_add(interaction: Interaction, account: str) -> None:
                 if existing[0].member == member.id
                 else "wz.registration.account.owned_by_other"
             )
-            await interaction.followup.send(t(interaction, key), ephemeral=True)
+            await send_followup(interaction, t(interaction, key), ephemeral=True)
             return
         if not await module.game_accounts.add(
             guild=guild, member=member.id, account=account
         ):
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
-        await interaction.followup.send(
+        await send_followup(
+            interaction,
             t(interaction, "wz.registration.account.added", account=account),
             ephemeral=True,
         )
@@ -70,6 +78,6 @@ async def account_add(interaction: Interaction, account: str) -> None:
             log_interaction(interaction),
             account,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )

@@ -7,6 +7,7 @@ from typing import cast
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.components.ephemeral_view import EphemeralView
 from hmwz.ui.embeds import create_embed
@@ -215,7 +216,7 @@ class WzSetupMenu(EphemeralView):
         key="wz.setup.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 async def setup(interaction: discord.Interaction) -> None:
     view = WzSetupMenu(owner_id=interaction.user.id, context=interaction)
     try:

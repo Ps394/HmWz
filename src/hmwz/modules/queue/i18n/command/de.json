@@ -1,6 +1,0 @@
-{
-  "command.description.queue.remove": "Entfernt die Queue im aktuellen Kanal.",
-  "command.description.queue.reset": "Setzt eine Staffelqueue samt Teilnahmen, Zählern und Nachrichten zurück.",
-  "command.description.queue.setup": "Richtet eine Queue über einen interaktiven Dialog ein.",
-  "group.description.queue": "Verwaltet kanalbezogene Warteschlangen und Runs"
-}

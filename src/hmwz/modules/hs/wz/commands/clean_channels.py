@@ -5,6 +5,7 @@ import logging
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.components.entity_selection import EntitySelectionView
 from hmwz.ui.embeds import create_embed
@@ -258,7 +259,7 @@ class CleanChannelsConfirmation(EntitySelectionView):
         key="wz.reset_channels.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.checks.bot_has_permissions(manage_messages=True)
 async def clean_channels(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)

@@ -5,6 +5,7 @@ import logging
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.components.entity_selection import EntitySelectionView
 from hmwz.ui.embeds import create_embed
@@ -241,7 +242,7 @@ class ResetRolesConfirmation(EntitySelectionView):
         key="wz.reset_roles.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.checks.bot_has_permissions(manage_roles=True)
 async def reset_roles(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)

@@ -6,5 +6,5 @@
   "parameter.description.wz.purge.ignore_bots": "Nachrichten von Bots überspringen (Standard: true)",
   "parameter.description.wz.purge.ignore_pinned": "Angepinnte Nachrichten überspringen (Standard: true)",
   "parameter.description.wz.purge.limit": "Maximale Anzahl zu prüfender Nachrichten (Standard: 500)",
-  "parameter.description.wz.set_timezone.timezone": "IANA-Zeitzone, zum Beispiel Europe/Berlin"
+  "parameter.description.wz.set_timezone.timezone": "IANA-Zeitzone auswählen, zum Beispiel Europe/Berlin"
 }

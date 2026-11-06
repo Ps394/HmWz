@@ -8,13 +8,22 @@ Configuration keys include ``bot.prefix``, ``bot.delay_seconds``, and
 ``bot.token_env``; database ``folder`` and ``filename``; and monitoring
 interval and CPU, memory, disk, and temperature thresholds. The ``hs.wz``
 settings define minimum and maximum registration roles plus overview defaults.
-WZ settings remain compatible with the legacy ``wz_registration`` key.
+Moderator role names are configured in ``moderator_roles``. WZ settings remain
+compatible with the legacy ``wz_registration`` key.
 """
 
 import json
 import logging
 
 _logger = logging.getLogger(__name__)
+_DEFAULT_MODERATOR_ROLES = (
+    "Offiziere",
+    "offiziere",
+    "Moderator",
+    "moderator",
+    "officier",
+    "Officier",
+)
 
 
 def _default_config() -> dict:
@@ -26,6 +35,7 @@ def _default_config() -> dict:
     """
     return {
         "bot": {"prefix": "!", "delay_seconds": 0.1, "token_env": "WZ_BOT_TOKEN"},
+        "moderator_roles": list(_DEFAULT_MODERATOR_ROLES),
         "database": {"folder": "data", "filename": "data.db"},
         "monitoring": {
             "interval_seconds": 60,
@@ -83,6 +93,19 @@ def _load_configuration(path: str = "configuration.json") -> dict:
 global config
 
 config: dict = _load_configuration()
+
+_configured_moderator_roles = config.get("moderator_roles", _DEFAULT_MODERATOR_ROLES)
+if (
+    not isinstance(_configured_moderator_roles, (list, tuple))
+    or not _configured_moderator_roles
+    or not all(
+        isinstance(role, str) and role.strip() for role in _configured_moderator_roles
+    )
+):
+    raise ValueError(
+        "Configuration key 'moderator_roles' must be a non-empty list of role names."
+    )
+MODERATOR_ROLES: tuple[str, ...] = tuple(_configured_moderator_roles)
 
 
 def wz_registration_config() -> dict:

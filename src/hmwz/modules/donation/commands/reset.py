@@ -5,8 +5,9 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
-from hmwz.ui.messages import send_temporary_response
+from hmwz.ui.messages import send_temporary_response, send_initial_response
 
 from ..module import DonationModule
 from ..type.credit.reset import DonationCycleResetView
@@ -23,8 +24,7 @@ from ..type.rush.reset import DonationRushResetModal
         key="donation.reset.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
-
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 async def reset(interaction: discord.Interaction) -> None:
     """Reset current-cycle views while retaining the channel's all-time ranking."""
     guild = interaction.guild
@@ -58,7 +58,8 @@ async def reset(interaction: discord.Interaction) -> None:
             )
         )
         return
-    await interaction.response.send_message(
+    await send_initial_response(
+        interaction,
         t(interaction, "donation.reset.simple_prompt"),
         view=DonationCycleResetView(module, channel_id, interaction.user.id),
         ephemeral=True,

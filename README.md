@@ -359,6 +359,7 @@ Datei mit Standardwerten zu erzeugen.
 
 | Bereich | Einstellung | Bedeutung |
 | --- | --- | --- |
+| `moderator_roles` | Rollenname (Liste) | Rollen, die Moderatorenbefehle verwenden dürfen. Namen müssen exakt den Discord-Rollennamen entsprechen. |
 | `database` | `folder`, `filename` | Ordner und Dateiname der SQLite-Datenbank. Standardmäßig `data/data.db`. |
 | `monitoring` | `interval_seconds` | Abstand zwischen Ressourcenmessungen in Sekunden. |
 | `monitoring` | `cpu_threshold`, `memory_threshold`, `disk_threshold`, `temperature_threshold` | Schwellwerte, ab denen das Monitoring Warnungen protokolliert. |
@@ -419,7 +420,11 @@ pyproject.toml                  Paket-, Hatch-, Lint- und Testkonfiguration
   Interaktions-Endpunkt, auch bei privaten Nachrichten. `EphemeralView.dismiss`
   beendet danach die View. Die Qs-Bestätigungsdialoge verwenden dies bei Abbruch.
   `send_interaction_message` wählt passend zum Antwortstatus initiale Antwort
-  oder Followup. Qs bestätigt Anmelde-, Melde- und Rücknahmeaktionen vor
+  oder Followup. `send_initial_response` sendet eine initiale Antwort ohne
+  zusätzlichen Abruf der Nachricht; `send_interaction_response` liefert
+  zusätzlich deren Nachrichtenobjekt. `send_followup` liefert das
+  Nachrichtenobjekt einer Folgeantwort. Diese Helper rendern gemeinsame Emojis
+  und leiten Discord-Fehler weiter. Qs bestätigt Anmelde-, Melde- und Rücknahmeaktionen vor
   Kanalsperren und Datenbankabfragen, damit parallele Klicks nicht während
   laufender Aktualisierungen ihre initiale Discord-Antwortfrist verlieren.
 - [ui/threads.py](src/hmwz/ui/threads.py): `create_thread`, `edit_thread` und

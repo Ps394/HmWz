@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz import events
+from hmwz.ui.messages import send_initial_response
 from hmwz.modules.module import Module
 from hmwz.modules.overview.models import Overview, OverviewButton
 from hmwz.modules.overview.protocols import OverviewButtonHandler
@@ -363,8 +364,10 @@ class OverviewModule(Module):
                 overview_id,
                 button_id,
             )
-            await interaction.response.send_message(
-                "Diese Interaktion ist derzeit nicht verfügbar.", ephemeral=True
+            await send_initial_response(
+                interaction,
+                "Diese Interaktion ist derzeit nicht verfügbar.",
+                ephemeral=True,
             )
             return
         await handler(interaction)

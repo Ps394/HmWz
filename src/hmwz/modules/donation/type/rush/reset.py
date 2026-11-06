@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import t
 from hmwz.ui.components.timestamp_input import TimestampInput
 from .setup import start_timestamp_input
@@ -75,7 +76,8 @@ class DonationRushResetModal(discord.ui.Modal):
         reset_done, messages_updated, export_failed = await self.module.reset_cycle(
             self.channel_id, rush_start_at=rush_start_at, target_at=target_at
         )
-        result = await interaction.followup.send(
+        result = await send_followup(
+            interaction,
             t(
                 interaction,
                 reset_result_key(

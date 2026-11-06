@@ -4,6 +4,7 @@ import logging
 
 from discord import Interaction, app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.interactions import log_interaction
@@ -23,8 +24,7 @@ logger = logging.getLogger(__name__)
         key="wz.registration.snapshot.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
-
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.checks.cooldown(1, 60, key=lambda i: i.guild_id)
 async def snapshot(interaction: Interaction) -> None:
     """Export the current registrations without changing any of them.

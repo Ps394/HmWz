@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import discord
 
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import t
 
 
@@ -18,7 +19,8 @@ class RegistrationSetupView(discord.ui.View):
         """Allow only the user who opened the setup view to interact."""
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.config.owner_only"),
             ephemeral=True,
             delete_after=5,

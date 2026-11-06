@@ -6,6 +6,7 @@ import logging
 import discord
 from discord import HTTPException, Interaction, app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.loaders import fetch_channel, fetch_member
@@ -88,7 +89,7 @@ async def _purge_configured_channels(
         key="wz.registration.reset.purge.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild_id)
 async def reset(
     interaction: Interaction, ephemeral: bool = False, purge: bool = False

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
-from hmwz.ui.messages import send_temporary_response
+from hmwz.ui.messages import send_temporary_response, send_initial_response
 
 from ...models import DonationType
 from .views import DonationAmountChoiceView, DonationAmountModal
@@ -32,7 +32,8 @@ async def start_donation(
         )
         return
     if donation_type.input_mode == "choice" and donation_type.choices:
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "donation.setup.amount_donation_prompt"),
             view=DonationAmountChoiceView(module, channel_id, donation_type),
             ephemeral=True,

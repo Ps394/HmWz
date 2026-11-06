@@ -7,6 +7,8 @@ import logging
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.utils.loaders import fetch_channel, fetch_member, fetch_message
 from hmwz.utils.interactions import log_interaction
@@ -45,7 +47,8 @@ class RegistrationRemoveConfirmation(EphemeralView):
         """Allow only the user who opened the confirmation view to interact."""
         if interaction.user.id == self.owner_id:
             return True
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.registration.remove.confirmation_owner"),
             ephemeral=True,
             delete_after=5,
@@ -221,9 +224,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
 
         for message_id in message_ids:
             try:
-                message = await fetch_message(
-                    channel, message_id, raise_on_error=True
-                )
+                message = await fetch_message(channel, message_id, raise_on_error=True)
             except discord.NotFound:
                 handled_message_ids.add(message_id)
                 continue
@@ -287,9 +288,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
         )
 
 
-#@app_commands.checks.has_any_role("Offiziere", "Moderator")
-
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.command(
     name="remove",
     description=app_commands.locale_str(
@@ -310,7 +309,8 @@ async def remove(interaction: discord.Interaction) -> None:
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)
     if guild is None or channel_id is None or manager is None:
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.registration.remove.error"),
             ephemeral=True,
             delete_after=5,
@@ -320,7 +320,8 @@ async def remove(interaction: discord.Interaction) -> None:
     try:
         module: RegistrationModule = await manager.get_module(guild, RegistrationModule)
         if await module.registration.get(guild=guild, channel_id=channel_id) is None:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.registration.error.not_configured"),
                 ephemeral=True,
                 delete_after=5,
@@ -333,7 +334,8 @@ async def remove(interaction: discord.Interaction) -> None:
             channel_id=channel_id,
             context=interaction,
         )
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.registration.remove.confirmation"),
             view=view,
             ephemeral=True,
@@ -344,7 +346,8 @@ async def remove(interaction: discord.Interaction) -> None:
             "%s WZ setup registration removal prompt failed.",
             log_interaction(interaction),
         )
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.registration.remove.error"),
             ephemeral=True,
             delete_after=5,

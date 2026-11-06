@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz import events, sqlite_db
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import t
 from hmwz.modules.module import Module
 from hmwz.modules.protocols import (
@@ -92,8 +93,8 @@ class DonationModule(
                 await interaction.response.edit_message(content=content, view=view)
                 view.message = interaction.message
             else:
-                await interaction.response.send_message(
-                    content, view=view, ephemeral=True
+                await send_initial_response(
+                    interaction, content, view=view, ephemeral=True
                 )
                 view.message = await interaction.original_response()
             self._pending_donations[view.owner_id] = view

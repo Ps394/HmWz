@@ -3,6 +3,7 @@
 from discord import Interaction
 from discord.app_commands import command, describe, locale_str
 
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import CommandLocalizations, t
 
 __all__ = ["AboutBot"]
@@ -42,4 +43,4 @@ async def AboutBot(interaction: Interaction, ephemeral: bool = True):
             t(interaction, "wz.about.link"),
         ]
     )
-    await interaction.response.send_message(message, ephemeral=ephemeral)
+    await send_initial_response(interaction, message, ephemeral=ephemeral)

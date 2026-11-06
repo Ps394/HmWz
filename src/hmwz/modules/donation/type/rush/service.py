@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import t
 from hmwz.ui.messages import send_temporary_response
 
@@ -69,7 +70,8 @@ async def start_donation(
         )
         return
     if time_reduction is None:
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "donation.setup.hours_donation_prompt"),
             view=DonationTimeReductionView(
                 module, channel_id, donation_type, rush_prices

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from hmwz.i18n import t
-from hmwz.ui.messages import send_temporary_response
+from hmwz.ui.messages import send_temporary_response, send_followup
 
 from .. import reset_result_key
 
@@ -57,8 +57,8 @@ class DonationCycleResetView(discord.ui.View):
         )
         self.stop()
         await interaction.delete_original_response()
-        result = await interaction.followup.send(
-            t(interaction, result_key), ephemeral=True, wait=True
+        result = await send_followup(
+            interaction, t(interaction, result_key), ephemeral=True, wait=True
         )
         await result.delete(delay=5)
 

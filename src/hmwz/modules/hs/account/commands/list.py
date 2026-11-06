@@ -5,6 +5,7 @@ import logging
 import discord
 from discord import Interaction, app_commands
 
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import t
 from hmwz.ui.embeds import create_embed
 from hmwz.utils.interactions import log_interaction
@@ -28,15 +29,19 @@ async def account_list(interaction: Interaction) -> None:
     try:
         context = await get_member_context(interaction)
         if context is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
         guild, member, module = context
         accounts = await module.game_accounts.get(guild=guild, member=member.id)
         if not accounts:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.none"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.none"),
+                ephemeral=True,
             )
             return
         intro = t(
@@ -78,7 +83,8 @@ async def account_list(interaction: Interaction) -> None:
                 color=color,
                 client_avatar=avatar,
             )
-            await interaction.followup.send(
+            await send_followup(
+                interaction,
                 embed=embed,
                 ephemeral=True,
                 allowed_mentions=discord.AllowedMentions.none(),
@@ -88,6 +94,6 @@ async def account_list(interaction: Interaction) -> None:
             "%s Failed to list linked game accounts.",
             log_interaction(interaction),
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )

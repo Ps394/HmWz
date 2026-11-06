@@ -5,6 +5,7 @@ import logging
 import discord
 from discord import Interaction, app_commands
 
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.utils.interactions import log_interaction
 
@@ -36,8 +37,10 @@ async def account_remove(interaction: Interaction, account: str) -> None:
     try:
         context = await get_member_context(interaction)
         if context is None:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
         guild, member, module = context
@@ -45,8 +48,10 @@ async def account_remove(interaction: Interaction, account: str) -> None:
             guild=guild, member=member.id, account=account.strip()
         )
         if not linked:
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.not_found"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.not_found"),
+                ephemeral=True,
             )
             return
 
@@ -73,20 +78,25 @@ async def account_remove(interaction: Interaction, account: str) -> None:
         if registrations and not await module.registrations.remove(
             guild=guild, member=member.id, account=linked[0].account
         ):
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
 
         if not await module.game_accounts.remove(
             guild=guild, member=member.id, account=linked[0].account
         ):
-            await interaction.followup.send(
-                t(interaction, "wz.registration.account.error"), ephemeral=True
+            await send_followup(
+                interaction,
+                t(interaction, "wz.registration.account.error"),
+                ephemeral=True,
             )
             return
 
-        await interaction.followup.send(
+        await send_followup(
+            interaction,
             t(
                 interaction,
                 "wz.registration.account.removed",
@@ -101,8 +111,8 @@ async def account_remove(interaction: Interaction, account: str) -> None:
             log_interaction(interaction),
             account,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )
     except Exception:
         logger.exception(
@@ -110,6 +120,6 @@ async def account_remove(interaction: Interaction, account: str) -> None:
             log_interaction(interaction),
             account,
         )
-        await interaction.followup.send(
-            t(interaction, "wz.registration.account.error"), ephemeral=True
+        await send_followup(
+            interaction, t(interaction, "wz.registration.account.error"), ephemeral=True
         )

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import t
 from hmwz.ui.components.ephemeral_view import EphemeralView
 from hmwz.ui.messages import send_temporary_response
@@ -80,8 +81,8 @@ class DonationConfirmationView(EphemeralView):
             )
         )
         await interaction.delete_original_response()
-        result = await interaction.followup.send(
-            t(interaction, result_key), ephemeral=True, wait=True
+        result = await send_followup(
+            interaction, t(interaction, result_key), ephemeral=True, wait=True
         )
         await result.delete(delay=5)
 

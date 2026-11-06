@@ -10,8 +10,9 @@ import discord
 
 from hmwz import events, exceptions, modules, sqlite_db
 from hmwz.configuration import config
-from hmwz.emojis import EmojiUploader, emojis
+from hmwz.emojis import EmojiUploader
 from hmwz.i18n import CommandTranslator, t
+from hmwz.ui.messages import send_followup, send_initial_response
 from hmwz.utils.interactions import log_interaction
 
 from . import commands, monitoring, repositories
@@ -289,9 +290,7 @@ class Client(discord.Client):
         log_context = f"{log_interaction(interaction)} - Command: {interaction.command}"
 
         send = (
-            interaction.followup.send
-            if interaction.response.is_done()
-            else interaction.response.send_message
+            send_followup if interaction.response.is_done() else send_initial_response
         )
         try:
             if isinstance(error, discord.app_commands.MissingPermissions):
@@ -311,7 +310,7 @@ class Client(discord.Client):
             else:
                 message = t(interaction, "command.error.unexpected")
                 logger.exception(f"{log_context} - Unexpected error: {error}")
-            await send(emojis.render(message, self), ephemeral=True)
+            await send(interaction, message, ephemeral=True)
         except discord.HTTPException as e:
             if e.code in (10062, 40060):
                 logger.warning(

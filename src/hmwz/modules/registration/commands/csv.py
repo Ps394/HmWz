@@ -5,6 +5,7 @@ import logging
 
 from discord import File, Interaction, app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.loaders import fetch_member
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
         key="wz.registration.csv.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),

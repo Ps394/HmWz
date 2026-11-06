@@ -4,6 +4,14 @@
         "delay_seconds": 0.1,
         "token_env": "WZ_BOT_TOKEN"
     },
+    "moderator_roles": [
+        "Offiziere",
+        "offiziere",
+        "Moderator",
+        "moderator",
+        "officier",
+        "Officier"
+    ],
     "database": {
         "folder": "data",
         "filename": "data.db"

@@ -6,6 +6,7 @@ import logging
 
 import discord
 
+from hmwz.ui.messages import send_initial_response, send_followup
 from hmwz.configuration import registration_defaults
 from hmwz.emojis import emojis
 from hmwz.i18n import t
@@ -122,7 +123,8 @@ class RegistrationConfigView(RegistrationSetupView):
             channel_id=self.channel_id,
             show_lock_emojis=show_lock_emojis,
         ):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "registration.setup.config.save_error"),
                 ephemeral=True,
                 delete_after=5,
@@ -186,7 +188,8 @@ class RegistrationConfigView(RegistrationSetupView):
             guild=self.guild, channel_id=self.channel_id
         )
         if not configured_roles:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "registration.setup.config.no_roles_to_remove"),
                 ephemeral=True,
                 delete_after=5,
@@ -205,7 +208,8 @@ class RegistrationConfigView(RegistrationSetupView):
             for record in configured_roles
         ]
         if not roles:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "registration.setup.config.no_roles_to_remove"),
                 ephemeral=True,
                 delete_after=5,
@@ -278,7 +282,8 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
         selected_channel = self.values[0]
         channel = self.export_view.guild.get_channel(selected_channel.id)
         if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.export_channel_invalid"),
                 ephemeral=True,
                 delete_after=5,
@@ -286,7 +291,8 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             return
         bot_member = self.export_view.guild.me
         if bot_member is None:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.export_channel_error"),
                 ephemeral=True,
                 delete_after=5,
@@ -294,7 +300,8 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             return
         permissions = channel.permissions_for(bot_member)
         if not permissions.send_messages or not permissions.attach_files:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.export_channel_missing_permissions"),
                 ephemeral=True,
                 delete_after=5,
@@ -304,7 +311,8 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             guild=self.export_view.guild,
             channel_id=channel.id,
         ):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.export_channel_error"),
                 ephemeral=True,
                 delete_after=5,
@@ -364,7 +372,8 @@ class RegistrationExportChannelView(RegistrationSetupView):
             button: Button that triggered the callback.
         """
         if not await self.module.registration_event_channel.remove(guild=self.guild):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.export_channel_error"),
                 ephemeral=True,
                 delete_after=5,
@@ -434,7 +443,8 @@ class RegistrationTitleModal(discord.ui.Modal):
             interaction: Interaction that submitted the modal.
         """
         if interaction.user.id != self.owner_id:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.owner_only"),
                 ephemeral=True,
                 delete_after=5,
@@ -445,7 +455,8 @@ class RegistrationTitleModal(discord.ui.Modal):
             channel_id=self.channel_id,
             title=self.title_input.value.strip(),
         ):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.save_error"),
                 ephemeral=True,
                 delete_after=5,
@@ -457,13 +468,15 @@ class RegistrationTitleModal(discord.ui.Modal):
         if roles and not await self.module.compose_registration_overview(
             force=True, channel_id=self.channel_id
         ):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.saved_refresh_error"),
                 ephemeral=True,
                 delete_after=5,
             )
             return
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.config.title_saved"),
             ephemeral=True,
             delete_after=5,
@@ -505,7 +518,8 @@ class RegistrationTextModal(discord.ui.Modal):
             interaction: Interaction that submitted the modal.
         """
         if interaction.user.id != self.owner_id:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.owner_only"),
                 ephemeral=True,
                 delete_after=5,
@@ -516,7 +530,8 @@ class RegistrationTextModal(discord.ui.Modal):
             channel_id=self.channel_id,
             description=self.text_input.value.strip(),
         ):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.save_error"),
                 ephemeral=True,
                 delete_after=5,
@@ -528,13 +543,15 @@ class RegistrationTextModal(discord.ui.Modal):
         if roles and not await self.module.compose_registration_overview(
             force=True, channel_id=self.channel_id
         ):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.saved_refresh_error"),
                 ephemeral=True,
                 delete_after=5,
             )
             return
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.config.text_saved"),
             ephemeral=True,
             delete_after=5,
@@ -609,7 +626,8 @@ class RegistrationRoleView(RegistrationSetupView):
             select: Role selector that produced the selection.
         """
         if not select.values:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.role_select"),
                 ephemeral=True,
                 delete_after=5,
@@ -848,7 +866,8 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
         """
         selected_role_ids = [int(value) for value in self.role_select.values]
         if not selected_role_ids:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "registration.setup.config.remove_role_select"),
                 ephemeral=True,
                 delete_after=5,
@@ -865,14 +884,16 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
             )
         )
         if not set(selected_role_ids).issubset(configured_ids):
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "registration.setup.config.remove_role_stale"),
                 ephemeral=True,
                 delete_after=5,
             )
             return
         if len(configured_ids) - len(selected_role_ids) < min_roles:
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "registration.setup.config.remove_role_minimum"),
                 ephemeral=True,
                 delete_after=5,
@@ -890,7 +911,8 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
             roles=selected_role_ids,
             channel_id=self.channel_id,
         ):
-            await interaction.followup.send(
+            await send_followup(
+                interaction,
                 t(interaction, "registration.setup.config.save_error"),
                 ephemeral=True,
             )
@@ -900,7 +922,8 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
             roles=selected_role_ids,
             channel_id=self.channel_id,
         ):
-            await interaction.followup.send(
+            await send_followup(
+                interaction,
                 t(interaction, "registration.setup.config.save_error"),
                 ephemeral=True,
             )

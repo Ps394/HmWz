@@ -3,6 +3,7 @@
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import t
 from hmwz.ui.messages import send_followup, send_interaction_response, defer_interaction
 
@@ -111,9 +112,7 @@ class QsGroup(app_commands.Group):
             "Add a base report for a player", key="qs.admin.report"
         ),
     )
-    @app_commands.checks.has_any_role(
-        "Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"
-    )
+    @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     async def report(
         self,
         interaction: discord.Interaction,
@@ -129,9 +128,7 @@ class QsGroup(app_commands.Group):
             "Retract a player's base report", key="qs.admin.withdraw"
         ),
     )
-    @app_commands.checks.has_any_role(
-        "Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"
-    )
+    @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     async def withdraw(
         self, interaction: discord.Interaction, player: discord.Member
     ) -> None:
@@ -144,9 +141,7 @@ class QsGroup(app_commands.Group):
             "Configure a Qs eruption and four or five phases", key="qs.event.setup"
         ),
     )
-    @app_commands.checks.has_any_role(
-        "Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"
-    )
+    @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     async def setup(self, interaction: discord.Interaction) -> None:
         """Open a private setup draft with explicit role and hour selection."""
         module = await get_module(interaction)
@@ -168,9 +163,7 @@ class QsGroup(app_commands.Group):
             "Remove the Qs tool, its threads and data", key="qs.admin.remove"
         ),
     )
-    @app_commands.checks.has_any_role(
-        "Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"
-    )
+    @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     @app_commands.checks.has_permissions(manage_messages=True)
     @app_commands.checks.bot_has_permissions(manage_messages=True, manage_threads=True)
     async def remove(self, interaction: discord.Interaction) -> None:
@@ -199,9 +192,7 @@ class QsGroup(app_commands.Group):
             key="qs.admin.reset",
         ),
     )
-    @app_commands.checks.has_any_role(
-        "Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"
-    )
+    @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     @app_commands.checks.has_permissions(manage_messages=True)
     @app_commands.checks.bot_has_permissions(manage_messages=True, manage_threads=True)
     async def reset(self, interaction: discord.Interaction) -> None:
@@ -230,9 +221,7 @@ class QsGroup(app_commands.Group):
             "Ping this channel's configured Qs role", key="qs.event.ping_command"
         ),
     )
-    @app_commands.checks.has_any_role(
-        "Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier"
-    )
+    @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     @app_commands.checks.cooldown(
         1, 60, key=lambda interaction: (interaction.guild_id, interaction.channel_id)
     )

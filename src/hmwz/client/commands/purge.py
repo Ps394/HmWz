@@ -3,12 +3,14 @@
 from discord import Interaction, TextChannel, Thread, app_commands
 from discord.app_commands import command, describe, locale_str
 
-from hmwz.emojis import emojis
+from hmwz.configuration import MODERATOR_ROLES
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import CommandLocalizations, t
 
 __all__ = ["Purge"]
 
-@app_commands.checks.has_any_role("Offiziere", "Moderator")
+
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 @command(
     name="purge",
     description=locale_str(
@@ -65,8 +67,10 @@ async def Purge(
     await interaction.response.defer(ephemeral=ephemeral)
 
     if not isinstance(channel, (TextChannel, Thread)):
-        await interaction.followup.send(
-            t(interaction, "command.error.invalid_input"), ephemeral=ephemeral
+        await send_followup(
+            interaction,
+            t(interaction, "command.error.invalid_input"),
+            ephemeral=ephemeral,
         )
         return
 
@@ -84,6 +88,4 @@ async def Purge(
     if ignore_bots:
         message += t(interaction, "wz.purge.ignored_bots")
 
-    await interaction.followup.send(
-        emojis.render(message, interaction), ephemeral=ephemeral
-    )
+    await send_followup(interaction, message, ephemeral=ephemeral)

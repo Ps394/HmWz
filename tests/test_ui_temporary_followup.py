@@ -11,10 +11,44 @@ from hmwz.ui.messages import (
     edit_interaction_response,
     edit_original_response,
     send_followup,
+    send_initial_response,
     send_interaction_response,
     send_interaction_message,
     send_temporary_followup,
 )
+
+
+@pytest.mark.asyncio
+async def test_initial_response_renders_and_forwards_options_without_fetching() -> None:
+    interaction = cast(
+        discord.Interaction,
+        SimpleNamespace(
+            response=SimpleNamespace(send_message=AsyncMock()),
+            original_response=AsyncMock(),
+        ),
+    )
+    with patch("hmwz.ui.messages.emojis.render", return_value="Rendered") as render:
+        await send_initial_response(
+            interaction, "Content", ephemeral=False, delete_after=5
+        )
+    render.assert_called_once_with("Content", interaction)
+    interaction.response.send_message.assert_awaited_once_with(
+        "Rendered", ephemeral=False, delete_after=5
+    )
+    interaction.original_response.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_initial_response_accepts_embed_without_content() -> None:
+    interaction = cast(
+        discord.Interaction,
+        SimpleNamespace(response=SimpleNamespace(send_message=AsyncMock())),
+    )
+    embed = discord.Embed(title="Preview")
+    await send_initial_response(interaction, embed=embed)
+    interaction.response.send_message.assert_awaited_once_with(
+        embed=embed, ephemeral=True
+    )
 
 
 @pytest.mark.asyncio
@@ -137,6 +171,7 @@ async def test_dialog_helpers_render_content_and_preserve_views_and_embeds() -> 
 @pytest.mark.parametrize(
     ("helper", "method"),
     [
+        (send_initial_response, "initial"),
         (send_interaction_response, "initial"),
         (send_followup, "followup"),
         (edit_interaction_response, "edit"),

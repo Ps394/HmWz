@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal
 
 import discord
 
+from hmwz.ui.messages import send_followup
 from hmwz.i18n import t
 from hmwz.ui.messages import send_temporary_response as _send_temporary_response
 from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE
@@ -446,8 +447,11 @@ class DonationSetupView(DonationSetupOwnerView):
             return
         self.stop()
         await interaction.delete_original_response()
-        confirmation = await interaction.followup.send(
-            t(interaction, "donation.setup.complete"), ephemeral=True, wait=True
+        confirmation = await send_followup(
+            interaction,
+            t(interaction, "donation.setup.complete"),
+            ephemeral=True,
+            wait=True,
         )
         await confirmation.delete(delay=5)
 
@@ -500,8 +504,8 @@ async def _save_setup(
 async def _send_setup_followup_error(
     interaction: discord.Interaction, translation_key: str
 ) -> None:
-    message = await interaction.followup.send(
-        t(interaction, translation_key), ephemeral=True, wait=True
+    message = await send_followup(
+        interaction, t(interaction, translation_key), ephemeral=True, wait=True
     )
     await message.delete(delay=5)
 

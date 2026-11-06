@@ -7,6 +7,8 @@ import logging
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
+from hmwz.ui.messages import send_initial_response
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.interactions import log_interaction
@@ -18,8 +20,6 @@ from .configuration_message import configuration_message
 logger = logging.getLogger(__name__)
 
 
-
-
 @app_commands.command(
     name="setup",
     description=app_commands.locale_str(
@@ -29,14 +29,15 @@ logger = logging.getLogger(__name__)
         key="wz.registration.setup.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 async def setup(interaction: discord.Interaction) -> None:
     """Open the guided setup panel for the current channel."""
     guild = interaction.guild
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)
     if guild is None or channel_id is None or manager is None:
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             t(interaction, "wz.setup.config.error"),
             ephemeral=True,
             delete_after=5,
@@ -52,14 +53,16 @@ async def setup(interaction: discord.Interaction) -> None:
                     guild=guild, channel_id=channel_id
                 )
                 if settings is None:
-                    await interaction.response.send_message(
+                    await send_initial_response(
+                        interaction,
                         t(interaction, "wz.setup.config.error"),
                         ephemeral=True,
                         delete_after=5,
                     )
                     return
 
-        await interaction.response.send_message(
+        await send_initial_response(
+            interaction,
             embed=await configuration_message(module, interaction, channel_id),
             view=RegistrationConfigView(module, channel_id, interaction.user.id),
             ephemeral=True,
@@ -67,7 +70,8 @@ async def setup(interaction: discord.Interaction) -> None:
     except Exception:
         logger.exception("%s WZ setup config failed.", log_interaction(interaction))
         if not interaction.response.is_done():
-            await interaction.response.send_message(
+            await send_initial_response(
+                interaction,
                 t(interaction, "wz.setup.config.error"),
                 ephemeral=True,
                 delete_after=5,

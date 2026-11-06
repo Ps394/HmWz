@@ -5,6 +5,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
+from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import CommandLocalizations, t
 from hmwz.ui.messages import send_temporary_followup, send_temporary_response
 
@@ -21,8 +22,7 @@ from ..module import DonationModule
         key="donation.snapshot.description",
     ),
 )
-@app_commands.checks.has_any_role("Offiziere", "offiziere", "Moderator", "moderator", "officier", "Officier")
-
+@app_commands.checks.has_any_role(*MODERATOR_ROLES)
 async def snapshot(interaction: discord.Interaction) -> None:
     """Export all current-cycle donations without resetting the cycle."""
     guild = interaction.guild

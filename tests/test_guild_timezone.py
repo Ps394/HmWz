@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import discord
 import pytest
 
-from hmwz.client.commands.set_timezone import SetTimezone
+from hmwz.client.commands.set_timezone import SetTimezone, timezone_autocomplete
 from hmwz.client.repositories.server import ServerRepository
 from hmwz.sqlite_db import Database
 from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE, validate_iana_timezone
@@ -38,6 +38,27 @@ def test_validate_iana_timezone_trims_names_and_rejects_offsets() -> None:
         validate_iana_timezone("UTC+1")
     with pytest.raises(ValueError):
         validate_iana_timezone("Not/A_Timezone")
+
+
+@pytest.mark.asyncio
+async def test_timezone_autocomplete_suggests_matching_iana_zones() -> None:
+    interaction = cast(discord.Interaction, SimpleNamespace())
+
+    assert SetTimezone._params["timezone"].autocomplete is timezone_autocomplete
+    choices = await timezone_autocomplete(interaction, "europe/ber")
+
+    assert [choice.value for choice in choices] == ["Europe/Berlin"]
+    assert choices[0].name == "Europe/Berlin"
+
+
+@pytest.mark.asyncio
+async def test_timezone_autocomplete_limits_choices_to_discord_maximum() -> None:
+    interaction = cast(discord.Interaction, SimpleNamespace())
+
+    choices = await timezone_autocomplete(interaction, "")
+
+    assert len(choices) == 25
+    assert choices[0].value == DEFAULT_GUILD_TIMEZONE
 
 
 @pytest.mark.asyncio
