@@ -262,9 +262,9 @@ def test_main_overview_highlights_localized_signup_count(
             "Eruptionsstart",
             "Eruptionsende",
             (
-                "Klicke auf den Button der Phase",
-                "erneut auf denselben Button",
-                "unabhängig für mehrere Phasen anmelden",
+                "- Anmelden: Phasenbutton klicken.",
+                "- Abmelden: denselben Button erneut klicken.",
+                "- Mehrere Phasen möglich – jede Anmeldung ist unabhängig.",
             ),
         ),
         (
@@ -272,9 +272,9 @@ def test_main_overview_highlights_localized_signup_count(
             "Eruption start",
             "Eruption end",
             (
-                "Click the button for the phase",
-                "same button again",
-                "sign up for multiple phases independently",
+                "- Join: click a phase button.",
+                "- Leave: click the same button again.",
+                "- Multiple phases allowed – each signup is independent.",
             ),
         ),
     ],
@@ -295,7 +295,7 @@ def test_main_overview_explains_signups_and_shows_eruption_without_role(
     assert description is not None
     assert f"{start_label}: <t:{configuration.eruption_start}:F>" in description
     assert f"{end_label}: <t:{configuration.eruption_end}:F>" in description
-    assert all(instruction in description for instruction in instructions)
+    assert description.split("\n\n")[-1].splitlines() == list(instructions)
     assert "**3 / 40**" in description
     assert "<@&" not in str(embed.to_dict())
     assert "Qs-Rolle" not in description
