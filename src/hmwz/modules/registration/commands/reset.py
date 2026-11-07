@@ -195,7 +195,6 @@ async def reset(
                     ephemeral=True,
                 )
                 return
-            await module.export_registration_snapshot(channel_id, "sync")
 
         if purge:
             await _purge_configured_channels(guild, {channel_id})
