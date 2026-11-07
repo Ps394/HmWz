@@ -28,9 +28,9 @@ def donation_setup_panel(
         name=t(interaction, "donation.setup.kind"),
         value=t(
             interaction,
-            "donation.setup.simple"
+            "donation.type.credit.name"
             if draft.kind == "simple"
-            else "donation.setup.rush",
+            else "donation.type.rush.name",
         ),
         inline=True,
     )
@@ -55,11 +55,11 @@ def donation_setup_panel(
     )
     if draft.kind == "simple":
         embed.add_field(
-            name=t(interaction, "donation.setup.choices"),
+            name=t(interaction, "donation.type.credit.choices"),
             value=(
                 "\n".join(draft.choices)[:1024]
                 if draft.choices
-                else t(interaction, "donation.setup.free_entry")
+                else t(interaction, "donation.type.credit.free_entry")
             ),
             inline=False,
         )
@@ -72,20 +72,20 @@ def donation_setup_panel(
             inline=False,
         )
         embed.add_field(
-            name=t(interaction, "donation.setup.rush_options"),
+            name=t(interaction, "donation.type.rush.options"),
             value=", ".join(draft.time_reductions),
             inline=True,
         )
         embed.add_field(
             name=t(interaction, "donation.setup.pricing"),
-            value=t(interaction, "donation.setup.fixed_rush_price"),
+            value=t(interaction, "donation.type.rush.pricing"),
             inline=False,
         )
         start = draft.rush_start_at
         end = rush_end_at(start, draft.accelerated_hours) if start is not None else None
         for key, timestamp in (
-            ("donation.overview.rush_start", start),
-            ("donation.overview.rush_end", end),
+            ("donation.type.rush.overview.start", start),
+            ("donation.type.rush.overview.end", end),
         ):
             embed.add_field(
                 name=t(interaction, key),
@@ -97,10 +97,10 @@ def donation_setup_panel(
                 inline=False,
             )
         embed.add_field(
-            name=t(interaction, "donation.overview.rush_duration"),
+            name=t(interaction, "donation.type.rush.overview.duration"),
             value=t(
                 interaction,
-                "donation.setup.rush_duration",
+                "donation.type.rush.duration",
                 days=RUSH_PERIOD_DURATION.days,
                 hours=int(RUSH_PERIOD_DURATION.total_seconds() // 3600),
             ),
@@ -110,7 +110,7 @@ def donation_setup_panel(
             add_target_field(embed, interaction, draft.target_at, end)
         else:
             embed.add_field(
-                name=t(interaction, "donation.overview.target"),
+                name=t(interaction, "donation.type.rush.overview.target"),
                 value=t(interaction, "donation.setup.not_configured"),
                 inline=False,
             )

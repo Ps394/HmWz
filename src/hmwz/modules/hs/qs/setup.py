@@ -274,8 +274,10 @@ class QsSetupView(EphemeralView):
                 self.add_item(PingButton(self, event, index // 2))
             self.add_item(SetupButton(self, "back", 2))
         elif self.reset_mode:
-            for action in ("date", "phases", "save"):
+            for action in ("date", "phases"):
                 self.add_item(SetupButton(self, action, 0))
+            for action in ("save", "cancel"):
+                self.add_item(SetupButton(self, action, 2))
         else:
             for action, row in (
                 ("role", 0),

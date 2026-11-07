@@ -40,7 +40,7 @@ async def snapshot(interaction: Interaction) -> None:
         if guild is None or channel_id is None or manager is None:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.snapshot.error"),
+                t(interaction, "registration.snapshot.error"),
                 ephemeral=True,
             )
             return
@@ -52,18 +52,18 @@ async def snapshot(interaction: Interaction) -> None:
         if configuration is None or configuration.channel is None:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.error.not_configured"),
+                t(interaction, "registration.error.not_configured"),
                 ephemeral=True,
             )
             return
 
         destination = await module.registration_event_channel.get(guild=guild)
         if destination is None:
-            result_key = "wz.registration.snapshot.destination"
+            result_key = "registration.snapshot.destination"
         elif await module.export_registration_snapshot(channel_id, "registration"):
-            result_key = "wz.registration.snapshot.success"
+            result_key = "registration.snapshot.success"
         else:
-            result_key = "wz.registration.snapshot.error"
+            result_key = "registration.snapshot.error"
         await send_temporary_followup(
             interaction, t(interaction, result_key), ephemeral=True
         )
@@ -75,6 +75,6 @@ async def snapshot(interaction: Interaction) -> None:
         )
         await send_temporary_followup(
             interaction,
-            t(interaction, "wz.registration.snapshot.error"),
+            t(interaction, "registration.snapshot.error"),
             ephemeral=True,
         )

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 def configured_type(draft: DonationSetupDraft) -> DonationType:
     """Build the credit input configuration collected by the setup."""
     return DonationType(
-        name=t(draft.module.guild, "donation.setup.simple"),
+        name=t(draft.module.guild, "donation.type.credit.name"),
         kind="simple",
         unit=draft.unit,
         input_mode="choice" if draft.choices else "free",
@@ -35,7 +35,7 @@ class DonationValuesModal(discord.ui.Modal):
     def __init__(self, setup_view: DonationSetupView) -> None:
         draft = setup_view.draft
         super().__init__(
-            title=t(draft.module.guild, "donation.setup.values_title")[:45]
+            title=t(draft.module.guild, "donation.type.credit.values_title")[:45]
         )
         self.draft = draft
         self.setup_view = setup_view
@@ -46,8 +46,10 @@ class DonationValuesModal(discord.ui.Modal):
             max_length=45,
         )
         self.choices_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(draft.module.guild, "donation.setup.choices")[:45],
-            placeholder=t(draft.module.guild, "donation.setup.choices_example")[:100],
+            label=t(draft.module.guild, "donation.type.credit.choices")[:45],
+            placeholder=t(draft.module.guild, "donation.type.credit.choices_example")[
+                :100
+            ],
             default="; ".join(draft.choices),
             required=False,
             max_length=1000,

@@ -7,6 +7,8 @@ import pytest
 from hmwz.modules.hs.wz.commands.setup.channel.selection import ChannelSelection
 from hmwz.modules.hs.wz.commands.setup.menu import (
     WzSetupMenu,
+    WzSetupDraft,
+    WzSetupSelectionView,
     configuration_embed,
     setup,
 )
@@ -17,9 +19,15 @@ def make_interaction() -> SimpleNamespace:
     return SimpleNamespace(
         user=SimpleNamespace(id=1),
         locale=discord.Locale.german,
-        response=SimpleNamespace(edit_message=AsyncMock(), defer=AsyncMock()),
+        response=SimpleNamespace(
+            edit_message=AsyncMock(),
+            defer=AsyncMock(),
+            send_message=AsyncMock(),
+        ),
         message=SimpleNamespace(delete=AsyncMock()),
         edit_original_response=AsyncMock(),
+        delete_original_response=AsyncMock(),
+        followup=SimpleNamespace(send=AsyncMock()),
     )
 
 
@@ -33,17 +41,18 @@ async def test_setup_errors_use_temporary_helpers_without_action_buttons(
     context.client = SimpleNamespace(module_manager=None)
     context.response.is_done = lambda: acknowledged
     with (
-        patch.object(
-            WzSetupMenu, "send_temporary_response", new_callable=AsyncMock
-        ) as response,
+        patch(
+            "hmwz.modules.hs.wz.commands.setup.menu.send_interaction_response",
+            new_callable=AsyncMock,
+        ) as initial_response,
         patch(
             "hmwz.modules.hs.wz.commands.setup.menu.send_temporary_followup",
             new_callable=AsyncMock,
         ) as followup,
     ):
         await setup.callback(context)
-        selected = followup if acknowledged else response
-        other = response if acknowledged else followup
+        selected = followup if acknowledged else initial_response
+        other = initial_response if acknowledged else followup
         selected.assert_awaited_once()
         other.assert_not_awaited()
         assert "view" not in selected.await_args.kwargs
@@ -80,32 +89,124 @@ async def test_setup_overview_groups_roles_and_bounds_large_legacy_channel_lists
     assert len(embed) <= 6000
     assert "**2/25**" in embed.description
     assert "**80/25**" in embed.description
-    view = WzSetupMenu(owner_id=1, context=context)
+    draft = WzSetupDraft(
+        module=module,
+        original_role_ids={10, 11},
+        original_channel_ids={10**18 + index for index in range(80)},
+        role_ids={10, 11},
+        channel_ids={10**18 + index for index in range(80)},
+    )
+    view = WzSetupMenu(owner_id=1, context=context, draft=draft)
     assert view.add_role_button.row == view.remove_role_button.row == 0
     assert view.add_channel_button.row == view.remove_channel_button.row == 1
+    assert view.save_button.row == view.cancel_button.row == 2
 
 
 @pytest.mark.asyncio
-async def test_refresh_reloads_latest_setup_configuration() -> None:
+async def test_wz_setup_selection_stages_changes_until_save() -> None:
     context = make_interaction()
-    context.guild = Mock(spec=discord.Guild)
+    role = SimpleNamespace(id=42, name="Test role", mention="<@&42>")
     module = SimpleNamespace(
-        guild=context.guild,
-        roles=SimpleNamespace(get=AsyncMock(return_value=None)),
+        guild=SimpleNamespace(),
+        roles=SimpleNamespace(add=AsyncMock()),
+        channels=SimpleNamespace(add=AsyncMock()),
+    )
+    draft = WzSetupDraft(
+        module=module,
+        original_role_ids=set(),
+        original_channel_ids=set(),
+        role_ids=set(),
+        channel_ids=set(),
+    )
+    menu = WzSetupMenu(owner_id=1, context=context, draft=draft)
+    selection = WzSetupSelectionView(
+        menu,
+        kind="role",
+        action="add",
+        entities=[role],
+        max_selected=1,
+        context=context,
+    )
+    selection.selected_ids.add(role.id)
+    await selection.stage.callback(context)
+
+    assert draft.role_ids == {role.id}
+    module.roles.add.assert_not_awaited()
+    assert context.response.edit_message.await_args.kwargs["view"] is menu
+    await menu.cancel_button.callback(context)
+    module.roles.add.assert_not_awaited()
+    context.delete_original_response.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wz_setup_save_persists_staged_role_and_channel_changes() -> None:
+    role = SimpleNamespace(
+        id=42,
+        mention="<@&42>",
+        is_default=lambda: False,
+        managed=False,
+    )
+    guild = SimpleNamespace(
+        id=10,
+        me=None,
+        get_role=lambda role_id: role if role_id == role.id else None,
+    )
+    persisted_role_ids: set[int] = set()
+    persisted_channel_ids: set[int] = set()
+
+    async def get_roles(*, guild):
+        return tuple(SimpleNamespace(role=role_id) for role_id in persisted_role_ids)
+
+    async def add_role(*, guild, role):
+        persisted_role_ids.add(role)
+        return True
+
+    async def get_channels(*, guild):
+        return tuple(
+            SimpleNamespace(channel_id=channel_id)
+            for channel_id in persisted_channel_ids
+        )
+
+    async def add_channel(*, guild, channel_id):
+        persisted_channel_ids.add(channel_id)
+        return True
+
+    module = SimpleNamespace(
+        guild=guild,
+        roles=SimpleNamespace(
+            get=AsyncMock(side_effect=get_roles), add=AsyncMock(side_effect=add_role)
+        ),
         channels=SimpleNamespace(
-            get=AsyncMock(return_value=[SimpleNamespace(channel_id=42)])
+            get=AsyncMock(side_effect=get_channels),
+            add=AsyncMock(side_effect=add_channel),
         ),
     )
-    context.client = SimpleNamespace(
-        module_manager=SimpleNamespace(get_module=AsyncMock(return_value=module))
+    draft = WzSetupDraft(
+        module=module,
+        original_role_ids=set(),
+        original_channel_ids=set(),
+        role_ids={42},
+        channel_ids={30},
     )
-    view = WzSetupMenu(owner_id=1, context=context)
-    await view.refresh_button.callback(context)
-    context.edit_original_response.assert_awaited_once()
-    assert (
-        context.edit_original_response.await_args.kwargs["embed"].fields[1].value
-        == "<#42>"
+    menu = WzSetupMenu(
+        owner_id=1,
+        context=make_interaction(),
+        draft=draft,
     )
+    context = make_interaction()
+
+    with patch(
+        "hmwz.modules.hs.wz.commands.setup.menu.send_temporary_followup",
+        new_callable=AsyncMock,
+    ) as saved:
+        await menu.save(context)
+
+    assert persisted_role_ids == {42}
+    assert persisted_channel_ids == {30}
+    module.roles.add.assert_awaited_once_with(guild=guild, role=42)
+    module.channels.add.assert_awaited_once_with(guild=guild, channel_id=30)
+    context.delete_original_response.assert_awaited_once()
+    saved.assert_awaited_once()
 
 
 @pytest.mark.asyncio

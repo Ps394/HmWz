@@ -30,7 +30,9 @@ class DonationRushResetModal(discord.ui.Modal):
         owner_id: int,
         timezone_name: str = "UTC",
     ) -> None:
-        super().__init__(title=t(module.guild, "donation.reset.start_modal_title")[:45])
+        super().__init__(
+            title=t(module.guild, "donation.type.rush.reset.start_modal_title")[:45]
+        )
         self.module = module
         self.channel_id = channel_id
         self.owner_id = owner_id
@@ -42,7 +44,7 @@ class DonationRushResetModal(discord.ui.Modal):
         self.add_item(self.timestamp_input)
         self.target_input = TimestampInput(
             module.guild,
-            label=t(module.guild, "donation.setup.target_timestamp"),
+            label=t(module.guild, "donation.type.rush.setup.target_timestamp"),
             timezone_name=timezone_name,
             required=False,
         )
@@ -69,7 +71,8 @@ class DonationRushResetModal(discord.ui.Modal):
                 target_at = validate_rush_target(rush_start_at, target_at)
         except ValueError:
             await _send_temporary_response(
-                interaction, t(interaction, "donation.error.invalid_rush_schedule")
+                interaction,
+                t(interaction, "donation.type.rush.error.invalid_schedule"),
             )
             return
         await interaction.response.defer(ephemeral=True)

@@ -63,7 +63,8 @@ def overview_embed(
         description=t(
             guild,
             "qs.event.summary",
-            role=f"<@&{configuration.role_id}>",
+            start=f"<t:{configuration.eruption_start}:F>",
+            end=f"<t:{configuration.eruption_end}:F>",
             destroyed=destroyed,
             total=BASE_TOTAL,
         ),

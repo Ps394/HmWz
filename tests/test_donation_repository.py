@@ -24,9 +24,6 @@ from hmwz.modules.donation.type.credit.validation import (
     parse_amount,
     parse_choices,
 )
-from hmwz.modules.donation.type.rush.validation import (
-    parse_hours,
-)
 from hmwz.sqlite_db import Database
 
 
@@ -570,14 +567,9 @@ def test_donation_input_parsing_rejects_invalid_amounts_and_choices() -> None:
         DonationOverview._format_amount(Decimal("1234567.1234567890123456789012345"))
         == "1.234.567,1234567890123456789012345"
     )
-    assert parse_hours("216h") == 216
-    assert parse_hours("9") == 9
     for amount in ("0", "-1", "NaN", "1.00.x"):
         with pytest.raises(ValueError):
             parse_amount(amount)
     for choices in ("", "1;;2", "1;1", ";".join(str(i) for i in range(26))):
         with pytest.raises(ValueError):
             parse_choices(choices)
-    for hours in ("0", "1d", "-1h", "1.5h"):
-        with pytest.raises(ValueError):
-            parse_hours(hours)

@@ -27,7 +27,7 @@ class DonationCycleResetView(discord.ui.View):
             if isinstance(item, discord.ui.Button):
                 item.label = t(
                     module.guild,
-                    "donation.reset.confirm"
+                    "donation.type.credit.reset.confirm"
                     if item.custom_id == "donation_reset_confirm"
                     else "donation.delete.cancel",
                 )

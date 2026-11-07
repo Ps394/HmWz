@@ -38,9 +38,9 @@ class RegistrationRemoveConfirmation(EphemeralView):
             if isinstance(item, discord.ui.Button):
                 item.label = t(
                     context,
-                    "wz.setup.registration.remove.confirm_button"
+                    "registration.setup.remove.confirm_button"
                     if item.custom_id == "wz_registration_remove_confirm"
-                    else "wz.setup.registration.remove.cancel_button",
+                    else "registration.setup.remove.cancel_button",
                 )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -49,7 +49,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
             return True
         await send_initial_response(
             interaction,
-            t(interaction, "wz.setup.registration.remove.confirmation_owner"),
+            t(interaction, "registration.setup.remove.confirmation_owner"),
             ephemeral=True,
             delete_after=5,
         )
@@ -261,7 +261,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
 
     async def _finish(self, interaction: discord.Interaction, result: str) -> None:
         message = await interaction.edit_original_response(
-            content=t(interaction, f"wz.setup.registration.remove.{result}"),
+            content=t(interaction, f"registration.setup.remove.{result}"),
             view=None,
         )
         await delete_temporary_message(message, delay=5)
@@ -282,7 +282,7 @@ class RegistrationRemoveConfirmation(EphemeralView):
         """
         self._disable_buttons()
         await interaction.response.edit_message(
-            content=t(interaction, "wz.setup.registration.remove.cancelled"),
+            content=t(interaction, "registration.setup.remove.cancelled"),
             view=None,
             delete_after=5,
         )
@@ -311,7 +311,7 @@ async def remove(interaction: discord.Interaction) -> None:
     if guild is None or channel_id is None or manager is None:
         await send_initial_response(
             interaction,
-            t(interaction, "wz.setup.registration.remove.error"),
+            t(interaction, "registration.setup.remove.error"),
             ephemeral=True,
             delete_after=5,
         )
@@ -322,7 +322,7 @@ async def remove(interaction: discord.Interaction) -> None:
         if await module.registration.get(guild=guild, channel_id=channel_id) is None:
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.registration.error.not_configured"),
+                t(interaction, "registration.error.not_configured"),
                 ephemeral=True,
                 delete_after=5,
             )
@@ -336,7 +336,7 @@ async def remove(interaction: discord.Interaction) -> None:
         )
         await send_initial_response(
             interaction,
-            t(interaction, "wz.setup.registration.remove.confirmation"),
+            t(interaction, "registration.setup.remove.confirmation"),
             view=view,
             ephemeral=True,
         )
@@ -348,7 +348,7 @@ async def remove(interaction: discord.Interaction) -> None:
         )
         await send_initial_response(
             interaction,
-            t(interaction, "wz.setup.registration.remove.error"),
+            t(interaction, "registration.setup.remove.error"),
             ephemeral=True,
             delete_after=5,
         )

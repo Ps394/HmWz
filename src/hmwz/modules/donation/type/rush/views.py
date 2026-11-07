@@ -34,10 +34,10 @@ class DonationTimeReductionButton(discord.ui.Button):
         super().__init__(
             label=t(
                 module.guild,
-                "donation.ui.time_reduction_button",
+                "donation.type.rush.ui.time_reduction_button",
                 reduction=time_reduction,
                 cost=DonationOverview._format_amount(price),
-                unit=t(module.guild, "donation.setup.crystals_unit"),
+                unit=t(module.guild, "donation.type.rush.unit"),
             )[:80],
             style=discord.ButtonStyle.primary,
             emoji=emojis.get("cristall", module.guild),

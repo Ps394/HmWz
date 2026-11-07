@@ -16,8 +16,35 @@ from hmwz.modules.registration.commands.setup.config import (
     RegistrationRoleRemovalView,
     _configuration_message,
 )
+from hmwz.modules.registration.commands.setup.config.draft import (
+    RegistrationSetupDraft,
+)
 from hmwz.modules.registration.repositories import RegistrationSettingsRepository
 from hmwz.sqlite_db import Database
+
+
+def registration_draft(
+    module: SimpleNamespace,
+    *,
+    roles: dict[int, bool] | None = None,
+    export_channel_id: int | None = None,
+) -> RegistrationSetupDraft:
+    configured_roles = roles or {}
+    return RegistrationSetupDraft(
+        module=module,
+        channel_id=20,
+        owner_id=1,
+        title="Title",
+        original_title="Title",
+        description="Description",
+        original_description="Description",
+        show_lock_emojis=True,
+        original_show_lock_emojis=True,
+        roles=configured_roles.copy(),
+        original_roles=configured_roles.copy(),
+        export_channel_id=export_channel_id,
+        original_export_channel_id=export_channel_id,
+    )
 
 
 @pytest.mark.asyncio
@@ -76,7 +103,8 @@ async def test_registration_config_shows_json_export_channel() -> None:
         locale=discord.Locale.german,
     )
 
-    view = RegistrationConfigView(module, 20, owner_id=1)
+    draft = registration_draft(module, roles={11: True}, export_channel_id=30)
+    view = RegistrationConfigView(draft)
     message = await _configuration_message(module, interaction, 20)
 
     assert any(field.value == "<#30>" for field in message.fields)
@@ -92,7 +120,7 @@ async def test_registration_config_shows_json_export_channel() -> None:
         item.custom_id == "wz_registration_config_lock_emojis" for item in view.children
     )
     assert any(
-        field.name == "Schlossemojis in der Übersicht" for field in message.fields
+        field.name == "🔐 Schlossemojis in der Übersicht" for field in message.fields
     )
     apply_button = next(
         item
@@ -100,17 +128,45 @@ async def test_registration_config_shows_json_export_channel() -> None:
         if item.custom_id == "wz_registration_config_apply"
     )
     assert apply_button.emoji.name == "✅"
+    assert any(
+        item.custom_id == "wz_registration_config_cancel" for item in view.children
+    )
 
 
 @pytest.mark.asyncio
-async def test_registration_setup_apply_closes_the_menu() -> None:
+async def test_registration_setup_save_persists_the_draft_and_closes_the_menu() -> None:
     guild = Mock(spec=discord.Guild)
-    module = SimpleNamespace(guild=guild)
+    guild.id = 10
+    guild.me = None
+    role = Mock(spec=discord.Role)
+    role.is_default.return_value = False
+    role.managed = False
+    guild.get_role.return_value = role
+    settings = SimpleNamespace(
+        title="Title", description="Description", show_lock_emojis=True
+    )
+    module = SimpleNamespace(
+        guild=guild,
+        module_key="registration",
+        registration=SimpleNamespace(
+            get=AsyncMock(return_value=settings),
+            upsert=AsyncMock(return_value=True),
+        ),
+        roles=SimpleNamespace(
+            get=AsyncMock(return_value=(SimpleNamespace(role=11, permanent=True),)),
+            add=AsyncMock(return_value=True),
+        ),
+        registrations=SimpleNamespace(),
+        registration_event_channel=SimpleNamespace(get=AsyncMock(return_value=None)),
+        compose_registration_overview=AsyncMock(return_value=True),
+    )
     interaction = SimpleNamespace(
+        locale=discord.Locale.german,
         response=SimpleNamespace(defer=AsyncMock()),
         delete_original_response=AsyncMock(),
+        followup=SimpleNamespace(send=AsyncMock()),
     )
-    view = RegistrationConfigView(module, channel_id=20, owner_id=1)
+    view = RegistrationConfigView(registration_draft(module, roles={11: True}))
     apply_button = next(
         item
         for item in view.children
@@ -121,10 +177,17 @@ async def test_registration_setup_apply_closes_the_menu() -> None:
 
     interaction.response.defer.assert_awaited_once_with()
     interaction.delete_original_response.assert_awaited_once_with()
+    module.registration.upsert.assert_awaited_once_with(
+        guild=guild,
+        channel_id=20,
+        title="Title",
+        description="Description",
+        show_lock_emojis=True,
+    )
 
 
 @pytest.mark.asyncio
-async def test_registration_config_toggles_lock_emojis_and_refreshes_overview(
+async def test_registration_config_toggle_only_changes_the_draft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     guild = Mock(spec=discord.Guild)
@@ -147,7 +210,8 @@ async def test_registration_config_toggles_lock_emojis_and_refreshes_overview(
         locale=discord.Locale.german,
         response=SimpleNamespace(edit_message=AsyncMock()),
     )
-    view = RegistrationConfigView(module, channel_id=20, owner_id=1)
+    draft = registration_draft(module)
+    view = RegistrationConfigView(draft)
     button = next(
         item
         for item in view.children
@@ -156,28 +220,21 @@ async def test_registration_config_toggles_lock_emojis_and_refreshes_overview(
 
     await button.callback(interaction)
 
-    registration.upsert.assert_awaited_once_with(
-        guild=guild, channel_id=20, show_lock_emojis=False
-    )
-    module.compose_registration_overview.assert_awaited_once_with(
-        force=True, channel_id=20
-    )
+    assert draft.show_lock_emojis is False
+    registration.upsert.assert_not_awaited()
+    module.compose_registration_overview.assert_not_awaited()
     interaction.response.edit_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_registration_role_removal_preserves_minimum_role_count() -> None:
-    guild = Mock(spec=discord.Guild)
-    guild.id = 10
     module = SimpleNamespace(
-        guild=guild,
+        guild=Mock(spec=discord.Guild),
         module_key="registration",
-        roles=SimpleNamespace(
-            get=AsyncMock(return_value=(SimpleNamespace(role=11),)),
-            remove=AsyncMock(return_value=True),
-        ),
+        roles=SimpleNamespace(remove=AsyncMock(return_value=True)),
         registrations=SimpleNamespace(remove=AsyncMock(return_value=True)),
     )
+    draft = registration_draft(module, roles={11: True})
     interaction = SimpleNamespace(
         locale=discord.Locale.german,
         response=SimpleNamespace(
@@ -186,9 +243,7 @@ async def test_registration_role_removal_preserves_minimum_role_count() -> None:
         ),
     )
     view = RegistrationRoleRemovalView(
-        module,
-        channel_id=20,
-        owner_id=1,
+        draft,
         configured_roles=[(11, "Role", True)],
     )
     confirm = next(
@@ -207,48 +262,27 @@ async def test_registration_role_removal_preserves_minimum_role_count() -> None:
 
     interaction.response.send_message.assert_awaited_once()
     interaction.response.defer.assert_not_awaited()
+    assert draft.roles == {11: True}
     module.roles.remove.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_registration_role_removal_clears_config_registrations_and_discord_role() -> (
-    None
-):
-    role = Mock(spec=discord.Role)
-    member = Mock(spec=discord.Member)
-    member.id = 12
-    member.roles = [role]
-    member.remove_roles = AsyncMock()
+async def test_registration_role_removal_stages_changes_until_save() -> None:
     guild = Mock(spec=discord.Guild)
-    guild.id = 10
-    guild.get_role.side_effect = {11: role}.get
-    roles = SimpleNamespace(
-        get=AsyncMock(
-            return_value=(SimpleNamespace(role=11), SimpleNamespace(role=13))
-        ),
-        remove=AsyncMock(return_value=True),
-    )
-    registrations = SimpleNamespace(
-        get=AsyncMock(return_value=(SimpleNamespace(member=12),)),
-        remove=AsyncMock(return_value=True),
-    )
     module = SimpleNamespace(
         guild=guild,
         module_key="registration",
-        roles=roles,
-        registrations=registrations,
-        compose_registration_overview=AsyncMock(return_value=True),
+        roles=SimpleNamespace(remove=AsyncMock()),
+        registrations=SimpleNamespace(remove=AsyncMock()),
     )
+    draft = registration_draft(module, roles={11: True, 13: False})
     interaction = SimpleNamespace(
         locale=discord.Locale.german,
         response=SimpleNamespace(defer=AsyncMock()),
-        followup=SimpleNamespace(send=AsyncMock()),
         edit_original_response=AsyncMock(),
     )
     view = RegistrationRoleRemovalView(
-        module,
-        channel_id=20,
-        owner_id=1,
+        draft,
         configured_roles=[(11, "Role", True), (13, "Other role", False)],
     )
     confirm = next(
@@ -265,42 +299,20 @@ async def test_registration_role_removal_clears_config_registrations_and_discord
             return_value=["11"],
         ),
         patch(
-            "hmwz.modules.registration.commands.setup.config.fetch_member",
-            new=AsyncMock(return_value=member),
-        ),
-        patch(
             "hmwz.modules.registration.commands.setup.config.configuration_message",
             new=AsyncMock(return_value=discord.Embed()),
         ),
     ):
         await confirm.callback(interaction)
 
-    roles.remove.assert_awaited_once_with(
-        guild=guild,
-        roles=[11],
-        channel_id=20,
-    )
-    registrations.remove.assert_awaited_once_with(
-        guild=guild,
-        roles=[11],
-        channel_id=20,
-    )
-    member.remove_roles.assert_awaited_once_with(
-        role,
-        reason="Registration setup role removal",
-    )
-    module.compose_registration_overview.assert_awaited_once_with(
-        force=True,
-        channel_id=20,
-    )
+    assert draft.roles == {13: False}
+    module.roles.remove.assert_not_awaited()
+    module.registrations.remove.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_registration_export_channel_can_be_disabled() -> None:
-    registration_channel = SimpleNamespace(id=20, mention="<#20>")
+async def test_registration_export_channel_disable_only_changes_the_draft() -> None:
     guild = Mock(spec=discord.Guild)
-    guild.id = 10
-    guild.get_channel.return_value = registration_channel
     event_channel = SimpleNamespace(
         get=AsyncMock(return_value=None),
         remove=AsyncMock(return_value=True),
@@ -308,31 +320,29 @@ async def test_registration_export_channel_can_be_disabled() -> None:
     module = SimpleNamespace(
         guild=guild,
         module_key="registration",
-        registration=SimpleNamespace(
-            get=AsyncMock(
-                return_value=SimpleNamespace(
-                    title=None, description=None, show_lock_emojis=True
-                )
-            )
-        ),
-        roles=SimpleNamespace(get=AsyncMock(return_value=None)),
         registration_event_channel=event_channel,
     )
+    draft = registration_draft(module, export_channel_id=30)
     interaction = SimpleNamespace(
         guild=guild,
         locale=discord.Locale.german,
         response=SimpleNamespace(edit_message=AsyncMock()),
     )
-    view = RegistrationExportChannelView(module, 20, owner_id=1)
+    view = RegistrationExportChannelView(draft)
     disable_button = next(
         item
         for item in view.children
         if item.custom_id == "wz_registration_config_export_disable"
     )
 
-    await disable_button.callback(interaction)
+    with patch(
+        "hmwz.modules.registration.commands.setup.config.configuration_message",
+        new=AsyncMock(return_value=discord.Embed()),
+    ):
+        await disable_button.callback(interaction)
 
-    event_channel.remove.assert_awaited_once_with(guild=guild)
+    assert draft.export_channel_id is None
+    event_channel.remove.assert_not_awaited()
     interaction.response.edit_message.assert_awaited_once()
     assert isinstance(
         interaction.response.edit_message.await_args.kwargs["view"],
@@ -341,7 +351,7 @@ async def test_registration_export_channel_can_be_disabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_registration_export_channel_can_be_configured() -> None:
+async def test_registration_export_channel_selection_only_changes_the_draft() -> None:
     export_channel = Mock(spec=discord.TextChannel)
     export_channel.id = 30
     export_channel.mention = "<#30>"
@@ -356,29 +366,19 @@ async def test_registration_export_channel_can_be_configured() -> None:
     guild.id = 10
     guild.me = Mock(spec=discord.Member)
     guild.get_channel.side_effect = {20: registration_channel, 30: export_channel}.get
-    event_channel = SimpleNamespace(
-        get=AsyncMock(return_value=30),
-        set=AsyncMock(return_value=True),
-    )
+    event_channel = SimpleNamespace(get=AsyncMock(return_value=None), set=AsyncMock())
     module = SimpleNamespace(
         guild=guild,
         module_key="registration",
-        registration=SimpleNamespace(
-            get=AsyncMock(
-                return_value=SimpleNamespace(
-                    title=None, description=None, show_lock_emojis=True
-                )
-            )
-        ),
-        roles=SimpleNamespace(get=AsyncMock(return_value=None)),
         registration_event_channel=event_channel,
     )
+    draft = registration_draft(module)
     interaction = SimpleNamespace(
         guild=guild,
         locale=discord.Locale.german,
         response=SimpleNamespace(edit_message=AsyncMock()),
     )
-    view = RegistrationExportChannelView(module, 20, owner_id=1)
+    view = RegistrationExportChannelView(draft)
     select = next(
         item
         for item in view.children
@@ -391,10 +391,15 @@ async def test_registration_export_channel_can_be_configured() -> None:
         new_callable=PropertyMock,
         return_value=[selected_channel],
     ):
-        await select.callback(interaction)
+        with patch(
+            "hmwz.modules.registration.commands.setup.config.configuration_message",
+            new=AsyncMock(return_value=discord.Embed()),
+        ):
+            await select.callback(interaction)
 
     export_channel.permissions_for.assert_called_once_with(guild.me)
-    event_channel.set.assert_awaited_once_with(guild=guild, channel_id=30)
+    event_channel.set.assert_not_awaited()
+    assert draft.export_channel_id == 30
     interaction.response.edit_message.assert_awaited_once()
     assert isinstance(
         interaction.response.edit_message.await_args.kwargs["view"],
@@ -404,7 +409,7 @@ async def test_registration_export_channel_can_be_configured() -> None:
 
 def test_runtime_translation_emojis_are_kept_in_translation_files() -> None:
     context = SimpleNamespace(locale=discord.Locale.german)
-    translation = RuntimeLocalizations["de"]["wz.setup.registration.remove.success"]
+    translation = RuntimeLocalizations["de"]["registration.setup.remove.success"]
 
     assert translation.startswith(emojis.SUCCESS)
-    assert t(context, "wz.setup.registration.remove.success") == translation
+    assert t(context, "registration.setup.remove.success") == translation

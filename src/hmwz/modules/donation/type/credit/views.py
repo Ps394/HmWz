@@ -27,7 +27,7 @@ class DonationRecordButton(discord.ui.Button):
 
     def __init__(self, module: DonationModule, channel_id: int) -> None:
         super().__init__(
-            label=t(module.guild, "donation.ui.record_button"),
+            label=t(module.guild, "donation.type.credit.record_button"),
             style=discord.ButtonStyle.success,
             emoji=emojis.get("credit", module.guild),
             custom_id="donation:record",
@@ -114,7 +114,7 @@ class DonationAmountModal(discord.ui.Modal):
         donation_type: DonationType,
         time_reduction: str | None = None,
     ) -> None:
-        super().__init__(title=t(module.guild, "donation.modal.title")[:45])
+        super().__init__(title=t(module.guild, "donation.type.credit.modal.title")[:45])
         self.module = module
         self.channel_id = channel_id
         self.donation_type = donation_type
@@ -126,17 +126,19 @@ class DonationAmountModal(discord.ui.Modal):
     def _create_amount_input(
         module: DonationModule, donation_type: DonationType
     ) -> discord.ui.TextInput:
-        placeholder = t(module.guild, "donation.modal.amount_placeholder")
+        placeholder = t(module.guild, "donation.type.credit.modal.amount_placeholder")
         if donation_type.choices:
             placeholder = t(
                 module.guild,
-                "donation.modal.amount_choices",
+                "donation.type.credit.modal.amount_choices",
                 choices=", ".join(donation_type.choices),
             )
         return discord.ui.TextInput(
-            label=t(module.guild, "donation.modal.amount", unit=donation_type.unit)[
-                :45
-            ],
+            label=t(
+                module.guild,
+                "donation.type.credit.modal.amount",
+                unit=donation_type.unit,
+            )[:45],
             placeholder=placeholder[:100],
             max_length=32,
         )
@@ -156,7 +158,8 @@ class DonationAmountModal(discord.ui.Modal):
             return parse_amount(self.amount_input.value)
         except ValueError:
             await _send_temporary_response(
-                interaction, t(interaction, "donation.error.invalid_amount")
+                interaction,
+                t(interaction, "donation.type.credit.error.invalid_amount"),
             )
             return None
 
@@ -168,7 +171,8 @@ class DonationAmountModal(discord.ui.Modal):
         }:
             return True
         await _send_temporary_response(
-            interaction, t(interaction, "donation.error.invalid_amount_choice")
+            interaction,
+            t(interaction, "donation.type.credit.error.invalid_amount_choice"),
         )
         return False
 
@@ -244,7 +248,7 @@ async def request_confirmation(
         view,
         t(
             interaction,
-            "donation.credit.confirm",
+            "donation.type.credit.confirm",
             amount=DonationOverview._format_amount(amount),
             unit=donation_type.unit,
         ),

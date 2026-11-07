@@ -34,7 +34,7 @@ async def start_donation(
     if donation_type.input_mode == "choice" and donation_type.choices:
         await send_initial_response(
             interaction,
-            t(interaction, "donation.setup.amount_donation_prompt"),
+            t(interaction, "donation.type.credit.amount_prompt"),
             view=DonationAmountChoiceView(module, channel_id, donation_type),
             ephemeral=True,
         )

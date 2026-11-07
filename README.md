@@ -215,7 +215,11 @@ wenn ihr Auslösezeitpunkt bzw. Ziel bereits bei einem Prüflauf verarbeitet wur
 Der manuelle Befehl `/qs ping` bleibt davon unberührt.
 
 Mitglieder mit der kanalbezogenen Qs-Rolle können sich unabhängig für mehrere
-Phasen an- oder abmelden. Die Hauptübersicht zeigt pro Phase die Anmeldezahl
+Phasen an- oder abmelden. Ein Klick auf den jeweiligen Phasenbutton meldet an,
+ein erneuter Klick meldet nur von dieser Phase ab. Die Hauptübersicht erklärt
+diese Bedienung und zeigt Start und Ende der gesamten 24-stündigen Eruption
+mit Datum und Uhrzeit als Discord-Zeitstempel; die Qs-Rolle wird dort nicht
+angezeigt. Die Hauptübersicht zeigt pro Phase die Anmeldezahl
 in einer eigenen, fett hervorgehobenen Zeile mit 👥 und „Anmeldungen: …“.
 Anmeldebuttons zeigen Phasennummer und Zeitraum in der
 Server-Zeitzone, etwa `Phase 1 : 22:00 – 01:00`; Threadtitel verwenden

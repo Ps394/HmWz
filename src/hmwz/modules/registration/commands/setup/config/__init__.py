@@ -8,13 +8,12 @@ import discord
 
 from hmwz.ui.messages import send_initial_response, send_followup
 from hmwz.configuration import registration_defaults
-from hmwz.emojis import emojis
 from hmwz.i18n import t
-from hmwz.modules.registration.module import RegistrationModule
 from hmwz.ui.messages import send_temporary_followup
 from hmwz.utils.loaders import fetch_member
 
 from .configuration_message import configuration_message
+from .draft import RegistrationSetupDraft
 from .view import RegistrationSetupView
 
 _configuration_message = configuration_message
@@ -26,35 +25,35 @@ class RegistrationConfigView(RegistrationSetupView):
 
     def __init__(
         self,
-        module: RegistrationModule,
-        channel_id: int,
-        owner_id: int,
+        draft: RegistrationSetupDraft,
     ) -> None:
-        super().__init__(owner_id=owner_id, timeout=300)
-        self.module = module
-        self.guild = module.guild
-        self.channel_id = channel_id
+        super().__init__(owner_id=draft.owner_id, timeout=300)
+        self.draft = draft
+        self.module = draft.module
+        self.guild = draft.module.guild
+        self.channel_id = draft.channel_id
         labels = {
-            "wz_registration_config_title": "wz.setup.config.edit_title",
-            "wz_registration_config_text": "wz.setup.config.edit_text",
+            "wz_registration_config_title": "registration.setup.config.edit_title",
+            "wz_registration_config_text": "registration.setup.config.edit_text",
             "wz_registration_config_lock_emojis": (
                 "registration.setup.config.toggle_lock_emojis"
             ),
-            "wz_registration_config_add_role": "wz.setup.config.add_role",
+            "wz_registration_config_add_role": "registration.setup.config.add_role",
             "wz_registration_config_remove_role": "registration.setup.config.remove_role",
-            "wz_registration_config_export_channel": ("wz.setup.config.export_channel"),
-            "wz_registration_config_apply": "registration.setup.config.apply",
+            "wz_registration_config_export_channel": ("registration.setup.config.edit_export_channel"),
+            "wz_registration_config_apply": "registration.setup.config.save",
+            "wz_registration_config_cancel": "registration.setup.config.cancel",
         }
         for item in self.children:
             if isinstance(item, discord.ui.Button) and item.custom_id in labels:
                 item.label = t(self.guild, labels[item.custom_id])
-                if item.custom_id == "wz_registration_config_apply":
-                    item.emoji = emojis.get("success", self.guild)
 
     @discord.ui.button(
         label="Titel bearbeiten",
         style=discord.ButtonStyle.primary,
         custom_id="wz_registration_config_title",
+        emoji="📝",
+        row=0,
     )
     async def edit_title(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -65,15 +64,9 @@ class RegistrationConfigView(RegistrationSetupView):
             interaction: Interaction that triggered the button.
             button: Button that triggered the callback.
         """
-        settings = await self.module.registration.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
         await interaction.response.send_modal(
             RegistrationTitleModal(
-                self.module,
-                self.channel_id,
-                self.owner_id,
-                settings.title if settings and settings.title else "",
+                self.draft,
             )
         )
 
@@ -81,6 +74,8 @@ class RegistrationConfigView(RegistrationSetupView):
         label="Text bearbeiten",
         style=discord.ButtonStyle.primary,
         custom_id="wz_registration_config_text",
+        emoji="💬",
+        row=0,
     )
     async def edit_text(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -91,15 +86,9 @@ class RegistrationConfigView(RegistrationSetupView):
             interaction: Interaction that triggered the button.
             button: Button that triggered the callback.
         """
-        settings = await self.module.registration.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
         await interaction.response.send_modal(
             RegistrationTextModal(
-                self.module,
-                self.channel_id,
-                self.owner_id,
-                settings.description if settings and settings.description else "",
+                self.draft,
             )
         )
 
@@ -107,54 +96,28 @@ class RegistrationConfigView(RegistrationSetupView):
         label="Schlossemojis umschalten",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_registration_config_lock_emojis",
+        emoji="🔐",
+        row=0,
     )
     async def toggle_lock_emojis(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         """Toggle lock emoji visibility in the registration overview."""
-        settings = await self.module.registration.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
-        show_lock_emojis = not (
-            settings.show_lock_emojis if settings is not None else True
-        )
-        if not await self.module.registration.upsert(
-            guild=self.guild,
-            channel_id=self.channel_id,
-            show_lock_emojis=show_lock_emojis,
-        ):
-            await send_initial_response(
-                interaction,
-                t(interaction, "registration.setup.config.save_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
-
-        roles = await self.module.roles.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
-        refresh_failed = bool(
-            roles
-        ) and not await self.module.compose_registration_overview(
-            force=True, channel_id=self.channel_id
-        )
+        self.draft.show_lock_emojis = not self.draft.show_lock_emojis
         await interaction.response.edit_message(
-            content=(
-                t(interaction, "registration.setup.config.lock_emojis_refresh_error")
-                if refresh_failed
-                else None
-            ),
             embed=await configuration_message(
-                self.module, interaction, self.channel_id
+                self.module, interaction, self.channel_id, self.draft
             ),
-            view=RegistrationConfigView(self.module, self.channel_id, self.owner_id),
+            content=None,
+            view=RegistrationConfigView(self.draft),
         )
 
     @discord.ui.button(
         label="Rolle hinzufügen",
         style=discord.ButtonStyle.success,
         custom_id="wz_registration_config_add_role",
+        emoji="➕",
+        row=1,
     )
     async def add_role(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -166,14 +129,17 @@ class RegistrationConfigView(RegistrationSetupView):
             button: Button that triggered the callback.
         """
         await interaction.response.edit_message(
-            content=t(interaction, "wz.setup.config.role_prompt"),
-            view=RegistrationRoleView(self.module, self.channel_id, self.owner_id),
+            content=t(interaction, "registration.setup.config.role_prompt"),
+            embed=None,
+            view=RegistrationRoleView(self.draft),
         )
 
     @discord.ui.button(
         label="Rolle entfernen",
         style=discord.ButtonStyle.danger,
         custom_id="wz_registration_config_remove_role",
+        emoji="➖",
+        row=1,
     )
     async def remove_role(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -184,10 +150,7 @@ class RegistrationConfigView(RegistrationSetupView):
             interaction: Interaction that triggered the button.
             button: Button that triggered the callback.
         """
-        configured_roles = await self.module.roles.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
-        if not configured_roles:
+        if not self.draft.roles:
             await send_initial_response(
                 interaction,
                 t(interaction, "registration.setup.config.no_roles_to_remove"),
@@ -197,15 +160,15 @@ class RegistrationConfigView(RegistrationSetupView):
             return
         roles = [
             (
-                record.role,
+                role_id,
                 (
                     role.name
-                    if (role := self.guild.get_role(record.role)) is not None
-                    else str(record.role)
+                    if (role := self.guild.get_role(role_id)) is not None
+                    else str(role_id)
                 ),
-                record.permanent,
+                permanent,
             )
-            for record in configured_roles
+            for role_id, permanent in self.draft.roles.items()
         ]
         if not roles:
             await send_initial_response(
@@ -218,15 +181,15 @@ class RegistrationConfigView(RegistrationSetupView):
         await interaction.response.edit_message(
             content=t(interaction, "registration.setup.config.remove_role_prompt"),
             embed=None,
-            view=RegistrationRoleRemovalView(
-                self.module, self.channel_id, self.owner_id, roles
-            ),
+            view=RegistrationRoleRemovalView(self.draft, roles),
         )
 
     @discord.ui.button(
         label="JSON-Exportkanal",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_registration_config_export_channel",
+        emoji="📤",
+        row=1,
     )
     async def configure_export_channel(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -238,10 +201,9 @@ class RegistrationConfigView(RegistrationSetupView):
             button: Button that triggered the callback.
         """
         await interaction.response.edit_message(
-            content=t(interaction, "wz.setup.config.export_channel_prompt"),
-            view=RegistrationExportChannelView(
-                self.module, self.channel_id, self.owner_id
-            ),
+            content=t(interaction, "registration.setup.config.export_channel_prompt"),
+            embed=None,
+            view=RegistrationExportChannelView(self.draft),
         )
 
     @discord.ui.button(
@@ -249,13 +211,40 @@ class RegistrationConfigView(RegistrationSetupView):
         style=discord.ButtonStyle.success,
         emoji="✅",
         custom_id="wz_registration_config_apply",
+        row=2,
     )
     async def apply(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        """Close the setup panel after applying the persisted configuration."""
+        """Persist the complete draft and close the setup panel."""
+        await self.save(interaction)
+
+    @discord.ui.button(
+        label="Abbrechen",
+        style=discord.ButtonStyle.secondary,
+        emoji="❌",
+        custom_id="wz_registration_config_cancel",
+        row=2,
+    )
+    async def cancel(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        """Discard the draft without changing persisted settings."""
+        self.stop()
         await interaction.response.defer()
         await interaction.delete_original_response()
+
+    async def save(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        if not await _save_registration_draft(self.draft, interaction):
+            return
+        self.stop()
+        await interaction.delete_original_response()
+        await send_followup(
+            interaction,
+            t(interaction, "registration.setup.config.saved"),
+            ephemeral=True,
+        )
 
 
 class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
@@ -266,7 +255,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
             channel_types=[discord.ChannelType.text],
             placeholder=t(
                 export_view.guild,
-                "wz.setup.config.export_channel_select",
+                "registration.setup.config.export_channel_select",
             ),
             min_values=1,
             max_values=1,
@@ -284,7 +273,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
         if not isinstance(channel, discord.TextChannel):
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.setup.config.export_channel_invalid"),
+                t(interaction, "registration.setup.config.export_channel_invalid"),
                 ephemeral=True,
                 delete_after=5,
             )
@@ -293,7 +282,7 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
         if bot_member is None:
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.setup.config.export_channel_error"),
+                t(interaction, "registration.setup.config.export_channel_error"),
                 ephemeral=True,
                 delete_after=5,
             )
@@ -302,33 +291,21 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
         if not permissions.send_messages or not permissions.attach_files:
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.setup.config.export_channel_missing_permissions"),
+                t(interaction, "registration.setup.config.export_channel_missing_permissions"),
                 ephemeral=True,
                 delete_after=5,
             )
             return
-        if not await self.export_view.module.registration_event_channel.set(
-            guild=self.export_view.guild,
-            channel_id=channel.id,
-        ):
-            await send_initial_response(
-                interaction,
-                t(interaction, "wz.setup.config.export_channel_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
+        self.export_view.draft.export_channel_id = channel.id
         await interaction.response.edit_message(
             embed=await configuration_message(
                 self.export_view.module,
                 interaction,
                 self.export_view.registration_channel_id,
+                self.export_view.draft,
             ),
-            view=RegistrationConfigView(
-                self.export_view.module,
-                self.export_view.registration_channel_id,
-                self.export_view.owner_id,
-            ),
+            content=None,
+            view=RegistrationConfigView(self.export_view.draft),
         )
 
 
@@ -337,21 +314,20 @@ class RegistrationExportChannelView(RegistrationSetupView):
 
     def __init__(
         self,
-        module: RegistrationModule,
-        registration_channel_id: int,
-        owner_id: int,
+        draft: RegistrationSetupDraft,
     ) -> None:
-        super().__init__(owner_id=owner_id, timeout=180)
-        self.module = module
-        self.guild = module.guild
-        self.registration_channel_id = registration_channel_id
+        super().__init__(owner_id=draft.owner_id, timeout=180)
+        self.draft = draft
+        self.module = draft.module
+        self.guild = draft.module.guild
+        self.registration_channel_id = draft.channel_id
         self.channel_select: RegistrationExportChannelSelect = (
             RegistrationExportChannelSelect(self)
         )
         self.add_item(self.channel_select)
         labels = {
-            "wz_registration_config_export_disable": ("wz.setup.config.export_disable"),
-            "wz_registration_config_export_back": "wz.setup.config.back",
+            "wz_registration_config_export_disable": ("registration.setup.config.export_disable"),
+            "wz_registration_config_export_back": "registration.setup.config.back",
         }
         for item in self.children:
             if isinstance(item, discord.ui.Button) and item.custom_id in labels:
@@ -361,6 +337,8 @@ class RegistrationExportChannelView(RegistrationSetupView):
         label="Export deaktivieren",
         style=discord.ButtonStyle.danger,
         custom_id="wz_registration_config_export_disable",
+        emoji="🚫",
+        row=1,
     )
     async def disable_export(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -371,28 +349,21 @@ class RegistrationExportChannelView(RegistrationSetupView):
             interaction: Interaction that triggered the button.
             button: Button that triggered the callback.
         """
-        if not await self.module.registration_event_channel.remove(guild=self.guild):
-            await send_initial_response(
-                interaction,
-                t(interaction, "wz.setup.config.export_channel_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
+        self.draft.export_channel_id = None
         await interaction.response.edit_message(
             embed=await configuration_message(
-                self.module, interaction, self.registration_channel_id
+                self.module, interaction, self.registration_channel_id, self.draft
             ),
             content=None,
-            view=RegistrationConfigView(
-                self.module, self.registration_channel_id, self.owner_id
-            ),
+            view=RegistrationConfigView(self.draft),
         )
 
     @discord.ui.button(
         label="Zurück",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_registration_config_export_back",
+        emoji="↩️",
+        row=1,
     )
     async def back(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -405,34 +376,24 @@ class RegistrationExportChannelView(RegistrationSetupView):
         """
         await interaction.response.edit_message(
             embed=await configuration_message(
-                self.module, interaction, self.registration_channel_id
+                self.module, interaction, self.registration_channel_id, self.draft
             ),
             content=None,
-            view=RegistrationConfigView(
-                self.module, self.registration_channel_id, self.owner_id
-            ),
+            view=RegistrationConfigView(self.draft),
         )
 
 
 class RegistrationTitleModal(discord.ui.Modal):
-    """Collect and save a registration overview title."""
+    """Collect a registration overview title into the current draft."""
 
-    def __init__(
-        self,
-        module: RegistrationModule,
-        channel_id: int,
-        owner_id: int,
-        current_title: str,
-    ) -> None:
-        super().__init__(title=t(module.guild, "wz.setup.config.title_modal"))
-        self.module = module
-        self.channel_id = channel_id
-        self.owner_id = owner_id
+    def __init__(self, draft: RegistrationSetupDraft) -> None:
+        super().__init__(title=t(draft.module.guild, "registration.setup.config.title_modal"))
+        self.draft = draft
         self.title_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(module.guild, "wz.setup.config.title_label"),
+            label=t(draft.module.guild, "registration.setup.config.title_label"),
             required=False,
             max_length=256,
-            default=current_title,
+            default=draft.title,
         )
         self.add_item(self.title_input)
 
@@ -442,70 +403,42 @@ class RegistrationTitleModal(discord.ui.Modal):
         Args:
             interaction: Interaction that submitted the modal.
         """
-        if interaction.user.id != self.owner_id:
+        if interaction.user.id != self.draft.owner_id:
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.setup.config.owner_only"),
+                t(interaction, "registration.setup.config.owner_only"),
                 ephemeral=True,
                 delete_after=5,
             )
             return
-        if not await self.module.registration.upsert(
-            guild=self.module.guild,
-            channel_id=self.channel_id,
-            title=self.title_input.value.strip(),
-        ):
-            await send_initial_response(
+        self.draft.title = self.title_input.value.strip()
+        await interaction.response.edit_message(
+            content=None,
+            embed=await configuration_message(
+                self.draft.module,
                 interaction,
-                t(interaction, "wz.setup.config.save_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
-        roles = await self.module.roles.get(
-            guild=self.module.guild, channel_id=self.channel_id
-        )
-        if roles and not await self.module.compose_registration_overview(
-            force=True, channel_id=self.channel_id
-        ):
-            await send_initial_response(
-                interaction,
-                t(interaction, "wz.setup.config.saved_refresh_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
-        await send_initial_response(
-            interaction,
-            t(interaction, "wz.setup.config.title_saved"),
-            ephemeral=True,
-            delete_after=5,
+                self.draft.channel_id,
+                self.draft,
+            ),
+            view=RegistrationConfigView(self.draft),
         )
 
 
 class RegistrationTextModal(discord.ui.Modal):
-    """Collect and save registration overview text."""
+    """Collect registration overview text into the current draft."""
 
-    def __init__(
-        self,
-        module: RegistrationModule,
-        channel_id: int,
-        owner_id: int,
-        current_text: str,
-    ) -> None:
-        super().__init__(title=t(module.guild, "wz.setup.config.text_modal"))
-        self.module = module
-        self.channel_id = channel_id
-        self.owner_id = owner_id
+    def __init__(self, draft: RegistrationSetupDraft) -> None:
+        super().__init__(title=t(draft.module.guild, "registration.setup.config.text_modal"))
+        self.draft = draft
         self.text_input: discord.ui.TextInput = discord.ui.TextInput(
-            label=t(module.guild, "wz.setup.config.text_label"),
+            label=t(draft.module.guild, "registration.setup.config.text_label"),
             style=discord.TextStyle.paragraph,
-            required=len(current_text) > 4000,
+            required=len(draft.description) > 4000,
             max_length=4000,
-            default=current_text if len(current_text) <= 4000 else None,
+            default=draft.description if len(draft.description) <= 4000 else None,
             placeholder=(
-                t(module.guild, "wz.setup.config.text_over_limit")
-                if len(current_text) > 4000
+                t(draft.module.guild, "registration.setup.config.text_over_limit")
+                if len(draft.description) > 4000
                 else None
             ),
         )
@@ -517,44 +450,24 @@ class RegistrationTextModal(discord.ui.Modal):
         Args:
             interaction: Interaction that submitted the modal.
         """
-        if interaction.user.id != self.owner_id:
+        if interaction.user.id != self.draft.owner_id:
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.setup.config.owner_only"),
+                t(interaction, "registration.setup.config.owner_only"),
                 ephemeral=True,
                 delete_after=5,
             )
             return
-        if not await self.module.registration.upsert(
-            guild=self.module.guild,
-            channel_id=self.channel_id,
-            description=self.text_input.value.strip(),
-        ):
-            await send_initial_response(
+        self.draft.description = self.text_input.value.strip()
+        await interaction.response.edit_message(
+            content=None,
+            embed=await configuration_message(
+                self.draft.module,
                 interaction,
-                t(interaction, "wz.setup.config.save_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
-        roles = await self.module.roles.get(
-            guild=self.module.guild, channel_id=self.channel_id
-        )
-        if roles and not await self.module.compose_registration_overview(
-            force=True, channel_id=self.channel_id
-        ):
-            await send_initial_response(
-                interaction,
-                t(interaction, "wz.setup.config.saved_refresh_error"),
-                ephemeral=True,
-                delete_after=5,
-            )
-            return
-        await send_initial_response(
-            interaction,
-            t(interaction, "wz.setup.config.text_saved"),
-            ephemeral=True,
-            delete_after=5,
+                self.draft.channel_id,
+                self.draft,
+            ),
+            view=RegistrationConfigView(self.draft),
         )
 
 
@@ -563,7 +476,7 @@ class RegistrationRoleSelect(discord.ui.RoleSelect):
 
     def __init__(self, config_view: RegistrationRoleView) -> None:
         super().__init__(
-            placeholder=t(config_view.guild, "wz.setup.config.role_select_prompt"),
+            placeholder=t(config_view.guild, "registration.setup.config.role_select_prompt"),
             min_values=1,
             max_values=1,
         )
@@ -583,14 +496,13 @@ class RegistrationRoleView(RegistrationSetupView):
 
     def __init__(
         self,
-        module: RegistrationModule,
-        channel_id: int,
-        owner_id: int,
+        draft: RegistrationSetupDraft,
     ) -> None:
-        super().__init__(owner_id=owner_id, timeout=180)
-        self.module = module
-        self.guild = module.guild
-        self.channel_id = channel_id
+        super().__init__(owner_id=draft.owner_id, timeout=180)
+        self.draft = draft
+        self.module = draft.module
+        self.guild = draft.module.guild
+        self.channel_id = draft.channel_id
         self.selected_role: discord.Role | None = None
         labels = {
             "wz_registration_config_role_permanent": (
@@ -599,7 +511,7 @@ class RegistrationRoleView(RegistrationSetupView):
             "wz_registration_config_role_temporary": (
                 "registration.setup.config.role_non_permanent"
             ),
-            "wz_registration_config_role_back": "wz.setup.config.back",
+            "wz_registration_config_role_back": "registration.setup.config.back",
         }
         for item in self.children:
             if isinstance(item, discord.ui.Button) and item.custom_id in labels:
@@ -628,7 +540,7 @@ class RegistrationRoleView(RegistrationSetupView):
         if not select.values:
             await send_initial_response(
                 interaction,
-                t(interaction, "wz.setup.config.role_select"),
+                t(interaction, "registration.setup.config.role_select"),
                 ephemeral=True,
                 delete_after=5,
             )
@@ -650,7 +562,7 @@ class RegistrationRoleView(RegistrationSetupView):
         if role is None:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.setup.config.role_select"),
+                t(interaction, "registration.setup.config.role_select"),
                 ephemeral=True,
             )
             return
@@ -661,15 +573,12 @@ class RegistrationRoleView(RegistrationSetupView):
         ):
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.setup.config.role_hierarchy_error"),
+                t(interaction, "registration.setup.config.role_hierarchy_error"),
                 ephemeral=True,
             )
             return
 
-        configured_roles = await self.module.roles.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
-        configured_ids = {configured.role for configured in configured_roles or ()}
+        configured_ids = set(self.draft.roles)
         max_roles = int(
             registration_defaults(self.module.module_key).get(
                 "max_registration_roles", 4
@@ -680,47 +589,27 @@ class RegistrationRoleView(RegistrationSetupView):
                 interaction,
                 t(
                     interaction,
-                    "wz.setup.config.max_roles",
+                    "registration.setup.config.max_roles",
                     max_roles=max_roles,
                 ),
                 ephemeral=True,
             )
             return
-        if not await self.module.roles.add(
-            guild=self.guild,
-            role=role.id,
-            permanent=permanent,
-            score=1,
-            channel_id=self.channel_id,
-        ):
-            await send_temporary_followup(
-                interaction,
-                t(interaction, "wz.setup.config.save_error"),
-                ephemeral=True,
-            )
-            return
-        if not await self.module.compose_registration_overview(
-            force=True, channel_id=self.channel_id
-        ):
-            await send_temporary_followup(
-                interaction,
-                t(interaction, "wz.setup.config.role_saved_refresh_error"),
-                ephemeral=True,
-            )
-            return
+        self.draft.roles[role.id] = permanent
 
         await interaction.edit_original_response(
             embed=await configuration_message(
-                self.module, interaction, self.channel_id
+                self.module, interaction, self.channel_id, self.draft
             ),
             content=None,
-            view=RegistrationConfigView(self.module, self.channel_id, self.owner_id),
+            view=RegistrationConfigView(self.draft),
         )
 
     @discord.ui.button(
         label="Permanent",
         style=discord.ButtonStyle.primary,
         custom_id="wz_registration_config_role_permanent",
+        emoji="🔒",
     )
     async def permanent(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -737,6 +626,7 @@ class RegistrationRoleView(RegistrationSetupView):
         label="Nicht permanent",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_registration_config_role_temporary",
+        emoji="🔓",
     )
     async def temporary(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -753,6 +643,7 @@ class RegistrationRoleView(RegistrationSetupView):
         label="Zurück",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_registration_config_role_back",
+        emoji="↩️",
     )
     async def back(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -765,10 +656,10 @@ class RegistrationRoleView(RegistrationSetupView):
         """
         await interaction.response.edit_message(
             embed=await configuration_message(
-                self.module, interaction, self.channel_id
+                self.module, interaction, self.channel_id, self.draft
             ),
             content=None,
-            view=RegistrationConfigView(self.module, self.channel_id, self.owner_id),
+            view=RegistrationConfigView(self.draft),
         )
 
 
@@ -824,15 +715,14 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
 
     def __init__(
         self,
-        module: RegistrationModule,
-        channel_id: int,
-        owner_id: int,
+        draft: RegistrationSetupDraft,
         configured_roles: list[tuple[int, str, bool]],
     ) -> None:
-        super().__init__(owner_id=owner_id, timeout=180)
-        self.module = module
-        self.guild = module.guild
-        self.channel_id = channel_id
+        super().__init__(owner_id=draft.owner_id, timeout=180)
+        self.draft = draft
+        self.module = draft.module
+        self.guild = draft.module.guild
+        self.channel_id = draft.channel_id
         self.role_select = RegistrationRoleRemovalSelect(self, configured_roles)
         self.add_item(self.role_select)
         labels = {
@@ -874,10 +764,7 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
             )
             return
 
-        configured_roles = await self.module.roles.get(
-            guild=self.guild, channel_id=self.channel_id
-        )
-        configured_ids = {record.role for record in configured_roles or ()}
+        configured_ids = set(self.draft.roles)
         min_roles = int(
             registration_defaults(self.module.module_key).get(
                 "min_registration_roles", 1
@@ -901,95 +788,22 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
             return
 
         await interaction.response.defer()
-        registrations = await self.module.registrations.get(
-            guild=self.guild,
-            roles=selected_role_ids,
-            channel_id=self.channel_id,
-        )
-        if not await self.module.roles.remove(
-            guild=self.guild,
-            roles=selected_role_ids,
-            channel_id=self.channel_id,
-        ):
-            await send_followup(
-                interaction,
-                t(interaction, "registration.setup.config.save_error"),
-                ephemeral=True,
-            )
-            return
-        if not await self.module.registrations.remove(
-            guild=self.guild,
-            roles=selected_role_ids,
-            channel_id=self.channel_id,
-        ):
-            await send_followup(
-                interaction,
-                t(interaction, "registration.setup.config.save_error"),
-                ephemeral=True,
-            )
-            return
-
-        failed_members: set[int] = set()
-        for member_id in {
-            record.member for record in registrations or () if record.member is not None
-        }:
-            member = await fetch_member(self.guild, member_id)
-            if member is None:
-                continue
-            roles_to_remove = [
-                role
-                for role_id in selected_role_ids
-                if (role := self.guild.get_role(role_id)) is not None
-                and role in member.roles
-            ]
-            if not roles_to_remove:
-                continue
-            try:
-                await member.remove_roles(
-                    *roles_to_remove,
-                    reason="Registration setup role removal",
-                )
-            except discord.HTTPException:
-                failed_members.add(member.id)
-                _logger.exception(
-                    "Failed to remove registration roles %s from member %s in guild %s.",
-                    selected_role_ids,
-                    member.id,
-                    self.guild.id,
-                )
-
-        if not await self.module.compose_registration_overview(
-            force=True, channel_id=self.channel_id
-        ):
-            await interaction.edit_original_response(
-                content=t(
-                    interaction,
-                    "registration.setup.config.role_saved_refresh_error",
-                ),
-                view=None,
-            )
-            return
+        for role_id in selected_role_ids:
+            self.draft.roles.pop(role_id, None)
 
         await interaction.edit_original_response(
-            content=(
-                t(
-                    interaction,
-                    "registration.setup.config.remove_role_member_warning",
-                    count=len(failed_members),
-                )
-                if failed_members
-                else None
-            ),
+            content=None,
             embed=await configuration_message(
-                self.module, interaction, self.channel_id
+                self.module, interaction, self.channel_id, self.draft
             ),
-            view=RegistrationConfigView(self.module, self.channel_id, self.owner_id),
+            view=RegistrationConfigView(self.draft),
         )
 
     @discord.ui.button(
         label="Zurück",
         style=discord.ButtonStyle.secondary,
         custom_id="wz_registration_config_role_remove_back",
+        emoji="↩️",
     )
     async def back(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -1003,7 +817,224 @@ class RegistrationRoleRemovalView(RegistrationSetupView):
         await interaction.response.edit_message(
             content=None,
             embed=await configuration_message(
-                self.module, interaction, self.channel_id
+                self.module, interaction, self.channel_id, self.draft
             ),
-            view=RegistrationConfigView(self.module, self.channel_id, self.owner_id),
+            view=RegistrationConfigView(self.draft),
         )
+
+
+async def _save_registration_draft(
+    draft: RegistrationSetupDraft, interaction: discord.Interaction
+) -> str | None:
+    """Apply the validated setup draft and return its user-facing result."""
+    module = draft.module
+    guild = module.guild
+    min_roles = int(
+        registration_defaults(module.module_key).get("min_registration_roles", 1)
+    )
+    max_roles = int(
+        registration_defaults(module.module_key).get("max_registration_roles", 4)
+    )
+    if not min_roles <= len(draft.roles) <= max_roles:
+        await send_followup(
+            interaction,
+            t(
+                interaction,
+                "registration.setup.config.role_count_invalid",
+                minimum=min_roles,
+                maximum=max_roles,
+            ),
+            ephemeral=True,
+        )
+        return None
+
+    current_roles = await module.roles.get(guild=guild, channel_id=draft.channel_id)
+    current_role_map = {role.role: role.permanent for role in current_roles or ()}
+    if current_role_map != draft.original_roles:
+        await send_followup(
+            interaction,
+            t(interaction, "registration.setup.config.stale"),
+            ephemeral=True,
+        )
+        return None
+    current_settings = await module.registration.get(
+        guild=guild, channel_id=draft.channel_id
+    )
+    current_title = (
+        current_settings.title if current_settings and current_settings.title else ""
+    )
+    current_description = (
+        current_settings.description
+        if current_settings and current_settings.description
+        else ""
+    )
+    current_show_lock_emojis = (
+        current_settings.show_lock_emojis if current_settings else True
+    )
+    if (
+        current_title != draft.original_title
+        or current_description != draft.original_description
+        or current_show_lock_emojis != draft.original_show_lock_emojis
+    ):
+        await send_followup(
+            interaction,
+            t(interaction, "registration.setup.config.stale"),
+            ephemeral=True,
+        )
+        return None
+    current_export_channel_id = await module.registration_event_channel.get(guild=guild)
+    if current_export_channel_id != draft.original_export_channel_id:
+        await send_followup(
+            interaction,
+            t(interaction, "registration.setup.config.stale"),
+            ephemeral=True,
+        )
+        return None
+
+    for role_id in draft.roles:
+        role = guild.get_role(role_id)
+        if (
+            role is None
+            or role.is_default()
+            or role.managed
+            or (guild.me is not None and role >= guild.me.top_role)
+        ):
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.role_hierarchy_error"),
+                ephemeral=True,
+            )
+            return None
+
+    export_channel = (
+        guild.get_channel(draft.export_channel_id)
+        if draft.export_channel_id is not None
+        else None
+    )
+    if draft.export_channel_id is not None:
+        if not isinstance(export_channel, discord.TextChannel):
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.export_channel_invalid"),
+                ephemeral=True,
+            )
+            return None
+        bot_member = guild.me
+        if bot_member is None:
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.export_channel_error"),
+                ephemeral=True,
+            )
+            return None
+        permissions = export_channel.permissions_for(bot_member)
+        if not permissions.send_messages or not permissions.attach_files:
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.export_channel_missing_permissions"),
+                ephemeral=True,
+            )
+            return None
+
+    if not await module.registration.upsert(
+        guild=guild,
+        channel_id=draft.channel_id,
+        title=draft.title,
+        description=draft.description,
+        show_lock_emojis=draft.show_lock_emojis,
+    ):
+        await send_followup(
+            interaction,
+            t(interaction, "registration.setup.config.save_error"),
+            ephemeral=True,
+        )
+        return None
+
+    for role_id, permanent in draft.roles.items():
+        if draft.original_roles.get(role_id) == permanent:
+            continue
+        if not await module.roles.add(
+            guild=guild,
+            role=role_id,
+            permanent=permanent,
+            score=1,
+            channel_id=draft.channel_id,
+        ):
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.partial_save_error"),
+                ephemeral=True,
+            )
+            return None
+
+    removed_role_ids = sorted(draft.original_roles.keys() - draft.roles.keys())
+    failed_members: set[int] = set()
+    if removed_role_ids:
+        registrations = await module.registrations.get(
+            guild=guild, roles=removed_role_ids, channel_id=draft.channel_id
+        )
+        if not await module.roles.remove(
+            guild=guild, roles=removed_role_ids, channel_id=draft.channel_id
+        ) or not await module.registrations.remove(
+            guild=guild, roles=removed_role_ids, channel_id=draft.channel_id
+        ):
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.partial_save_error"),
+                ephemeral=True,
+            )
+            return None
+        for member_id in {
+            record.member for record in registrations or () if record.member is not None
+        }:
+            member = await fetch_member(guild, member_id)
+            if member is None:
+                continue
+            roles_to_remove = [
+                role
+                for role_id in removed_role_ids
+                if (role := guild.get_role(role_id)) is not None
+                and role in member.roles
+            ]
+            if not roles_to_remove:
+                continue
+            try:
+                await member.remove_roles(
+                    *roles_to_remove,
+                    reason="Registration setup role removal",
+                )
+            except discord.HTTPException:
+                failed_members.add(member.id)
+                _logger.exception(
+                    "Failed to remove registration roles %s from member %s in guild %s.",
+                    removed_role_ids,
+                    member.id,
+                    guild.id,
+                )
+
+    if draft.export_channel_id != draft.original_export_channel_id:
+        if draft.export_channel_id is None:
+            changed = await module.registration_event_channel.remove(guild=guild)
+        else:
+            changed = await module.registration_event_channel.set(
+                guild=guild, channel_id=draft.export_channel_id
+            )
+        if not changed:
+            await send_followup(
+                interaction,
+                t(interaction, "registration.setup.config.partial_save_error"),
+                ephemeral=True,
+            )
+            return None
+
+    if not await module.compose_registration_overview(
+        force=True, channel_id=draft.channel_id
+    ):
+        return t(interaction, "registration.setup.config.saved_refresh_error")
+    if failed_members:
+        return t(
+            interaction,
+            "registration.setup.config.remove_role_member_warning",
+            count=len(failed_members),
+        )
+    return t(interaction, "registration.setup.config.saved")

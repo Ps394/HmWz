@@ -40,6 +40,7 @@ DonationSetupAction = Literal[
     "donations",
     "export",
     "save",
+    "cancel",
 ]
 
 
@@ -59,18 +60,16 @@ class DonationSetupKindSelect(discord.ui.Select):
             placeholder=t(module.guild, "donation.setup.kind_prompt"),
             options=[
                 discord.SelectOption(
-                    label=t(module.guild, "donation.setup.simple"),
+                    label=t(module.guild, "donation.type.credit.name"),
                     value="simple",
-                    description=t(module.guild, "donation.setup.simple_description"),
+                    description=t(module.guild, "donation.type.credit.description"),
                     default=donation_type is not None
                     and donation_type.kind == "simple",
                 ),
                 discord.SelectOption(
-                    label=t(module.guild, "donation.setup.time_reduction"),
+                    label=t(module.guild, "donation.type.rush.name"),
                     value="time_reduction",
-                    description=t(
-                        module.guild, "donation.setup.time_reduction_description"
-                    ),
+                    description=t(module.guild, "donation.type.rush.description"),
                     default=donation_type is not None
                     and donation_type.kind == "time_reduction",
                 ),
@@ -136,9 +135,9 @@ class DonationSetupKindSelect(discord.ui.Select):
                 current_type.unit
                 if current_type is not None
                 else (
-                    t(interaction, "donation.setup.crystals_unit")
+                    t(interaction, "donation.type.rush.unit")
                     if kind == "time_reduction"
-                    else t(interaction, "donation.setup.credits_unit")
+                    else t(interaction, "donation.type.credit.unit")
                 )
             ),
             choices=(
@@ -225,14 +224,15 @@ class DonationSetupButton(discord.ui.Button):
 
     LABELS: dict[DonationSetupAction, str] = {
         "content": "donation.setup.edit_content",
-        "values": "donation.setup.edit_values",
+        "values": "donation.type.credit.edit_values",
         "ranking": "donation.setup.toggle_ranking",
-        "start": "donation.setup.edit_start",
-        "target": "donation.setup.edit_target",
+        "start": "donation.type.rush.setup.edit_start",
+        "target": "donation.type.rush.setup.edit_target",
         "visibility": "donation.setup.toggle_visibility",
         "donations": "donation.setup.toggle_donations",
         "export": "donation.setup.export_channel",
         "save": "donation.setup.save",
+        "cancel": "donation.setup.cancel",
     }
 
     def __init__(
@@ -260,8 +260,22 @@ class DonationSetupButton(discord.ui.Button):
             style=(
                 discord.ButtonStyle.success
                 if action == "save"
+                else discord.ButtonStyle.secondary
+                if action == "cancel"
                 else discord.ButtonStyle.primary
             ),
+            emoji={
+                "content": "📝",
+                "values": "💰",
+                "ranking": "🏆",
+                "start": "🕒",
+                "target": "🎯",
+                "visibility": "👁️",
+                "donations": "💸",
+                "export": "📤",
+                "save": "✅",
+                "cancel": "❌",
+            }[action],
             custom_id=f"donation:setup:{action}",
             row=row,
         )
@@ -387,6 +401,7 @@ class DonationSetupView(DonationSetupOwnerView):
         self.add_item(DonationSetupButton(self, "donations", row=row + 1))
         self.add_item(DonationSetupButton(self, "export", row=row + 2))
         self.add_item(DonationSetupButton(self, "save", row=row + 2))
+        self.add_item(DonationSetupButton(self, "cancel", row=row + 2))
 
     async def handle_action(
         self, interaction: discord.Interaction, action: DonationSetupAction
@@ -417,6 +432,10 @@ class DonationSetupView(DonationSetupOwnerView):
                 )
             case "save":
                 await self.save(interaction)
+            case "cancel":
+                self.stop()
+                await interaction.response.defer()
+                await interaction.delete_original_response()
 
     async def refresh(self, interaction: discord.Interaction) -> None:
         self._build_controls()
@@ -468,7 +487,7 @@ async def _save_setup(
             )
         except ValueError:
             await _send_setup_followup_error(
-                interaction, "donation.error.invalid_target"
+                interaction, "donation.type.rush.error.invalid_target"
             )
             return False
     donation_type = credit_type(draft) if draft.kind == "simple" else rush_type(draft)

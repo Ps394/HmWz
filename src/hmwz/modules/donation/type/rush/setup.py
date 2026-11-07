@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 def configured_type(draft: DonationSetupDraft) -> DonationType:
     """Build the fixed-duration crystal donation configuration."""
     return DonationType(
-        name=t(draft.module.guild, "donation.setup.rush"),
+        name=t(draft.module.guild, "donation.type.rush.name"),
         kind="time_reduction",
-        unit=draft.unit or t(draft.module.guild, "donation.setup.crystals_unit"),
+        unit=draft.unit or t(draft.module.guild, "donation.type.rush.unit"),
         input_mode="free",
         choices=(),
         time_reductions=tuple(f"{hours}h" for hours in RUSH_DURATIONS_HOURS),
@@ -37,7 +37,7 @@ def start_timestamp_input(
     """Create the shared local date/time picker with absolute timestamp support."""
     return TimestampInput(
         context,
-        label=t(context, "donation.setup.edit_start"),
+        label=t(context, "donation.type.rush.setup.edit_start"),
         timezone_name=timezone_name,
         value=started_at,
     )
@@ -48,7 +48,9 @@ class DonationRushStartModal(discord.ui.Modal):
 
     def __init__(self, setup_view: DonationSetupView) -> None:
         draft = setup_view.draft
-        super().__init__(title=t(draft.module.guild, "donation.setup.start_title")[:45])
+        super().__init__(
+            title=t(draft.module.guild, "donation.type.rush.setup.start_title")[:45]
+        )
         self.draft = draft
         self.setup_view = setup_view
         self.timestamp_input = start_timestamp_input(
@@ -75,7 +77,8 @@ class DonationRushStartModal(discord.ui.Modal):
                 )
         except ValueError:
             await send_temporary_response(
-                interaction, t(interaction, "donation.error.invalid_rush_schedule")
+                interaction,
+                t(interaction, "donation.type.rush.error.invalid_schedule"),
             )
             return
         self.draft.rush_start_at = started_at
@@ -89,11 +92,15 @@ class DonationRushTargetModal(discord.ui.Modal):
         self.setup_view = setup_view
         self.draft = setup_view.draft
         super().__init__(
-            title=t(self.draft.module.guild, "donation.setup.target_title")[:45]
+            title=t(self.draft.module.guild, "donation.type.rush.setup.target_title")[
+                :45
+            ]
         )
         self.target_input = TimestampInput(
             self.draft.module.guild,
-            label=t(self.draft.module.guild, "donation.setup.target_timestamp"),
+            label=t(
+                self.draft.module.guild, "donation.type.rush.setup.target_timestamp"
+            ),
             timezone_name=self.draft.timezone_name,
             value=self.draft.target_at,
             required=False,
@@ -117,7 +124,8 @@ class DonationRushTargetModal(discord.ui.Modal):
                 )
         except ValueError:
             await send_temporary_response(
-                interaction, t(interaction, "donation.error.invalid_target")
+                interaction,
+                t(interaction, "donation.type.rush.error.invalid_target"),
             )
             return
         self.draft.target_at = target_at

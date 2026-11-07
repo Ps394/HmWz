@@ -23,22 +23,22 @@ def add_time_fields(
     start_utc = started_at.astimezone(UTC)
     end_utc = rush_end_at(started_at, accelerated_hours)
     embed.add_field(
-        name=t(guild, "donation.overview.rush_start"),
+        name=t(guild, "donation.type.rush.overview.start"),
         value=discord.utils.format_dt(start_utc, "F"),
         inline=True,
     )
     embed.add_field(
-        name=t(guild, "donation.overview.rush_duration"),
+        name=t(guild, "donation.type.rush.overview.duration"),
         value=t(
             guild,
-            "donation.setup.rush_duration",
+            "donation.type.rush.duration",
             days=RUSH_PERIOD_DURATION.days,
             hours=int(RUSH_PERIOD_DURATION.total_seconds() // 3600),
         ),
         inline=True,
     )
     embed.add_field(
-        name=t(guild, "donation.overview.rush_end"),
+        name=t(guild, "donation.type.rush.overview.end"),
         value=discord.utils.format_dt(end_utc, "F"),
         inline=True,
     )
@@ -54,13 +54,13 @@ def add_target_field(
 ) -> None:
     """Highlight the target separately and explicitly mark when it is reached."""
     embed.add_field(
-        name=t(context, "donation.overview.target"),
+        name=t(context, "donation.type.rush.overview.target"),
         value=f"**{discord.utils.format_dt(target_at, 'F')}**\n"
         + t(
             context,
-            "donation.overview.target_reached"
+            "donation.type.rush.overview.target_reached"
             if end_at <= target_at
-            else "donation.overview.target_pending",
+            else "donation.type.rush.overview.target_pending",
         ),
         inline=False,
     )

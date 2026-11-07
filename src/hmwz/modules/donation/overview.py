@@ -67,7 +67,7 @@ class DonationOverview:
     ) -> discord.Embed:
         """Build a donor ranking grouped by the channel's single donation unit."""
         unit = (
-            t(guild, "donation.setup.crystals_unit")
+            t(guild, "donation.type.rush.unit")
             if donation_type.kind == "time_reduction"
             else donation_type.unit
         )
@@ -89,7 +89,7 @@ class DonationOverview:
             if donation_type.kind == "time_reduction":
                 line += " · " + t(
                     guild,
-                    "donation.ranking.time_saved",
+                    "donation.type.rush.ranking.time_saved",
                     hours=donor.time_reduction_hours,
                 )
             lines.append(line)
@@ -108,9 +108,9 @@ class DonationOverview:
         """Build a separate embed containing every donation in the active cycle."""
         title = t(
             guild,
-            "donation.overview.history_title"
+            "donation.type.rush.history_title"
             if donation_type.kind == "time_reduction"
-            else "donation.overview.credit_history_title",
+            else "donation.type.credit.history_title",
             count=summary.donation_count,
             duration=DonationOverview._format_duration(summary.time_reduction_hours),
         )
@@ -118,7 +118,7 @@ class DonationOverview:
         if donation_type.kind == "simple":
             embed.timestamp = None
         unit = (
-            t(guild, "donation.setup.crystals_unit")
+            t(guild, "donation.type.rush.unit")
             if donation_type.kind == "time_reduction"
             else donation_type.unit
         )
@@ -130,7 +130,7 @@ class DonationOverview:
             f"{DonationOverview._format_amount(record.amount)} "
             f"{unit}"
             + (
-                f" · {t(guild, 'donation.overview.time_reduced')}: "
+                f" · {t(guild, 'donation.type.rush.time_reduced')}: "
                 f"{DonationOverview._format_reduction(record.time_reduction)}"
                 if donation_type.kind == "time_reduction" and record.time_reduction
                 else ""

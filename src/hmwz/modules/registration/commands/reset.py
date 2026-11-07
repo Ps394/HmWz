@@ -107,7 +107,7 @@ async def reset(
         if guild is None:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.reset.error"),
+                t(interaction, "registration.reset.error"),
                 ephemeral=True,
             )
             return
@@ -116,7 +116,7 @@ async def reset(
         if manager is None:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.reset.error"),
+                t(interaction, "registration.reset.error"),
                 ephemeral=True,
             )
             return
@@ -126,7 +126,7 @@ async def reset(
         if channel_id is None:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.reset.error"),
+                t(interaction, "registration.reset.error"),
                 ephemeral=True,
             )
             return
@@ -142,7 +142,7 @@ async def reset(
         ):
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.error.not_configured"),
+                t(interaction, "registration.error.not_configured"),
                 ephemeral=True,
             )
             return
@@ -155,7 +155,7 @@ async def reset(
         if not registrations:
             await send_temporary_followup(
                 interaction,
-                t(interaction, "wz.registration.csv.no_registrations"),
+                t(interaction, "registration.csv.no_registrations"),
                 ephemeral=True,
             )
             return
@@ -191,7 +191,7 @@ async def reset(
             if not success:
                 await send_temporary_followup(
                     interaction,
-                    t(interaction, "wz.registration.reset.error"),
+                    t(interaction, "registration.reset.error"),
                     ephemeral=True,
                 )
                 return
@@ -204,7 +204,7 @@ async def reset(
         timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")
         await send_temporary_followup(
             interaction,
-            t(interaction, "wz.registration.reset.success", timestamp=timestamp),
+            t(interaction, "registration.reset.success", timestamp=timestamp),
             ephemeral=ephemeral,
         )
     except Exception as e:
@@ -214,5 +214,5 @@ async def reset(
             e,
         )
         await send_temporary_followup(
-            interaction, t(interaction, "wz.registration.reset.error"), ephemeral=True
+            interaction, t(interaction, "registration.reset.error"), ephemeral=True
         )

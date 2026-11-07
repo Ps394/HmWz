@@ -6,5 +6,5 @@
   "parameter.description.wz.purge.ignore_bots": "Skip messages from bots (default: true)",
   "parameter.description.wz.purge.ignore_pinned": "Skip pinned messages (default: true)",
   "parameter.description.wz.purge.limit": "Maximum number of messages to check (default: 500)",
-  "parameter.description.wz.set_timezone.timezone": "Choose an IANA timezone, for example Europe/Berlin"
+  "parameter.description.wz.set_timezone.timezone": "Choose a timezone; search UTC- or UTC+ for common zones by UTC hour"
 }

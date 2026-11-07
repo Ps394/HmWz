@@ -145,6 +145,7 @@ async def test_rush_setup_menu_splits_configuration_into_sections() -> None:
         "donations",
         "export",
         "save",
+        "cancel",
     ]
     assert sum(isinstance(item, discord.ui.Select) for item in view.children) == 0
     assert draft.time_reductions == tuple(f"{hours}h" for hours in RUSH_DURATIONS_HOURS)
@@ -177,12 +178,15 @@ def test_rush_setup_panel_shows_nine_day_stop_time() -> None:
 
     assert isinstance(panel, discord.Embed)
     fields = {field.name: field.value for field in panel.fields}
-    assert fields["Endzeit"] == discord.utils.format_dt(expected_stop, "F")
-    assert fields["Startzeit"] == discord.utils.format_dt(start, "F")
-    assert fields["Dauer"] == "9 Tage (216 Stunden)"
+    assert fields["🏁 Endzeit"] == discord.utils.format_dt(expected_stop, "F")
+    assert fields["🕒 Startzeit"] == discord.utils.format_dt(start, "F")
+    assert fields["Spendendauer"] == (
+        f"{RUSH_PERIOD_DURATION.days} Tage "
+        f"({int(RUSH_PERIOD_DURATION.total_seconds() // 3600)} Stunden)"
+    )
     assert "Zeitzone" not in fields
-    assert fields["Spendenstatus"] == "aktiviert"
-    assert fields["Spendenhistorie"] == "aktiviert"
+    assert fields["Spendenstatus"] == "✅ aktiviert"
+    assert fields["📜 Spendenhistorie"] == "✅ aktiviert"
 
 
 @pytest.mark.asyncio

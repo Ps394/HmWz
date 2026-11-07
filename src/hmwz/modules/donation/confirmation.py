@@ -26,7 +26,7 @@ class DonationConfirmationView(EphemeralView):
             if isinstance(item, discord.ui.Button):
                 item.label = t(
                     module.guild,
-                    "donation.rush.confirm_button"
+                    "donation.type.rush.confirm_button"
                     if item.custom_id == "donation_confirm"
                     else "donation.delete.cancel",
                 )

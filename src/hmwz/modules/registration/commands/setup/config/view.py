@@ -21,7 +21,7 @@ class RegistrationSetupView(discord.ui.View):
             return True
         await send_initial_response(
             interaction,
-            t(interaction, "wz.setup.config.owner_only"),
+            t(interaction, "registration.setup.config.owner_only"),
             ephemeral=True,
             delete_after=5,
         )

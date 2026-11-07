@@ -254,6 +254,55 @@ def test_main_overview_highlights_localized_signup_count(
     assert len(field.value) <= 1024
 
 
+@pytest.mark.parametrize(
+    ("locale", "start_label", "end_label", "instructions"),
+    [
+        (
+            discord.Locale.german,
+            "Eruptionsstart",
+            "Eruptionsende",
+            (
+                "Klicke auf den Button der Phase",
+                "erneut auf denselben Button",
+                "unabhängig für mehrere Phasen anmelden",
+            ),
+        ),
+        (
+            discord.Locale.american_english,
+            "Eruption start",
+            "Eruption end",
+            (
+                "Click the button for the phase",
+                "same button again",
+                "sign up for multiple phases independently",
+            ),
+        ),
+    ],
+)
+def test_main_overview_explains_signups_and_shows_eruption_without_role(
+    locale: discord.Locale,
+    start_label: str,
+    end_label: str,
+    instructions: tuple[str, ...],
+) -> None:
+    guild = Mock(spec=discord.Guild, preferred_locale=locale)
+    configuration = Configuration(
+        20, 30, "2026-11-01", None, None, eruption_start=1793570400
+    )
+    phase = Phase(1, configuration.eruption_start + 3600, 42, None)
+    embed = overview_embed(guild, configuration, (phase,), {1: (100,)}, 3)
+    description = embed.description
+    assert description is not None
+    assert f"{start_label}: <t:{configuration.eruption_start}:F>" in description
+    assert f"{end_label}: <t:{configuration.eruption_end}:F>" in description
+    assert all(instruction in description for instruction in instructions)
+    assert "**3 / 40**" in description
+    assert "<@&" not in str(embed.to_dict())
+    assert "Qs-Rolle" not in description
+    assert "Qs role" not in description
+    assert len(embed) <= 6000
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reset_mode", [False, True])
 @pytest.mark.parametrize(
@@ -268,7 +317,12 @@ async def test_setup_menu_keeps_overview_and_separates_phase_controls(
     panel = await setup_view(environment.module, 20, 100, reset_mode=reset_mode)
     if locale == discord.Locale.german:
         expected = (
-            ["Eruptionsstart festlegen", "Phasen Einstellung", "Bestätigung"]
+            [
+                "Eruptionsstart festlegen",
+                "Phasen Einstellung",
+                "Bestätigung",
+                "Abbrechen",
+            ]
             if reset_mode
             else [
                 "QS-Rolle",
@@ -281,7 +335,7 @@ async def test_setup_menu_keeps_overview_and_separates_phase_controls(
         )
     else:
         expected = (
-            ["Set eruption start", "Phase settings", "Confirmation"]
+            ["Set eruption start", "Phase settings", "Confirmation", "Cancel"]
             if reset_mode
             else [
                 "QS role",
@@ -363,7 +417,7 @@ async def test_ping_settings_are_draft_only_until_save(
     await toggle.callback(context)
     assert not panel.ping_settings.is_enabled(event)
     summary = next(
-        field for field in panel.embed().fields if field.name == "Automatische Pings"
+        field for field in panel.embed().fields if field.name == "🔔 Automatische Pings"
     )
     assert "Aus" in summary.value
     configuration = await environment.module.qs.get(10, 20)

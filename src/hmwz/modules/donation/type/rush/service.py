@@ -45,7 +45,7 @@ async def start_donation(
     now = datetime.now(timezone.utc)
     if configuration is None or configuration.rush_start_at is None:
         await send_temporary_response(
-            interaction, t(interaction, "donation.error.rush_closed")
+            interaction, t(interaction, "donation.type.rush.error.closed")
         )
         return
     summary = await module.donations.get_summary(
@@ -66,13 +66,13 @@ async def start_donation(
     )
     if not rush_prices:
         await send_temporary_response(
-            interaction, t(interaction, "donation.error.rush_closed")
+            interaction, t(interaction, "donation.type.rush.error.closed")
         )
         return
     if time_reduction is None:
         await send_initial_response(
             interaction,
-            t(interaction, "donation.setup.hours_donation_prompt"),
+            t(interaction, "donation.type.rush.amount_prompt"),
             view=DonationTimeReductionView(
                 module, channel_id, donation_type, rush_prices
             ),
@@ -81,14 +81,14 @@ async def start_donation(
         return
     if time_reduction not in {f"{hours}h" for hours in rush_prices}:
         await send_temporary_response(
-            interaction, t(interaction, "donation.error.choose_time")
+            interaction, t(interaction, "donation.type.rush.error.choose_time")
         )
         return
     hours = int(time_reduction.removesuffix("h"))
     cost = rush_prices[hours]
     response_content = t(
         interaction,
-        "donation.rush.confirm",
+        "donation.type.rush.confirm",
         hours=hours,
         cost=format(cost, "f"),
     )

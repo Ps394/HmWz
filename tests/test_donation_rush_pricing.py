@@ -19,11 +19,6 @@ from hmwz.modules.donation.type.rush.pricing import (
     rush_donation_prices,
     rush_end_at,
 )
-from hmwz.modules.donation.type.rush.validation import (
-    parse_rush_start,
-    normalize_donation_timezone,
-)
-
 
 def test_rush_cost_ignores_elapsed_wall_clock_time() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -225,68 +220,6 @@ def test_available_rush_durations_respect_stop_minus_24_hours() -> None:
         )
         == ()
     )
-
-
-def test_parse_rush_start_uses_utc_timezone() -> None:
-    parsed = parse_rush_start("2026-06-01", "12:30")
-
-    assert parsed.utcoffset() == timedelta(0)
-
-
-def test_parse_rush_start_accepts_any_valid_utc_time() -> None:
-    assert parse_rush_start("2026-03-29", "02:30") == datetime(
-        2026, 3, 29, 2, 30, tzinfo=timezone.utc
-    )
-
-
-def test_parse_rush_start_converts_selected_timezone_to_utc() -> None:
-    assert parse_rush_start("2026-06-01", "12:30", "America/New_York") == datetime(
-        2026, 6, 1, 16, 30, tzinfo=timezone.utc
-    )
-
-
-@pytest.mark.parametrize(
-    ("timezone_name", "expected_start"),
-    (
-        ("UTC+1", datetime(2026, 6, 1, 11, tzinfo=timezone.utc)),
-        ("UTC-4", datetime(2026, 6, 1, 16, tzinfo=timezone.utc)),
-        ("UTC-12", datetime(2026, 6, 2, 0, tzinfo=timezone.utc)),
-        ("UTC+14", datetime(2026, 5, 31, 22, tzinfo=timezone.utc)),
-    ),
-)
-def test_parse_rush_start_supports_fixed_utc_offsets(
-    timezone_name: str, expected_start: datetime
-) -> None:
-    assert parse_rush_start("2026-06-01", "12:00", timezone_name) == expected_start
-
-
-@pytest.mark.parametrize("timezone_name", ("UTC-13", "UTC+15", "UTC-0", "UTC+"))
-def test_parse_rush_start_rejects_invalid_fixed_utc_offsets(
-    timezone_name: str,
-) -> None:
-    with pytest.raises(ValueError):
-        parse_rush_start("2026-06-01", "12:00", timezone_name)
-
-
-@pytest.mark.parametrize(
-    ("stored_timezone", "expected_timezone"),
-    (("UTC+1", "Europe/Berlin"), ("UTC-5", "America/New_York"), ("UTC+0", "UTC")),
-)
-def test_legacy_utc_timezone_settings_normalize_to_common_zones(
-    stored_timezone: str, expected_timezone: str
-) -> None:
-    assert normalize_donation_timezone(stored_timezone) == expected_timezone
-
-
-@pytest.mark.parametrize(
-    ("date_value", "time_value"),
-    (("2026-03-08", "02:30"), ("2026-11-01", "01:30")),
-)
-def test_parse_rush_start_rejects_daylight_saving_gaps_and_ambiguities(
-    date_value: str, time_value: str
-) -> None:
-    with pytest.raises(ValueError):
-        parse_rush_start(date_value, time_value, "America/New_York")
 
 
 @pytest.mark.asyncio

@@ -29,7 +29,6 @@ from hmwz.modules.donation.type.rush.setup import (
     DonationRushTargetModal,
 )
 from hmwz.modules.donation.type.rush.pricing import rush_end_at
-from hmwz.modules.donation.type.rush.validation import parse_rush_timestamp
 from hmwz.sqlite_db import Database
 
 
@@ -57,45 +56,6 @@ def draft() -> DonationSetupDraft:
     )
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
-        "1793448000",
-        " <t:1793448000> ",
-        "<t:1793448000:F>",
-        "<t:1793448000:R>",
-        "<t:1793448000:t>",
-        "<t:1793448000:T>",
-        "<t:1793448000:d>",
-        "<t:1793448000:D>",
-        "<t:1793448000:f>",
-        "0",
-        "-1",
-    ],
-)
-def test_timestamp_input_accepts_discord_tokens_and_unix_seconds(value: str) -> None:
-    timestamp = 0 if value == "0" else -1 if value == "-1" else 1793448000
-    assert parse_rush_timestamp(value) == datetime.fromtimestamp(timestamp, UTC)
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "",
-        "tomorrow",
-        "2026-10-31",
-        "1793448000.5",
-        "<t:1793448000:X>",
-        "<t:1793448000:F> trailing",
-        "99999999999999999999999999",
-        "1793448000000",
-    ],
-)
-def test_timestamp_input_rejects_invalid_or_out_of_range_values(value: str) -> None:
-    with pytest.raises(ValueError):
-        parse_rush_timestamp(value)
-
-
 def test_embed_shows_content_accelerated_end_and_input_timezone(
     draft: DonationSetupDraft,
 ) -> None:
@@ -104,14 +64,14 @@ def test_embed_shows_content_accelerated_end_and_input_timezone(
     )
     fields = {field.name: field.value for field in embed.fields}
     assert embed.color == discord.Color.blurple()
-    assert fields["Kanal"] == "<#456>"
-    assert fields["Beschreibungstext (optional)"] == draft.description
-    assert fields["Startzeit"] == discord.utils.format_dt(draft.rush_start_at, "F")
-    assert fields["Endzeit"] == discord.utils.format_dt(
-        draft.rush_start_at + timedelta(hours=216 - 50), "F"
+    assert fields["📍 Kanal"] == "<#456>"
+    assert fields["💬 Beschreibungstext (optional)"] == draft.description
+    assert fields["🕒 Startzeit"] == discord.utils.format_dt(draft.rush_start_at, "F")
+    assert fields["🏁 Endzeit"] == discord.utils.format_dt(
+        rush_end_at(draft.rush_start_at, draft.accelerated_hours), "F"
     )
-    assert fields["All-Time-Spendencharts"] == "deaktiviert"
-    assert fields["Server-Zeitzone"].startswith("UTC\n")
+    assert fields["All-Time-Spendencharts"] == "❌ deaktiviert"
+    assert fields["🌐 Server-Zeitzone"].startswith("UTC\n")
     assert not any("Auswahlwerte" in name for name in fields)
 
 
@@ -125,7 +85,7 @@ def test_credit_embed_omits_rush_fields_and_respects_discord_limits(
         draft, cast(discord.Interaction, SimpleNamespace(locale="de"))
     )
     fields = {field.name: field.value for field in embed.fields}
-    assert fields["Auswahlwerte (optional)"] == "10000\n100000"
+    assert fields["🧮 Auswahlwerte (optional)"] == "10000\n100000"
     assert "Startzeit" not in fields
     assert "Endzeit" not in fields
     assert all(len(field.value) <= 1024 for field in embed.fields)
@@ -145,13 +105,13 @@ async def test_target_modal_sets_highlights_clears_and_rejects_invalid_targets(
     await modal.on_submit(interaction)
     assert draft.target_at == target
     embed = donation_setup_panel(draft, interaction)
-    field = next(f for f in embed.fields if f.name == "ZIELZEIT")
+    field = next(f for f in embed.fields if f.name == "🎯 Zielzeit")
     assert field.inline is False and field.value.startswith("**<t:")
     draft.accelerated_hours = 51
-    assert "Ziel erreicht" in next(
+    assert "Beschleunigungsziel erreicht" in next(
         f.value
         for f in donation_setup_panel(draft, interaction).fields
-        if f.name == "ZIELZEIT"
+        if f.name == "🎯 Zielzeit"
     )
     modal.target_input._value = discord.utils.format_dt(
         target + timedelta(minutes=30), "F"
@@ -352,7 +312,7 @@ async def test_setup_uses_guild_timezone_without_module_timezone_control(
     assert draft.rush_start_at == datetime(2026, 10, 31, 13, tzinfo=UTC)
     assert draft.target_at == target
     fields = interaction.response.edit_message.await_args.kwargs["embed"].fields
-    assert next(f.value for f in fields if f.name == "Server-Zeitzone").startswith(
+    assert next(f.value for f in fields if f.name == "🌐 Server-Zeitzone").startswith(
         "Europe/Berlin\n"
     )
 

@@ -37,3 +37,25 @@ def test_load_translations_loads_json_catalogs_in_filename_order(
         "de": {"greeting": "Hallo"},
         "en": {"greeting": "Hello"},
     }
+
+
+@pytest.mark.parametrize("language", ["de", "en"])
+def test_registration_runtime_catalog_uses_independent_namespace(language: str) -> None:
+    modules = Path(__file__).resolve().parents[1] / "src" / "hmwz" / "modules"
+    catalogs = load_translations(modules / "registration" / "i18n" / "runtime")
+    catalog = catalogs[language]
+    hs_catalog = load_translation(modules / "hs" / "i18n" / "runtime" / f"{language}.json")
+
+    assert catalog.keys() == catalogs["de"].keys() == catalogs["en"].keys()
+    assert all(key.startswith("registration.") for key in catalog)
+    assert not catalog.keys() & hs_catalog.keys()
+    assert {
+        "registration.csv.error",
+        "registration.reset.success",
+        "registration.snapshot.destination",
+        "registration.setup.config.back",
+        "registration.setup.config.edit_export_channel",
+        "registration.setup.remove.not_configured",
+        "registration.setup.remove.partial_failure",
+        "registration.setup.remove.success",
+    } <= catalog.keys()

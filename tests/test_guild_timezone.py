@@ -1,6 +1,8 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import discord
 import pytest
@@ -48,7 +50,13 @@ async def test_timezone_autocomplete_suggests_matching_iana_zones() -> None:
     choices = await timezone_autocomplete(interaction, "europe/ber")
 
     assert [choice.value for choice in choices] == ["Europe/Berlin"]
-    assert choices[0].name == "Europe/Berlin"
+    offset = datetime.now(UTC).astimezone(ZoneInfo("Europe/Berlin")).strftime("%z")
+    assert choices[0].name == f"Europe/Berlin (UTC{offset[:3]}:{offset[3:]})"
+
+    offset_choices = await timezone_autocomplete(
+        interaction, f"UTC{offset[:3]}:{offset[3:]}"
+    )
+    assert any(choice.value == "Europe/Berlin" for choice in offset_choices)
 
 
 @pytest.mark.asyncio
@@ -59,6 +67,40 @@ async def test_timezone_autocomplete_limits_choices_to_discord_maximum() -> None
 
     assert len(choices) == 25
     assert choices[0].value == DEFAULT_GUILD_TIMEZONE
+
+
+@pytest.mark.asyncio
+async def test_timezone_autocomplete_omits_iana_aliases() -> None:
+    interaction = cast(discord.Interaction, SimpleNamespace())
+
+    us_aliases = await timezone_autocomplete(interaction, "US/")
+    utc_choices = await timezone_autocomplete(interaction, "UTC")
+
+    assert us_aliases == []
+    assert len(utc_choices) <= 25
+    assert all(" (UTC" in choice.name for choice in utc_choices)
+    assert any(choice.value == "UTC" for choice in utc_choices)
+    assert len({choice.value for choice in utc_choices}) == len(utc_choices)
+
+
+@pytest.mark.asyncio
+async def test_timezone_autocomplete_has_one_common_zone_per_hour_offset() -> None:
+    interaction = cast(discord.Interaction, SimpleNamespace())
+    negative = await timezone_autocomplete(interaction, "UTC-")
+    positive = await timezone_autocomplete(interaction, "UTC+")
+    choices = negative + positive
+    actual_offsets: list[int] = []
+    for choice in choices:
+        offset = datetime.now(UTC).astimezone(ZoneInfo(choice.value)).utcoffset()
+        assert offset is not None
+        offset_minutes = int(offset.total_seconds() // 60)
+        if offset_minutes % 60 == 0:
+            actual_offsets.append(offset_minutes // 60)
+
+    assert len(negative) <= 25
+    assert len(positive) <= 25
+    assert set(range(-12, 15)) == set(actual_offsets)
+    assert len(actual_offsets) == 27
 
 
 @pytest.mark.asyncio
