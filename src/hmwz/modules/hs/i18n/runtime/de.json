@@ -56,6 +56,7 @@
   "qs.event.phase": "Phase {index}",
   "qs.event.phase_bases": "In dieser Phase gemeldete Basen",
   "qs.event.phase_progress": "Basen in dieser Phase zerstört: **{destroyed} / {total}**",
+  "qs.event.phase_summary": "Start {start}\nEnde {end}\n\n- Basis zerstört? „Basis als zerstört melden“ klicken und bestätigen.\n- Pro Spieler eine Meldung pro Eruption.",
   "qs.event.ping": "{role} · Die Qs-Phasenübersicht ist bereit. Bitte für die passenden Phasen anmelden.",
   "qs.event.ping_failed": "Die Qs-Rolle konnte nicht benachrichtigt werden. Konfiguration und Bot-Berechtigung zum Erwähnen dieser Rolle prüfen.",
   "qs.event.ping_sent": "Die Qs-Rolle wurde benachrichtigt.",

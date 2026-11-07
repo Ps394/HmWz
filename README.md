@@ -250,6 +250,9 @@ erhalten; laufende Updates werden beim regulären Schließen fertiggestellt.
 Bestehende Threadtitel werden bei Aktualisierungen angepasst.
 Jede Phasenübersicht zählt die dort gemeldeten Basen
 gegen ein Ziel von **8**; dieses Ziel darf überschritten werden.
+Start und Ende stehen mit Datum und Uhrzeit in getrennten Zeilen.
+Eine kurze Liste erklärt das Melden per Button und Bestätigung sowie die
+Begrenzung auf eine Meldung pro Spieler und Eruption.
 Im Phasenthread bestätigen sie, dass sie eine Basis
 zerstört haben, ohne Basennummer oder Kommentar. Die Übersicht zeigt ihren
 Anzeigenamen. Pro Spieler ist **eine Meldung insgesamt** für den

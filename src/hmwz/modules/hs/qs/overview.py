@@ -96,7 +96,13 @@ def phase_embed(
     embed = create_embed(
         title=phase_label(guild, phase),
         description=(
-            f"<t:{phase.starts_at}:F> – <t:{phase.ends_at}:F>\n"
+            t(
+                guild,
+                "qs.event.phase_summary",
+                start=f"<t:{phase.starts_at}:F>",
+                end=f"<t:{phase.ends_at}:F>",
+            )
+            + "\n\n"
             + t(
                 guild,
                 "qs.event.phase_progress",

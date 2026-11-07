@@ -877,6 +877,51 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("locale", "end_label", "instructions", "progress", "bases_label", "empty"),
+    [
+        (
+            discord.Locale.german,
+            "Ende",
+            "- Basis zerstört? „Basis als zerstört melden“ klicken und bestätigen.\n"
+            "- Pro Spieler eine Meldung pro Eruption.",
+            "Basen in dieser Phase zerstört",
+            "In dieser Phase gemeldete Basen",
+            "Keine",
+        ),
+        (
+            discord.Locale.american_english,
+            "End",
+            "- Destroyed a base? Click “Report a destroyed base” and confirm.\n"
+            "- One report per player per eruption.",
+            "Bases destroyed in this phase",
+            "Bases reported in this phase",
+            "None",
+        ),
+    ],
+)
+def test_phase_overview_shows_separate_times_and_brief_report_instructions(
+    locale: discord.Locale,
+    end_label: str,
+    instructions: str,
+    progress: str,
+    bases_label: str,
+    empty: str,
+) -> None:
+    guild = Mock(spec=discord.Guild, preferred_locale=locale)
+    phase = Phase(1, 1793491200, None, None, duration_hours=3)
+    embed = phase_embed(guild, phase, ())
+    assert embed.title == "Phase 1"
+    assert embed.description == (
+        f"Start <t:{phase.starts_at}:F>\n{end_label} <t:{phase.ends_at}:F>"
+        f"\n\n{instructions}\n\n{progress}: **0 / 8**"
+    )
+    assert embed.fields[0].name == bases_label
+    assert embed.fields[0].value == empty
+    assert not embed.fields[0].inline
+    assert len(embed) <= 6000
+
+
 def test_numbered_lists_preserve_phase_filtering_and_embed_limits() -> None:
     guild = Mock(spec=discord.Guild, preferred_locale=discord.Locale.german)
     guild.get_member.return_value = None

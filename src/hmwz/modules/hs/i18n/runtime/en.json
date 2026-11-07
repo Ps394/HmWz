@@ -56,6 +56,7 @@
   "qs.event.phase": "Phase {index}",
   "qs.event.phase_bases": "Bases reported in this phase",
   "qs.event.phase_progress": "Bases destroyed in this phase: **{destroyed} / {total}**",
+  "qs.event.phase_summary": "Start {start}\nEnd {end}\n\n- Destroyed a base? Click “Report a destroyed base” and confirm.\n- One report per player per eruption.",
   "qs.event.ping": "{role} · The Qs phase overview is ready. Please sign up for the phases you can attend.",
   "qs.event.ping_failed": "Could not notify the Qs role. Check the configuration and the bot's permission to mention this role.",
   "qs.event.ping_sent": "The Qs role has been notified.",
