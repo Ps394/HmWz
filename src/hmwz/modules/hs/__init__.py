@@ -6,6 +6,6 @@ from hmwz.i18n import register_translations
 
 register_translations(Path(__file__).parent / "i18n")
 
-from . import account, qs, wz  # noqa: E402
+from . import account, wz 
 
-__all__ = ["account", "qs", "wz"]
+__all__ = ["account", "wz"]
