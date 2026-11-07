@@ -178,6 +178,7 @@ async def test_donation_types_channels_and_entries_are_persisted(
         "Startzeit",
         "Dauer",
         "Endzeit",
+        "Beschreibung",
         "Spendenstatus",
     ]
     assert overview.fields[0].value == discord.utils.format_dt(rush_start, "F")
@@ -191,7 +192,8 @@ async def test_donation_types_channels_and_entries_are_persisted(
     assert overview.fields[2].value == discord.utils.format_dt(
         expected_adjusted_end, "F"
     )
-    assert overview.fields[3].value == "aktiviert"
+    assert "Spenden verkürzen die Zeit" in overview.fields[3].value
+    assert overview.fields[4].value == "aktiviert"
     ranking_embed = DonationOverview.create_ranking_embed(guild, crystal_type, ranking)
     assert "890 Kristalle" in ranking_embed.description
     assert "32h eingespart" in ranking_embed.description

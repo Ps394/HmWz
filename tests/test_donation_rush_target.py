@@ -225,6 +225,10 @@ async def test_persisted_target_moves_end_exactly_and_caps_stale_and_parallel_do
         assert next(
             f.value for f in embed.fields if f.name == "Endzeit"
         ) == discord.utils.format_dt(rush_end_at(start, total), "F")
+        description = next(f for f in embed.fields if f.name == "Beschreibung")
+        assert "Spenden verkürzen die Zeit bis zur nächsten Eruption." in (
+            description.value
+        )
     assert not await donate(8)
     results = await asyncio.gather(donate(1), donate(1))
     assert sorted(results) == [False, True]

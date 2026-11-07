@@ -44,6 +44,11 @@ def add_time_fields(
     )
     if target_at is not None:
         add_target_field(embed, guild, target_at, end_utc)
+    embed.add_field(
+        name=t(guild, "donation.type.rush.overview.description_title"),
+        value=t(guild, "donation.type.rush.overview.description"),
+        inline=False,
+    )
 
 
 def add_target_field(
