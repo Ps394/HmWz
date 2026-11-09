@@ -175,9 +175,9 @@ async def test_donation_types_channels_and_entries_are_persisted(
     assert overview.title == channel.title
     assert overview.description == channel.description
     assert [field.name for field in overview.fields] == [
-        "Startzeit",
-        "Dauer",
-        "Endzeit",
+        "🕒 Spendenbeginn",
+        "Spendendauer",
+        "🏁 voraussichtliche Eruption (berechnet)",
         "Beschreibung",
         "Spendenstatus",
     ]

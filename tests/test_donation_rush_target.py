@@ -12,7 +12,7 @@ import pytest
 
 from hmwz.modules.donation.overview import DonationOverview
 from hmwz.modules.donation.repositories import DonationRepository
-from hmwz.modules.donation.models import DonationType
+from hmwz.modules.donation.models import DonationChannel, DonationType
 from hmwz.modules.donation.snapshot import DonationSnapshotBuilder
 from hmwz.modules.donation.type.rush.pricing import (
     available_rush_durations,
@@ -43,6 +43,26 @@ def test_target_filters_every_price_and_duration(
     kwargs = dict(started_at=start, now=start, accelerated_hours=50, target_at=target)
     assert available_rush_durations(**kwargs) == expected
     assert tuple(rush_donation_prices(**kwargs)) == expected
+
+
+def test_rush_overview_shows_description_without_scheduled_target() -> None:
+    guild = cast(discord.Guild, SimpleNamespace(locale="de"))
+    channel = cast(
+        DonationChannel,
+        SimpleNamespace(title="Rush", description="", target_at=None),
+    )
+
+    embed = DonationOverview.create_embed(
+        guild,
+        channel,
+        rush_start_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    description = next(field for field in embed.fields if field.name == "Beschreibung")
+    assert "Spenden verkürzen die Zeit bis zur nächsten Eruption." in description.value
+    assert "die 24h-Regel bleibt bestehen" in description.value
+    assert "erst nach deiner Bestätigung wirksam" in description.value
+    assert all("Eruptionstermin" not in field.name for field in embed.fields)
 
 
 def test_target_preserves_start_and_24_hour_cutoff() -> None:
@@ -223,7 +243,9 @@ async def test_persisted_target_moves_end_exactly_and_caps_stale_and_parallel_do
             guild, restored, rush_start_at=start, accelerated_hours=total
         )
         assert next(
-            f.value for f in embed.fields if f.name == "Endzeit"
+            f.value
+            for f in embed.fields
+            if f.name == "🏁 voraussichtliche Eruption (berechnet)"
         ) == discord.utils.format_dt(rush_end_at(start, total), "F")
         description = next(f for f in embed.fields if f.name == "Beschreibung")
         assert "Spenden verkürzen die Zeit bis zur nächsten Eruption." in (
