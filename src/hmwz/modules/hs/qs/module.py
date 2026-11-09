@@ -262,12 +262,22 @@ class QsModule(Module):
                     )
                     return
                 reporter = member
-            if not any(
-                phase.index == phase_index
-                for phase in await self.qs.phases(self.guild.id, channel_id)
-            ):
+            phase = next(
+                (
+                    phase
+                    for phase in await self.qs.phases(self.guild.id, channel_id)
+                    if phase.index == phase_index
+                ),
+                None,
+            )
+            if phase is None:
                 await send_interaction_message(
                     interaction, t(interaction, "qs.event.not_configured")
+                )
+                return
+            if phase.starts_at > int(time.time()):
+                await send_interaction_message(
+                    interaction, t(interaction, "qs.event.phase_not_started")
                 )
                 return
             try:

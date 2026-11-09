@@ -138,6 +138,8 @@ du:
 in mehreren Kanälen eingerichtet werden. Eine Rolle kann nur einer Registrierung
 zugeordnet sein.
 
+![Einrichtungspanel für eine Registrierung](assets/registration_setup.png)
+
 ### `/registration remove`
 
 Öffnet eine Bestätigung, um die Einrichtung des aktuellen Kanals sowie die
@@ -154,6 +156,8 @@ Anzeigename verwendet werden.
 | --- | --- | --- |
 | `account` | Text | Einer deiner verknüpften Accounts oder der Eintrag für deinen Anzeigenamen. |
 | `role` | Text | Eine in diesem Kanal konfigurierte Registrierungsrolle. |
+
+![Registrierungsübersicht mit Anmeldebuttons](assets/registration.png)
 
 ### `/registration deregister`
 
@@ -199,16 +203,22 @@ Registrierungseinstellungen. Alle Befehle erfordern die Moderatorrolle.
 Öffnet ein privates Panel, in dem WZ-Rollen und zusätzliche
 Bereinigungskanäle hinzugefügt oder entfernt werden. Keine Parameter.
 
+![WZ-Servereinstellungen](assets/wz_setup.png)
+
 ### `/wz reset-channels`
 
 Zeigt die konfigurierten Bereinigungskanäle zur Bestätigung an. Im Dialog können
 Ausnahmen gewählt werden. Angepinnte Nachrichten werden standardmäßig
 geschont. Erfordert **Manage Messages**. Keine Parameter.
 
+![Bestätigungsdialog zum Bereinigen der WZ-Kanäle](assets/wz_reset_channels.png)
+
 ### `/wz reset-roles`
 
 Zeigt die konfigurierten WZ-Rollen zur Bestätigung an. Im Dialog können Rollen
 als Ausnahmen festgelegt werden. Erfordert **Manage Roles**. Keine Parameter.
+
+![Bestätigungsdialog zum Zurücksetzen der WZ-Rollen](assets/wz_reset_roles.png)
 
 ## Qs-Planung
 
@@ -232,13 +242,22 @@ Datums- und Uhrzeiteingaben verwenden die Server-Zeitzone aus
 `/set-timezone`. Das Setup bearbeitet den bestehenden Termin. Es löscht keine
 Anmeldungen oder Basenmeldungen.
 
+![Qs-Setup mit Eruptionszeit, Phasen und Ping-Einstellungen](assets/qs_setup.png)
+
+![Auswahl der Qs-Rolle](assets/qs_setup_role.png)
+
+![Eingabe des Eruptionsstarts](assets/qs_setup_insert_start.png)
+
+![Auswahl der Phasenanzahl und Phasendauer](assets/qs_setup_insert_phase.png)
+
 ### `/qs remove`
 
 Zeigt nach Bestätigung die Entfernung des Qs-Tools für den aktuellen Kanal an.
 Entfernt Qs-Übersichten, Phasenthreads und Qs-Daten, aber nicht den Hauptkanal,
-die ausgewählte Rolle oder fremde Nachrichten. Eine Moderatorrolle ist erforderlich.
-außerdem benötigen Moderator und Bot **Manage Messages**, der Bot zusätzlich
-**Manage Threads**. Keine Parameter.
+die ausgewählte Rolle oder fremde Nachrichten. Eine Moderatorrolle ist
+erforderlich. Außerdem benötigen sowohl Moderator als auch Bot
+**Manage Messages**. Der Bot braucht zusätzlich **Manage Threads**. Keine
+Parameter.
 
 ### `/qs reset`
 
@@ -278,6 +297,10 @@ Mitglieder melden sich für Phasen über die Übersicht an oder ab und melden
 zerstörte Basen im jeweiligen Phasenthread. Eine Basenmeldung erfordert keine
 Phasenanmeldung. Pro Spieler ist eine Meldung je Eruption möglich.
 
+![Qs-Übersicht mit Phasen und Anmeldung](assets/qs_main_overview.png)
+
+![Phasenthread mit Basenmeldungen](assets/qs_phase_overview.png)
+
 ## Spenden
 
 Alle `/donation`-Befehle arbeiten mit der Einrichtung im aktuellen Kanal und
@@ -294,6 +317,8 @@ werden.
 Rush-Spenden bieten **1 h**, **8 h** und **24 h**. Ihre Preise berücksichtigen
 die bereits im Zyklus gespendete Beschleunigung. Ein optionales Ziel begrenzt
 die angebotenen Optionen entsprechend Ziel und verbleibender Zeit.
+
+![Spenden-Setup mit Typ, Zeitzone, Anzeigeoptionen und Export](assets/donation_setup.png)
 
 ### `/donation remove`
 

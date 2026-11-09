@@ -679,6 +679,27 @@ async def test_member_without_role_cannot_join_or_report(
 
 
 @pytest.mark.asyncio
+async def test_base_report_requires_phase_to_have_started(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    context = interaction(environment)
+    with patch(
+        "hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at - 1
+    ):
+        await module.report_base(context, 20, phase.index)
+    assert "noch nicht begonnen" in context.followup.send.await_args.args[0]
+    assert await module.qs.reports(10, 20) == ()
+
+    with patch(
+        "hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at
+    ):
+        await module.report_base(interaction(environment), 20, phase.index)
+    assert len(await module.qs.reports(10, 20)) == 1
+
+
+@pytest.mark.asyncio
 async def test_reporting_once_across_phases_updates_every_counter(
     environment: SimpleNamespace,
 ) -> None:
