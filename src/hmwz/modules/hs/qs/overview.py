@@ -31,7 +31,9 @@ def phase_title(context: discord.Guild, phase: Phase, timezone: str) -> str:
 
 
 def report_name(guild: discord.Guild, report: BaseReport) -> str:
-    """Show the player's current display name or the stored submission name."""
+    """Show the linked game account or the reporting member's display name."""
+    if report.game_account is not None:
+        return escape_discord_text(report.game_account[:32])
     member = guild.get_member(report.member_id)
     name = member.display_name if member is not None else report.display_name
     if not name:
@@ -43,7 +45,8 @@ def member_list(context: discord.Guild, members: tuple[int, ...]) -> str:
     """Show bounded mentions and an explicit count for additional participants."""
     visible = members[:32]
     result = "\n".join(
-        f"{index}. <@{member}>" for index, member in enumerate(visible, 1)
+        f"**{index}. <@{member}>**" if index <= PHASE_GOAL else f"{index}. <@{member}>"
+        for index, member in enumerate(visible, 1)
     )
     if len(members) > len(visible):
         result += "\n" + t(context, "qs.event.more", count=len(members) - len(visible))

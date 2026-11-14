@@ -14,10 +14,12 @@ import discord
 
 from hmwz import events, sqlite_db
 from hmwz.i18n import t
+from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.modules.module import Module
 from hmwz.modules.registry import register
 from hmwz.ui.messages import (
     defer_interaction,
+    delete_message,
     edit_message,
     send_followup,
     send_interaction_message,
@@ -25,7 +27,7 @@ from hmwz.ui.messages import (
 )
 from hmwz.utils.interactions import log_guild
 from hmwz.utils.loaders import fetch_message, fetch_thread
-from hmwz.ui.threads import create_thread, edit_thread, delete_thread
+from hmwz.ui.threads import create_thread, edit_thread
 from hmwz.ui.components.timestamp_input import resolve_timezone
 
 from .models import Configuration, Phase, PingSettings, phase_starts, validate_schedule
@@ -39,7 +41,11 @@ from .overview import (
     participants_embed,
 )
 from .repositories import QsRepository
-from .repositories.bases import BaseLimitReached, DuplicateBaseReport
+from .repositories.bases import (
+    BaseLimitReached,
+    DuplicateBaseReport,
+    InvalidGameAccount,
+)
 from .views import OverviewView, PhaseView
 
 if TYPE_CHECKING:
@@ -59,6 +65,7 @@ class QsModule(Module):
         if not isinstance(self.database, sqlite_db.Database):
             raise RuntimeError("Qs module requires a database.")
         self.qs = QsRepository(self.database)
+        self.game_accounts = MemberGameAccountRepository(self.database)
         self._locks: dict[int, asyncio.Lock] = {}
         self._views: dict[int, discord.ui.View] = {}
         self._pending_updates: dict[
@@ -69,6 +76,17 @@ class QsModule(Module):
 
     def _lock(self, channel_id: int) -> asyncio.Lock:
         return self._locks.setdefault(channel_id, asyncio.Lock())
+
+    async def game_accounts_for(self, member_id: int) -> tuple[str, ...]:
+        """Return linked accounts, treating an uninitialized account table as empty."""
+        try:
+            return await self.game_accounts.accounts_for_member(
+                guild_id=self.guild.id, member_id=member_id
+            )
+        except aiosqlite.OperationalError as error:
+            if "no such table: gameaccounts" in str(error).casefold():
+                return ()
+            raise
 
     def _queue_update(
         self, channel_id: int, phase_index: int, *, bases: bool = False
@@ -111,13 +129,20 @@ class QsModule(Module):
         date: str,
         hours: tuple[int, ...],
         *,
+        minutes: tuple[int, ...] | None = None,
         eruption_start: int | None = None,
         durations: tuple[int, ...] | None = None,
         ping_settings: PingSettings | None = None,
     ) -> bool:
         """Configure one event, preserving existing signups and base reports."""
         timezone = await self.client.get_guild_timezone(self.guild.id)
-        starts = phase_starts(date, hours, timezone, eruption_start=eruption_start)
+        starts = phase_starts(
+            date,
+            hours,
+            timezone,
+            minutes=minutes,
+            eruption_start=eruption_start,
+        )
         durations = durations if durations is not None else (2,) * len(starts)
         eruption_start = eruption_start if eruption_start is not None else min(starts)
         date = (
@@ -146,28 +171,6 @@ class QsModule(Module):
                         log_guild(self.guild),
                     )
                     return False
-                phases = await self.qs.phases(self.guild.id, channel_id)
-                for phase in phases:
-                    if phase.index <= len(starts):
-                        continue
-                    if await self.qs.members(
-                        self.guild.id, channel_id, phase.index
-                    ) or any(
-                        report.phase_index == phase.index
-                        for report in await self.qs.reports(self.guild.id, channel_id)
-                    ):
-                        _logger.warning(
-                            "%s Reset required before removing a populated phase.",
-                            log_guild(self.guild),
-                        )
-                        return False
-                    thread = await existing_thread(self, channel_id, phase)
-                    if thread is not None:
-                        await delete_thread(thread, reason="Qs phase configuration")
-                    if phase.message_id is not None:
-                        view = self._views.pop(phase.message_id, None)
-                        if view is not None:
-                            view.stop()
                 await self.qs.configure(
                     self.guild.id,
                     channel_id,
@@ -244,9 +247,10 @@ class QsModule(Module):
         channel_id: int,
         phase_index: int,
         *,
+        game_account: str | None,
         member: discord.Member | None = None,
     ) -> None:
-        """Record one destroyed base per role holder across all five phases."""
+        """Record one destroyed base per linked game account across all phases."""
         await defer_interaction(interaction, thinking=True)
         async with self._lock(channel_id):
             if member is None:
@@ -286,15 +290,22 @@ class QsModule(Module):
                     channel_id,
                     phase_index,
                     reporter.id,
+                    game_account,
                     reporter.display_name,
                     int(time.time()),
                 )
             except BaseLimitReached:
                 await send_followup(interaction, t(interaction, "qs.event.base_limit"))
                 return
+            except InvalidGameAccount:
+                await send_followup(
+                    interaction, t(interaction, "qs.event.report_account_invalid")
+                )
+                return
             except DuplicateBaseReport:
                 _logger.info(
-                    "%s Duplicate Qs base report rejected.", log_guild(self.guild)
+                    "%s Duplicate Qs game-account report rejected.",
+                    log_guild(self.guild),
                 )
                 await send_followup(
                     interaction, t(interaction, "qs.event.duplicate_report")
@@ -393,8 +404,9 @@ class QsModule(Module):
         channel_id: int,
         phase_index: int,
         member_id: int,
+        game_account: str | None,
     ) -> None:
-        """Retract a report, refresh counters and preserve once-per-phase ping markers."""
+        """Retract one account report and preserve once-per-phase ping markers."""
         await defer_interaction(interaction, thinking=True)
         async with self._lock(channel_id):
             if (
@@ -404,7 +416,11 @@ class QsModule(Module):
                 return
             try:
                 removed = await self.qs.withdraw_report(
-                    self.guild.id, channel_id, phase_index, member_id
+                    self.guild.id,
+                    channel_id,
+                    phase_index,
+                    member_id,
+                    game_account,
                 )
             except aiosqlite.Error:
                 _logger.exception(
@@ -428,7 +444,7 @@ class QsModule(Module):
         )
 
     async def ping_participants(self, channel_id: int, phase: Phase) -> bool:
-        """Mention enrolled players at phase start, or consume a disabled ping."""
+        """Notify the Qs role of phase signups, or consume a disabled ping."""
         configuration = await self.qs.get(self.guild.id, channel_id)
         if configuration is None or configuration.state != "active":
             _logger.warning(
@@ -440,6 +456,12 @@ class QsModule(Module):
         members = await self.qs.members(self.guild.id, channel_id, phase.index)
         if not members:
             return True
+        role = self.guild.get_role(configuration.role_id)
+        if role is None:
+            _logger.warning(
+                "%s Qs participant ping role no longer exists.", log_guild(self.guild)
+            )
+            return False
         thread = await existing_thread(self, channel_id, phase)
         if thread is None:
             _logger.warning(
@@ -447,22 +469,44 @@ class QsModule(Module):
                 log_guild(self.guild),
             )
             return False
+        if not role.mentionable and (
+            self.guild.me is None
+            or not thread.permissions_for(self.guild.me).mention_everyone
+        ):
+            _logger.warning(
+                "%s Bot cannot mention the configured Qs role in phase thread %s.",
+                log_guild(self.guild),
+                thread.id,
+            )
+            return False
         if thread.archived:
             thread = await edit_thread(thread, archived=False)
-        for offset in range(0, len(members), 100):
-            batch = members[offset : offset + 100]
+        contents = [
+            t(
+                self.guild,
+                "qs.admin.ping_phase_start",
+                phase=phase.index,
+                role=role.mention,
+                members="",
+            )
+        ]
+        for index, member in enumerate(members, 1):
+            entry = f"{index}. <@{member}>"
+            if index % 8 == 0 and index < len(members):
+                entry += "\n============="
+            candidate = f"{contents[-1]}\n{entry}"
+            if len(candidate) > 2000:
+                contents.append(entry)
+            else:
+                contents[-1] = candidate
+        for index, content in enumerate(contents):
             if (
                 await send_message(
                     thread,
-                    content=t(
-                        self.guild,
-                        "qs.admin.ping_phase_start",
-                        phase=phase.index,
-                        members=" ".join(f"<@{member}>" for member in batch),
-                    ),
+                    content=content,
                     allowed_mentions=discord.AllowedMentions(
-                        users=[discord.Object(id=member) for member in batch],
-                        roles=False,
+                        roles=[role] if index == 0 else False,
+                        users=False,
                         everyone=False,
                     ),
                 )
@@ -663,20 +707,57 @@ class QsModule(Module):
             ):
                 return False
             if not full and not base_phases:
-                return True
+                return await self._delete_thread_creation_messages(
+                    channel, phases, timezone
+                )
             listing = await self._message(
                 channel,
                 configuration.bases_message_id,
                 embeds=bases_embeds(self.guild, reports),
             )
-            return await self.qs.save_messages(
+            saved = await self.qs.save_messages(
                 self.guild.id, channel_id, message.id, listing.id
+            )
+            return saved and await self._delete_thread_creation_messages(
+                channel, phases, timezone
             )
         except (discord.HTTPException, aiosqlite.Error, RuntimeError):
             _logger.exception(
                 "%s Failed to restore Qs channel %s.", log_guild(self.guild), channel_id
             )
             return False
+
+    async def _delete_thread_creation_messages(
+        self,
+        channel: discord.TextChannel,
+        phases: tuple[Phase, ...],
+        timezone: str,
+    ) -> bool:
+        """Delete recent bot-generated notices for the configured Qs threads."""
+        bot_user = self.client.user
+        if bot_user is None:
+            _logger.warning(
+                "%s Cannot identify Qs thread creation notices without the bot user.",
+                log_guild(self.guild),
+            )
+            return False
+        titles = {phase_title(self.guild, phase, timezone) for phase in phases}
+        try:
+            async for message in channel.history(limit=100):
+                if (
+                    message.type == discord.MessageType.thread_created
+                    and message.author.id == bot_user.id
+                    and message.content in titles
+                    and not await delete_message(message)
+                ):
+                    return False
+        except (discord.HTTPException, discord.RateLimited):
+            _logger.exception(
+                "%s Failed to inspect Qs thread creation notices.",
+                log_guild(self.guild),
+            )
+            return False
+        return True
 
     async def ensure(self) -> bool:
         """Restore all messages and register persistent buttons after restart."""
@@ -717,12 +798,19 @@ class QsModule(Module):
         date: str,
         hours: tuple[int, ...],
         *,
+        minutes: tuple[int, ...] | None = None,
         eruption_start: int,
         durations: tuple[int, ...],
     ) -> bool:
         """Validate the replacement schedule before any destructive cleanup."""
         timezone = await self.client.get_guild_timezone(self.guild.id)
-        starts = phase_starts(date, hours, timezone, eruption_start=eruption_start)
+        starts = phase_starts(
+            date,
+            hours,
+            timezone,
+            minutes=minutes,
+            eruption_start=eruption_start,
+        )
         date = (
             datetime.fromtimestamp(eruption_start, resolve_timezone(timezone))
             .date()

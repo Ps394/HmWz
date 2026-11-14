@@ -14,7 +14,9 @@ from hmwz.modules.hs.qs.repositories import QsRepository
 from hmwz.modules.hs.qs.repositories.bases import (
     BaseLimitReached,
     DuplicateBaseReport,
+    InvalidGameAccount,
 )
+from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.sqlite_db import Database
 from hmwz.ui.components.timestamp_input import parse_local_datetime, resolve_timezone
 
@@ -24,6 +26,12 @@ async def repository(tmp_path: Path) -> QsRepository:
     database = Database(folder=str(tmp_path), filename="qs.db")
     assert await database.execute("CREATE TABLE Servers (Guild INTEGER PRIMARY KEY)")
     assert await database.execute("INSERT INTO Servers VALUES (10), (11)")
+    accounts = MemberGameAccountRepository(database)
+    assert await database.execute(accounts.table)
+    assert await database.execute_many(
+        "INSERT INTO GameAccounts (Guild, Member, Account) VALUES (?, ?, ?)",
+        tuple((10, member_id, f"Account-{member_id}") for member_id in range(2000)),
+    )
     repository = QsRepository(database)
     assert await repository.ensure_schema()
     assert await repository.ensure_schema()
@@ -46,6 +54,7 @@ async def test_independent_schema_and_exact_five_phases(
         "HsQsPhases",
         "HsQsMembers",
         "HsQsBases",
+        "GameAccounts",
     }
     phases = await repository.phases(10, 20)
     assert [phase.index for phase in phases] == [1, 2, 3, 4, 5]
@@ -74,12 +83,12 @@ async def test_ping_settings_schema_upgrade_and_preservation(
     assert (await restored.all(10))[0].ping_settings == settings
     for reset in (False, True):
         await restored.configure(
-            10, 20, 30, "2026-11-02", "UTC", (86400,) * 4, reset=reset
+            10, 20, 30, "2026-11-02", "UTC", (86400,) * 5, reset=reset
         )
         current = await restored.get(10, 20)
         assert current is not None
         assert current.ping_settings == settings
-    await restored.configure(10, 21, 30, "2026-11-02", "UTC", (86400,) * 4)
+    await restored.configure(10, 21, 30, "2026-11-02", "UTC", (86400,) * 5)
     other = await restored.get(10, 21)
     assert other is not None
     assert other.ping_settings == PingSettings()
@@ -112,6 +121,19 @@ def test_all_start_hours_and_midnight(hour: int) -> None:
     assert Phase(1, starts[0], None, None).ends_at == starts[0] + 7200
 
 
+def test_phase_starts_preserve_minutes() -> None:
+    starts = phase_starts(
+        "2026-11-01",
+        (0, 2, 4, 6, 8),
+        "UTC",
+        minutes=(15, 25, 35, 45, 55),
+    )
+    assert starts[0] == int(parse_local_datetime("2026-11-01 00:15", "UTC").timestamp())
+    assert starts[-1] == int(
+        parse_local_datetime("2026-11-01 08:55", "UTC").timestamp()
+    )
+
+
 @pytest.mark.parametrize(
     ("date", "hours", "timezone"),
     [
@@ -131,6 +153,12 @@ def test_invalid_schedule_rejected(
         phase_starts(date, hours, timezone)
 
 
+@pytest.mark.parametrize("minutes", [(0, 0, 0, 0, 60), (0, 0, 0, 0)])
+def test_phase_starts_reject_invalid_minutes(minutes: tuple[int, ...]) -> None:
+    with pytest.raises(ValueError):
+        phase_starts("2026-11-01", (0, 2, 4, 6, 8), "UTC", minutes=minutes)
+
+
 @pytest.mark.asyncio
 async def test_multi_phase_signups_and_channel_isolation(
     repository: QsRepository,
@@ -146,23 +174,67 @@ async def test_multi_phase_signups_and_channel_isolation(
 
 
 @pytest.mark.asyncio
-async def test_report_once_per_member_and_base_across_phases(
+async def test_report_once_per_alias_and_base_across_phases(
     repository: QsRepository,
 ) -> None:
-    await repository.report(10, 20, 1, 100, "Player", 123)
+    assert await repository.database.execute(
+        "INSERT INTO GameAccounts (Guild, Member, Account) VALUES (10, 100, 'Alt-100')"
+    )
+    await repository.report(10, 20, 1, 100, "Account-100", "Player", 123)
     with pytest.raises(DuplicateBaseReport):
-        await repository.report(10, 20, 5, 100, "Player", 124)
-    await repository.report(10, 20, 2, 101, "Player", 125)
+        await repository.report(10, 20, 5, 100, "account-100", "Player", 124)
+    await repository.report(10, 20, 2, 100, "Alt-100", "Player", 125)
     assert len(await repository.reports(10, 20)) == 2
 
 
 @pytest.mark.asyncio
-async def test_concurrent_member_reports_cannot_double_count(
+async def test_report_rejects_an_account_linked_to_another_member(
+    repository: QsRepository,
+) -> None:
+    with pytest.raises(InvalidGameAccount):
+        await repository.report(10, 20, 1, 100, "Account-101", "Player", 123)
+    assert await repository.reports(10, 20) == ()
+
+
+@pytest.mark.asyncio
+async def test_display_name_report_is_independent_of_linked_accounts(
+    repository: QsRepository,
+) -> None:
+    await repository.report(10, 20, 1, 100, None, "Player", 123)
+    await repository.report(10, 20, 2, 100, "Account-100", "Player", 124)
+    with pytest.raises(DuplicateBaseReport):
+        await repository.report(10, 20, 3, 100, None, "New Name", 125)
+    await repository.report(10, 20, 1, 9999, None, "No Alias", 124)
+    reports = await repository.reports(10, 20)
+    assert {(report.report_key, report.game_account) for report in reports} == {
+        ("member:100", None),
+        ("account:Account-100", "Account-100"),
+        ("member:9999", None),
+    }
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_removes_only_the_selected_alias_report(
+    repository: QsRepository,
+) -> None:
+    assert await repository.database.execute(
+        "INSERT INTO GameAccounts (Guild, Member, Account) VALUES (10, 100, 'Alt-100')"
+    )
+    await repository.report(10, 20, 1, 100, "Account-100", "Player", 123)
+    await repository.report(10, 20, 2, 100, "Alt-100", "Player", 124)
+    assert await repository.withdraw_report(10, 20, 1, 100, "Account-100")
+    remaining = await repository.reports(10, 20)
+    assert len(remaining) == 1
+    assert remaining[0].game_account == "Alt-100"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_alias_reports_cannot_double_count(
     repository: QsRepository,
 ) -> None:
     results = await asyncio.gather(
-        repository.report(10, 20, 1, 100, "Player", 123),
-        repository.report(10, 20, 2, 100, "Player", 124),
+        repository.report(10, 20, 1, 100, "Account-100", "Player", 123),
+        repository.report(10, 20, 2, 100, "Account-100", "Player", 124),
         return_exceptions=True,
     )
     assert sum(isinstance(result, DuplicateBaseReport) for result in results) == 1
@@ -172,10 +244,19 @@ async def test_concurrent_member_reports_cannot_double_count(
 @pytest.mark.asyncio
 async def test_total_bases_is_exactly_40(repository: QsRepository) -> None:
     for number in range(1, 41):
-        await repository.report(10, 20, number % 5 + 1, number + 100, "Player", number)
+        member_id = number + 100
+        await repository.report(
+            10,
+            20,
+            number % 5 + 1,
+            member_id,
+            f"Account-{member_id}",
+            "Player",
+            number,
+        )
     assert len(await repository.reports(10, 20)) == 40
     with pytest.raises(BaseLimitReached):
-        await repository.report(10, 20, 1, 999, "Player", 0)
+        await repository.report(10, 20, 1, 999, "Account-999", "Player", 0)
 
 
 @pytest.mark.asyncio
@@ -183,7 +264,7 @@ async def test_configuration_update_retains_event_data(
     repository: QsRepository,
 ) -> None:
     assert await repository.toggle(10, 20, 1, 100)
-    await repository.report(10, 20, 1, 100, "Player", 123)
+    await repository.report(10, 20, 1, 100, "Account-100", "Player", 123)
     assert await repository.save_thread(10, 20, 1, 300, 301)
     assert await repository.save_messages(10, 20, 200, 201)
     await repository.configure(10, 20, 31, "2026-11-02", "UTC", (3600,) * 5)
@@ -202,7 +283,7 @@ async def test_cleanup_cascades_but_member_cleanup_preserves_reports(
     repository: QsRepository,
 ) -> None:
     await repository.toggle(10, 20, 1, 100)
-    await repository.report(10, 20, 1, 100, "Player", 123)
+    await repository.report(10, 20, 1, 100, "Account-100", "Player", 123)
     assert await repository.remove_member(10, 100, 20)
     assert await repository.members(10, 20, 1) == ()
     assert len(await repository.reports(10, 20)) == 1
@@ -212,23 +293,22 @@ async def test_cleanup_cascades_but_member_cleanup_preserves_reports(
     assert await repository.reports(10, 20) == ()
 
 
-@pytest.mark.parametrize("count", [4, 5])
 @pytest.mark.parametrize("duration", [1, 2, 3])
-def test_supported_phase_counts_and_durations(count: int, duration: int) -> None:
-    starts = (1000,) * count
-    validate_schedule(1000, starts, (duration,) * count)
+def test_supported_five_phase_durations(duration: int) -> None:
+    starts = (1000,) * 5
+    validate_schedule(1000, starts, (duration,) * 5)
 
 
 @pytest.mark.parametrize(
     ("starts", "durations"),
     [
-        ((1000,) * 3, (1,) * 3),
+        ((1000,) * 4, (1,) * 4),
         ((1000,) * 6, (1,) * 6),
-        ((1000,) * 4, (0,) * 4),
-        ((1000,) * 4, (4,) * 4),
-        ((999,) * 4, (1,) * 4),
-        ((1000 + 86400 - 3600 + 1,) * 4, (1,) * 4),
-        ((1000,) * 4, (1,) * 5),
+        ((1000,) * 5, (0,) * 5),
+        ((1000,) * 5, (4,) * 5),
+        ((999,) * 5, (1,) * 5),
+        ((1000 + 86400 - 3600 + 1,) * 5, (1,) * 5),
+        ((1000,) * 5, (1,) * 4),
     ],
 )
 def test_schedule_rejects_invalid_counts_durations_and_window(
@@ -239,7 +319,7 @@ def test_schedule_rejects_invalid_counts_durations_and_window(
 
 
 def test_phase_can_end_exactly_at_eruption_end() -> None:
-    validate_schedule(1000, (1000 + 86400 - 10800,) * 4, (3,) * 4)
+    validate_schedule(1000, (1000 + 86400 - 10800,) * 5, (3,) * 5)
 
 
 def test_evening_eruption_rolls_morning_phases_to_tomorrow() -> None:
@@ -266,17 +346,17 @@ def test_evening_eruption_rolls_morning_phases_to_tomorrow() -> None:
 
 def test_hour_before_start_minutes_rolls_to_next_day() -> None:
     start = int(parse_local_datetime("2026-11-01 22:30", "UTC").timestamp())
-    starts = phase_starts("unused", (22, 23, 8, 12), "UTC", eruption_start=start)
+    starts = phase_starts("unused", (22, 23, 8, 12, 16), "UTC", eruption_start=start)
     assert starts[0] == int(parse_local_datetime("2026-11-02 22:00", "UTC").timestamp())
     with pytest.raises(ValueError):
-        validate_schedule(start, starts, (1,) * 4)
+        validate_schedule(start, starts, (1,) * 5)
 
 
 @pytest.mark.parametrize("date", ["2026-03-28", "2026-10-24"])
 def test_rolled_day_rejects_dst_missing_or_ambiguous_hour(date: str) -> None:
     start = int(parse_local_datetime(f"{date} 22:00", "Europe/Berlin").timestamp())
     with pytest.raises(ValueError):
-        phase_starts(date, (22, 2, 8, 12), "Europe/Berlin", eruption_start=start)
+        phase_starts(date, (22, 2, 8, 12, 16), "Europe/Berlin", eruption_start=start)
 
 
 @pytest.mark.asyncio
@@ -312,6 +392,60 @@ async def test_existing_schema_migration_preserves_records(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_member_unique_reports_migrate_without_losing_existing_reports(
+    repository: QsRepository,
+) -> None:
+    database = repository.database
+    assert await database.execute("DROP TABLE HsQsBases")
+    assert await database.execute(
+        "CREATE TABLE HsQsBases (Guild INTEGER NOT NULL, Channel INTEGER NOT NULL, "
+        "Phase INTEGER NOT NULL, Member INTEGER NOT NULL, DisplayName TEXT NOT NULL, "
+        "CreatedAt INTEGER NOT NULL, PRIMARY KEY (Guild, Channel, Member), "
+        "FOREIGN KEY (Guild, Channel, Phase) "
+        "REFERENCES HsQsPhases (Guild, Channel, Phase) ON DELETE CASCADE) WITHOUT ROWID"
+    )
+    assert await database.execute(
+        "INSERT INTO HsQsBases VALUES (10, 20, 1, 100, 'Old Player', 123)"
+    )
+    assert await repository.ensure_schema()
+    reports = await repository.reports(10, 20)
+    assert len(reports) == 1
+    assert reports[0].display_name == "Old Player"
+    assert reports[0].game_account is None
+    assert reports[0].report_key == "member:100"
+    await repository.report(10, 20, 2, 100, "Account-100", "Old Player", 124)
+    assert len(await repository.reports(10, 20)) == 2
+
+
+@pytest.mark.asyncio
+async def test_account_unique_schema_migrates_alias_and_display_name_reports(
+    repository: QsRepository,
+) -> None:
+    database = repository.database
+    assert await database.execute("DROP TABLE HsQsBases")
+    assert await database.execute(
+        "CREATE TABLE HsQsBases (Guild INTEGER NOT NULL, Channel INTEGER NOT NULL, "
+        "Phase INTEGER NOT NULL, Member INTEGER NOT NULL, Account TEXT COLLATE NOCASE "
+        "NOT NULL, DisplayName TEXT NOT NULL, CreatedAt INTEGER NOT NULL, "
+        "PRIMARY KEY (Guild, Channel, Account), FOREIGN KEY (Guild, Channel, Phase) "
+        "REFERENCES HsQsPhases (Guild, Channel, Phase) ON DELETE CASCADE) WITHOUT ROWID"
+    )
+    assert await database.execute_many(
+        "INSERT INTO HsQsBases VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            (10, 20, 1, 100, "Account-100", "Player 100", 123),
+            (10, 20, 2, 101, "legacy:101", "Player 101", 124),
+        ),
+    )
+    assert await repository.ensure_schema()
+    reports = await repository.reports(10, 20)
+    assert [(report.game_account, report.report_key) for report in reports] == [
+        ("Account-100", "account:Account-100"),
+        (None, "member:101"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_legacy_numbered_reports_migrate_without_losing_counts(
     repository: QsRepository,
 ) -> None:
@@ -332,23 +466,30 @@ async def test_legacy_numbered_reports_migrate_without_losing_counts(
     assert len(reports) == 1
     assert reports[0].member_id == 100
     assert reports[0].created_at == 123
+    assert reports[0].game_account is None
+    assert reports[0].report_key == "member:100"
     columns = {
         row["name"] for row in await database.fetch_all("PRAGMA table_info(HsQsBases)")
     }
     assert "Base" not in columns and "Note" not in columns
     assert "DisplayName" in columns
+    assert "Account" in columns
+    assert "ReportKey" in columns
     assert not await database.fetch_all("PRAGMA foreign_key_check")
-    await repository.report(10, 20, 2, 101, "Player Name", 124)
-    assert len(await repository.reports(10, 20)) == 2
+    await repository.report(10, 20, 2, 100, "Account-100", "Player", 124)
+    await repository.report(10, 20, 2, 101, "Account-101", "Player Name", 124)
+    assert len(await repository.reports(10, 20)) == 3
 
 
 @pytest.mark.asyncio
 async def test_concurrent_reports_cannot_exceed_forty(repository: QsRepository) -> None:
     for member_id in range(39):
-        await repository.report(10, 20, 1, member_id, "Player", member_id)
+        await repository.report(
+            10, 20, 1, member_id, f"Account-{member_id}", "Player", member_id
+        )
     results = await asyncio.gather(
-        repository.report(10, 20, 1, 100, "A", 123),
-        repository.report(10, 20, 1, 101, "B", 123),
+        repository.report(10, 20, 1, 100, "Account-100", "A", 123),
+        repository.report(10, 20, 1, 101, "Account-101", "B", 123),
         return_exceptions=True,
     )
     assert sum(isinstance(result, BaseLimitReached) for result in results) == 1

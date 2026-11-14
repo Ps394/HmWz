@@ -1,6 +1,6 @@
 """Validation of phase durations inside a fixed eruption window."""
 
-from .constants import ERUPTION_SECONDS, MIN_PHASE_COUNT, PHASE_COUNT
+from .constants import ERUPTION_SECONDS, PHASE_COUNT
 
 
 def validate_schedule(
@@ -11,10 +11,8 @@ def validate_schedule(
     Raises:
         ValueError: If the schedule does not fit the 24-hour event window.
     """
-    if not MIN_PHASE_COUNT <= len(starts) <= PHASE_COUNT or len(starts) != len(
-        durations
-    ):
-        raise ValueError("Choose four or five phases.")
+    if len(starts) != PHASE_COUNT or len(durations) != PHASE_COUNT:
+        raise ValueError("Qs requires exactly five phases.")
     if any(duration not in (1, 2, 3) for duration in durations):
         raise ValueError("Phase durations must be between one and three hours.")
     if any(

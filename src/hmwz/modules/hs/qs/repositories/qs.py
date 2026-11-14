@@ -270,10 +270,17 @@ class QsRepository(Base):
         return await self._bases.get(guild_id, channel_id)
 
     async def withdraw_report(
-        self, guild_id: int, channel_id: int, phase_index: int, member_id: int
+        self,
+        guild_id: int,
+        channel_id: int,
+        phase_index: int,
+        member_id: int,
+        game_account: str | None,
     ) -> bool:
-        """Remove a player's report only from the specified event and phase."""
-        return await self._bases.withdraw(guild_id, channel_id, phase_index, member_id)
+        """Remove one account's report only from the specified event and phase."""
+        return await self._bases.withdraw(
+            guild_id, channel_id, phase_index, member_id, game_account
+        )
 
     async def report(
         self,
@@ -281,12 +288,19 @@ class QsRepository(Base):
         channel_id: int,
         phase_index: int,
         member_id: int,
+        game_account: str | None,
         display_name: str,
         created_at: int,
     ) -> None:
-        """Insert one report per player, enforcing the forty-base limit."""
+        """Insert one report per account, enforcing the forty-base limit."""
         await self._bases.add(
-            guild_id, channel_id, phase_index, member_id, display_name, created_at
+            guild_id,
+            channel_id,
+            phase_index,
+            member_id,
+            game_account,
+            display_name,
+            created_at,
         )
 
     async def remove(self, guild_id: int, channel_id: int | None = None) -> bool:

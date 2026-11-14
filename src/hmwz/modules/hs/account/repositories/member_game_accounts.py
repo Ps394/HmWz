@@ -105,6 +105,20 @@ class MemberGameAccountRepository(sqlite_db.Base):
             )
             return None
 
+    async def accounts_for_member(
+        self, *, guild_id: int, member_id: int
+    ) -> tuple[str, ...]:
+        """Return a member's linked accounts, propagating database errors."""
+        rows = await self.database.fetch_all(
+            f"""
+            SELECT Account FROM {self.table_name}
+            WHERE Guild = ? AND Member = ?
+            ORDER BY Account COLLATE NOCASE
+            """,
+            (guild_id, member_id),
+        )
+        return tuple(row["Account"] for row in rows)
+
     async def remove(self, *, guild: discord.Guild, member: int, account: str) -> bool:
         try:
             removed = await self.database.execute(

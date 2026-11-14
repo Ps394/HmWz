@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import re
+from datetime import datetime
 from dataclasses import replace
 from typing import Literal
 
@@ -12,7 +13,10 @@ from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import t
 from hmwz.ui.components.entity_selection import EntitySelectionView
 from hmwz.ui.components.ephemeral_view import EphemeralView
-from hmwz.ui.components.timestamp_input import TimestampInput, resolve_timezone
+from hmwz.ui.components.timestamp_input import (
+    parse_local_datetime,
+    resolve_timezone,
+)
 from hmwz.ui.embeds import create_embed
 from hmwz.ui.messages import (
     defer_interaction,
@@ -23,7 +27,7 @@ from hmwz.ui.messages import (
 )
 from hmwz.ui.components.localized import LocalizedButton, LocalizedSelect
 
-from .models import PingSettings, phase_starts, validate_schedule
+from .models import PHASE_COUNT, PingSettings, phase_starts, validate_schedule
 from .models.ping_settings import PING_EVENTS, PingEvent
 from .module import QsModule
 
@@ -57,33 +61,6 @@ class PhaseSelect(LocalizedSelect):
     async def callback(self, interaction: discord.Interaction) -> None:
         """Switch the edited phase without changing its start hour."""
         self.panel.selected_phase = int(self.values[0])
-        await self.panel.update(interaction)
-
-
-class HourSelect(LocalizedSelect):
-    """Offer every whole-hour start from midnight to 23:00."""
-
-    def __init__(self, panel: QsSetupView) -> None:
-        current = panel.hours[panel.selected_phase - 1]
-        duration = panel.durations[panel.selected_phase - 1]
-        super().__init__(
-            panel.module.guild,
-            "qs.event.choose_hour",
-            row=2,
-            options=[
-                discord.SelectOption(
-                    label=f"{hour:02}:00 – {(hour + duration) % 24:02}:00",
-                    value=str(hour),
-                    default=hour == current,
-                )
-                for hour in range(24)
-            ],
-        )
-        self.panel = panel
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        """Set the selected phase's whole-hour start."""
-        self.panel.hours[self.panel.selected_phase - 1] = int(self.values[0])
         await self.panel.update(interaction)
 
 
@@ -123,39 +100,61 @@ class QsRoleSelection(EntitySelectionView):
 
 
 class DateModal(discord.ui.Modal):
-    """Collect an event date using the guild's configured timezone."""
+    """Collect a separate local date and time for the eruption start."""
 
     def __init__(self, panel: QsSetupView) -> None:
         super().__init__(title=t(panel.module.guild, "qs.event.date_title"))
         self.panel = panel
-        self.eruption = TimestampInput(
-            panel.module.guild,
-            label=t(panel.module.guild, "qs.admin.eruption_start"),
-            timezone_name=panel.timezone,
-            value=datetime.fromtimestamp(panel.eruption_start, UTC),
+        local_start = datetime.fromtimestamp(
+            panel.eruption_start, resolve_timezone(panel.timezone)
         )
-        self.add_item(self.eruption)
+        self.date_input = discord.ui.TextInput(
+            label=t(panel.module.guild, "qs.event.date"),
+            default=local_start.strftime("%Y-%m-%d"),
+            min_length=10,
+            max_length=10,
+        )
+        self.time_input = discord.ui.TextInput(
+            label=t(panel.module.guild, "qs.event.eruption_time"),
+            default=local_start.strftime("%H:%M"),
+            min_length=5,
+            max_length=5,
+        )
+        self.add_item(self.date_input)
+        self.add_item(self.time_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         """Reject invalid, missing or ambiguous local phase times."""
         if not await self.panel.interaction_check(interaction):
             return
+        date_input = self.date_input.value.strip()
+        time_input = self.time_input.value.strip()
         try:
-            instant = self.eruption.parse()
-            if instant is None:
-                raise ValueError("Eruption start required.")
-            eruption_start = int(instant.timestamp())
-            date = (
-                instant.astimezone(resolve_timezone(self.panel.timezone))
-                .date()
-                .isoformat()
+            if (
+                re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_input) is None
+                or re.fullmatch(r"\d{2}:\d{2}", time_input) is None
+            ):
+                raise ValueError("Enter date as YYYY-MM-DD and time as HH:MM.")
+            instant = parse_local_datetime(
+                f"{date_input} {time_input}", self.panel.timezone
             )
+        except ValueError:
+            await send_interaction_response(
+                interaction, t(interaction, "qs.event.invalid_eruption_time")
+            )
+            return
+        eruption_start = int(instant.timestamp())
+        date = (
+            instant.astimezone(resolve_timezone(self.panel.timezone)).date().isoformat()
+        )
+        try:
             validate_schedule(
                 eruption_start,
                 phase_starts(
                     date,
                     tuple(self.panel.hours),
                     self.panel.timezone,
+                    minutes=tuple(self.panel.minutes),
                     eruption_start=eruption_start,
                 ),
                 tuple(self.panel.durations),
@@ -170,36 +169,73 @@ class DateModal(discord.ui.Modal):
         await self.panel.update(interaction)
 
 
-class PhaseCountSelect(LocalizedSelect):
-    """Select four or five phases in the setup draft."""
+class PhaseTimeModal(discord.ui.Modal):
+    """Edit the selected phase's local start hour and minute."""
+
+    def __init__(self, panel: QsSetupView) -> None:
+        super().__init__(title=t(panel.module.guild, "qs.event.time_title"))
+        self.panel = panel
+        self.phase_index = panel.selected_phase
+        index = self.phase_index - 1
+        self.hour = discord.ui.TextInput(
+            label=t(panel.module.guild, "qs.event.start_hour"),
+            default=f"{panel.hours[index]:02}",
+            min_length=1,
+            max_length=2,
+        )
+        self.minute = discord.ui.TextInput(
+            label=t(panel.module.guild, "qs.event.start_minute"),
+            default=f"{panel.minutes[index]:02}",
+            min_length=1,
+            max_length=2,
+        )
+        self.add_item(self.hour)
+        self.add_item(self.minute)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        """Validate both numeric fields before updating the unsaved draft."""
+        if not await self.panel.interaction_check(interaction):
+            return
+        hour_text, minute_text = self.hour.value.strip(), self.minute.value.strip()
+        if (
+            not hour_text.isascii()
+            or not hour_text.isdigit()
+            or not minute_text.isascii()
+            or not minute_text.isdigit()
+        ):
+            await send_interaction_response(
+                interaction, t(interaction, "qs.event.invalid_phase_time")
+            )
+            return
+        hour, minute = int(hour_text), int(minute_text)
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            await send_interaction_response(
+                interaction, t(interaction, "qs.event.invalid_phase_time")
+            )
+            return
+        index = self.phase_index - 1
+        self.panel.hours[index] = hour
+        self.panel.minutes[index] = minute
+        await self.panel.update(interaction)
+
+
+class PhaseTimeButton(LocalizedButton):
+    """Open numeric inputs for the selected phase's start time."""
 
     def __init__(self, panel: QsSetupView) -> None:
         super().__init__(
             panel.module.guild,
-            "qs.admin.phase_count",
-            row=0,
-            options=[
-                discord.SelectOption(
-                    label=str(count),
-                    value=str(count),
-                    default=count == len(panel.hours),
-                )
-                for count in (4, 5)
-            ],
+            "qs.event.choose_time",
+            row=2,
+            emoji="🕒",
         )
         self.panel = panel
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        """Change draft phase count; destructive changes happen only on save/reset."""
-        count = int(self.values[0])
-        if count == 5 and len(self.panel.hours) == 4:
-            self.panel.hours.append(self.panel.hours[-1])
-            self.panel.durations.append(2)
-        else:
-            self.panel.hours = self.panel.hours[:count]
-            self.panel.durations = self.panel.durations[:count]
-        self.panel.selected_phase = min(self.panel.selected_phase, count)
-        await self.panel.update(interaction)
+        """Open the time modal for the currently selected phase."""
+        if not await self.panel.interaction_check(interaction):
+            return
+        await send_modal(interaction, PhaseTimeModal(self.panel))
 
 
 class DurationSelect(LocalizedSelect):
@@ -239,6 +275,7 @@ class QsSetupView(EphemeralView):
         date: str,
         timezone: str,
         hours: tuple[int, ...],
+        minutes: tuple[int, ...],
         role_id: int | None,
         eruption_start: int,
         durations: tuple[int, ...],
@@ -252,6 +289,7 @@ class QsSetupView(EphemeralView):
         self.date = date
         self.timezone = timezone
         self.hours = list(hours)
+        self.minutes = list(minutes)
         self.role_id = role_id
         self.eruption_start = eruption_start
         self.durations = list(durations)
@@ -264,9 +302,8 @@ class QsSetupView(EphemeralView):
     def _rebuild(self) -> None:
         self.clear_items()
         if self.page == "phases":
-            self.add_item(PhaseCountSelect(self))
             self.add_item(PhaseSelect(self))
-            self.add_item(HourSelect(self))
+            self.add_item(PhaseTimeButton(self))
             self.add_item(DurationSelect(self))
             self.add_item(SetupButton(self, "back", 4))
         elif self.page == "pings":
@@ -290,14 +327,31 @@ class QsSetupView(EphemeralView):
                 self.add_item(SetupButton(self, action, row))
 
     def content(self) -> str:
-        """Show the chosen hours and durations before committing configuration."""
-        schedule = "\n".join(
-            f"{t(self.module.guild, 'qs.event.phase', index=index)}: "
-            f"{hour:02}:00 – {(hour + duration) % 24:02}:00 ({duration} h)"
-            for index, (hour, duration) in enumerate(
-                zip(self.hours, self.durations, strict=True), 1
+        """Show all configured phase windows before committing configuration."""
+        try:
+            starts = phase_starts(
+                self.date,
+                tuple(self.hours),
+                self.timezone,
+                minutes=tuple(self.minutes),
+                eruption_start=self.eruption_start,
             )
-        )
+            schedule = "\n".join(
+                f"{t(self.module.guild, 'qs.event.phase', index=index)}: "
+                f"<t:{start}:F> – "
+                f"<t:{start + duration * 3600}:F> ({duration} h)"
+                for index, (start, duration) in enumerate(
+                    zip(starts, self.durations, strict=True), 1
+                )
+            )
+        except ValueError:
+            schedule = "\n".join(
+                f"{t(self.module.guild, 'qs.event.phase', index=index)}: "
+                f"{hour:02}:{minute:02} · {duration} h"
+                for index, (hour, minute, duration) in enumerate(
+                    zip(self.hours, self.minutes, self.durations, strict=True), 1
+                )
+            )
         return t(
             self.module.guild,
             "qs.event.setup_summary",
@@ -340,13 +394,14 @@ class QsSetupView(EphemeralView):
                     self.date,
                     tuple(self.hours),
                     self.timezone,
+                    minutes=tuple(self.minutes),
                     eruption_start=self.eruption_start,
                 )[index - 1]
                 value = (
                     f"<t:{start}:F> – <t:{start + duration * 3600}:F> · {duration} h"
                 )
             except ValueError:
-                value = f"{hour:02}:00 · {duration} h\n{t(self.module.guild, 'qs.event.invalid_schedule')}"
+                value = f"{hour:02}:{self.minutes[index - 1]:02} · {duration} h\n{t(self.module.guild, 'qs.event.invalid_schedule')}"
             embed.add_field(
                 name=t(self.module.guild, "qs.event.phase", index=index),
                 value=value,
@@ -490,6 +545,7 @@ class SetupButton(LocalizedButton):
                     self.panel.date,
                     tuple(self.panel.hours),
                     self.panel.timezone,
+                    minutes=tuple(self.panel.minutes),
                     eruption_start=self.panel.eruption_start,
                 ),
                 tuple(self.panel.durations),
@@ -509,6 +565,7 @@ class SetupButton(LocalizedButton):
                 action="reset",
                 date=self.panel.date,
                 hours=tuple(self.panel.hours),
+                minutes=tuple(self.panel.minutes),
                 eruption_start=self.panel.eruption_start,
                 durations=tuple(self.panel.durations),
             )
@@ -527,6 +584,7 @@ class SetupButton(LocalizedButton):
             self.panel.role_id,
             self.panel.date,
             tuple(self.panel.hours),
+            minutes=tuple(self.panel.minutes),
             eruption_start=self.panel.eruption_start,
             durations=tuple(self.panel.durations),
             ping_settings=self.panel.ping_settings,
@@ -544,6 +602,8 @@ async def setup_view(
     configuration = await module.qs.get(module.guild.id, channel_id)
     timezone = await module.client.get_guild_timezone(module.guild.id)
     phases = await module.qs.phases(module.guild.id, channel_id)
+    phases_by_index = {phase.index: phase for phase in phases}
+    default_hours = (0, 2, 4, 6, 8)
     eruption_start = (
         configuration.eruption_start
         if configuration is not None
@@ -562,16 +622,27 @@ async def setup_view(
         .isoformat(),
         timezone=timezone,
         hours=tuple(
-            datetime.fromtimestamp(phase.starts_at, resolve_timezone(timezone)).hour
-            for phase in phases
-        )
-        if phases
-        else (0, 2, 4, 6, 8),
+            datetime.fromtimestamp(
+                phases_by_index[index].starts_at, resolve_timezone(timezone)
+            ).hour
+            if index in phases_by_index
+            else default_hours[index - 1]
+            for index in range(1, PHASE_COUNT + 1)
+        ),
+        minutes=tuple(
+            datetime.fromtimestamp(
+                phases_by_index[index].starts_at, resolve_timezone(timezone)
+            ).minute
+            if index in phases_by_index
+            else 0
+            for index in range(1, PHASE_COUNT + 1)
+        ),
         role_id=configuration.role_id if configuration is not None else None,
         eruption_start=eruption_start,
-        durations=tuple(phase.duration_hours for phase in phases)
-        if phases
-        else (2,) * 5,
+        durations=tuple(
+            phases_by_index[index].duration_hours if index in phases_by_index else 2
+            for index in range(1, PHASE_COUNT + 1)
+        ),
         reset_mode=reset_mode,
         ping_settings=configuration.ping_settings
         if configuration is not None

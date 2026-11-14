@@ -1,5 +1,8 @@
 """Qs setup and intentional role pings."""
 
+import logging
+
+import aiosqlite
 import discord
 from discord import app_commands
 
@@ -8,10 +11,13 @@ from hmwz.i18n import t
 from hmwz.ui.messages import send_followup, send_interaction_response, defer_interaction
 
 from ..module import QsModule
+from ..overview import report_name
 from ..setup import setup_view
-from ..views import BaseReportConfirmation
+from ..views import AccountChoice, BaseReportConfirmation, reporting_choices
 from hmwz.utils.text import escape_discord_text
 from .maintenance import QsMaintenanceConfirmation
+
+_logger = logging.getLogger(__name__)
 
 
 async def get_module(interaction: discord.Interaction) -> QsModule | None:
@@ -62,16 +68,29 @@ class QsGroup(app_commands.Group):
         if not await module.authorize_moderation(interaction, interaction.channel_id):
             return
         reports = await module.qs.reports(module.guild.id, interaction.channel_id)
+        choices: tuple[AccountChoice, ...]
         if phase is None:
-            report = next(
-                (item for item in reports if item.member_id == player.id), None
+            player_reports = tuple(
+                item for item in reports if item.member_id == player.id
             )
-            if report is None:
+            if not player_reports:
                 await send_interaction_response(
                     interaction, t(interaction, "qs.event.withdraw_missing")
                 )
                 return
-            phase_index = report.phase_index
+            phase_index = player_reports[0].phase_index
+            choices = tuple(
+                AccountChoice(
+                    key=f"report-{index}",
+                    game_account=report.game_account,
+                    label=report_name(module.guild, report),
+                    description=t(
+                        interaction, "qs.event.phase", index=report.phase_index
+                    ),
+                    report_key=report.report_key,
+                )
+                for index, report in enumerate(player_reports)
+            )
         else:
             phase_index = phase
             if not any(
@@ -84,25 +103,51 @@ class QsGroup(app_commands.Group):
                     interaction, t(interaction, "qs.event.not_configured")
                 )
                 return
+            try:
+                accounts = await module.game_accounts_for(player.id)
+            except aiosqlite.Error:
+                _logger.exception(
+                    "Failed to load Qs reporting accounts for member %s.", player.id
+                )
+                await send_interaction_response(
+                    interaction, t(interaction, "qs.event.database_failed")
+                )
+                return
+            choices = reporting_choices(interaction, player.display_name, accounts)
+            player_reports = ()
         view = BaseReportConfirmation(
             module,
             interaction.channel_id,
             phase_index,
             interaction.user.id,
-            withdraw_member_id=player.id if phase is None else None,
-            report_member=player if phase is not None else None,
-            moderation=True,
-        )
-        view.message = await send_interaction_response(
-            interaction,
-            t(
+            choices=choices,
+            prompt=t(
                 interaction,
-                "qs.event.withdraw_confirmation"
+                (
+                    "qs.event.withdraw_confirmation_display_name"
+                    if len(player_reports) == 1
+                    and player_reports[0].game_account is None
+                    else (
+                        "qs.event.withdraw_confirmation_default"
+                        if any(report.game_account is None for report in player_reports)
+                        else "qs.event.withdraw_confirmation"
+                    )
+                )
                 if phase is None
                 else "qs.event.moderator_report_confirmation",
                 member=escape_discord_text(player.display_name),
                 phase=phase_index,
             ),
+            withdraw_member_id=player.id if phase is None else None,
+            withdraw_reports=player_reports,
+            report_member=player if phase is not None else None,
+            moderation=True,
+        )
+        view.message = await send_interaction_response(
+            interaction,
+            view.content()
+            if phase is None and len(player_reports) > 1
+            else view.prompt,
             view=view,
         )
 
@@ -138,12 +183,12 @@ class QsGroup(app_commands.Group):
     @app_commands.command(
         name="setup",
         description=app_commands.locale_str(
-            "Configure a Qs eruption and four or five phases", key="qs.event.setup"
+            "Configure a Qs eruption and its five phases", key="qs.event.setup"
         ),
     )
     @app_commands.checks.has_any_role(*MODERATOR_ROLES)
     async def setup(self, interaction: discord.Interaction) -> None:
-        """Open a private setup draft with explicit role and hour selection."""
+        """Open a private setup draft with explicit role and phase-time selection."""
         module = await get_module(interaction)
         if module is None or interaction.channel_id is None:
             return

@@ -32,6 +32,7 @@ class QsMaintenanceConfirmation(EphemeralView):
         action: Literal["remove", "reset"],
         date: str = "",
         hours: tuple[int, ...] = (),
+        minutes: tuple[int, ...] = (),
         eruption_start: int = 0,
         durations: tuple[int, ...] = (),
     ) -> None:
@@ -40,7 +41,7 @@ class QsMaintenanceConfirmation(EphemeralView):
         self.channel_id = channel_id
         self.owner_id = owner_id
         self.action = action
-        self.date, self.hours = date, hours
+        self.date, self.hours, self.minutes = date, hours, minutes
         self.eruption_start, self.durations = eruption_start, durations
         self.running = False
         localize_buttons(
@@ -89,6 +90,7 @@ class QsMaintenanceConfirmation(EphemeralView):
                     self.channel_id,
                     self.date,
                     self.hours,
+                    minutes=self.minutes,
                     eruption_start=self.eruption_start,
                     durations=self.durations,
                 )

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from itertools import count
@@ -25,11 +26,11 @@ from hmwz.modules.hs.qs.overview import (
     phase_embed,
 )
 from hmwz.modules.hs.qs.setup import (
-    HourSelect,
     DateModal,
     DurationSelect,
     PhaseSelect,
-    PhaseCountSelect,
+    PhaseTimeButton,
+    PhaseTimeModal,
     QsRoleSelection,
     QsSetupView,
     PingButton,
@@ -37,10 +38,12 @@ from hmwz.modules.hs.qs.setup import (
     SetupButton,
 )
 from hmwz.modules.hs.qs.views import (
+    AccountChoice,
     BaseReportConfirmation,
     OverviewView,
     PhaseView,
 )
+from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
 from hmwz.modules.manager import Manager
 from hmwz.modules.protocols import MessageModuleProtocol
 from hmwz.sqlite_db import Database
@@ -62,9 +65,16 @@ async def environment(tmp_path: Path, notification_worker: object) -> SimpleName
     database = Database(folder=str(tmp_path), filename="module.db")
     assert await database.execute("CREATE TABLE Servers (Guild INTEGER PRIMARY KEY)")
     assert await database.execute("INSERT INTO Servers VALUES (10)")
+    accounts = MemberGameAccountRepository(database)
+    assert await database.execute(accounts.table)
+    assert await database.execute_many(
+        "INSERT INTO GameAccounts (Guild, Member, Account) VALUES (?, ?, ?)",
+        tuple((10, member_id, f"Account-{member_id}") for member_id in range(1000)),
+    )
     ids = count(1000)
     messages: dict[int, Mock] = {}
     threads: dict[int, Mock] = {}
+    thread_creation_messages: list[Mock] = []
     role = Mock(spec=discord.Role, id=30, name="Qs", mention="<@&30>")
     role.is_default.return_value = False
     role.mentionable = True
@@ -88,6 +98,7 @@ async def environment(tmp_path: Path, notification_worker: object) -> SimpleName
     async def send(**kwargs: object) -> Mock:
         message = Mock(spec=discord.Message)
         message.id = next(ids)
+        message.content = str(kwargs.get("content", ""))
         message.edit = AsyncMock(return_value=message)
         message.sent_kwargs = kwargs
         message.delete = AsyncMock(
@@ -127,6 +138,10 @@ async def environment(tmp_path: Path, notification_worker: object) -> SimpleName
         thread.fetch_message = AsyncMock(side_effect=fetch_message)
         thread.edit = AsyncMock(return_value=thread)
         threads[thread.id] = thread
+        notice = await channel_send(content=kwargs["name"])
+        notice.type = discord.MessageType.thread_created
+        notice.author = SimpleNamespace(id=999)
+        thread_creation_messages.append(notice)
         return thread
 
     channel = Mock(spec=discord.TextChannel)
@@ -145,15 +160,24 @@ async def environment(tmp_path: Path, notification_worker: object) -> SimpleName
             messages.pop(message.id)
         return deleted
 
+    async def channel_history(*, limit: int = 100) -> AsyncIterator[Mock]:
+        channel_messages = [
+            message for message in messages.values() if message.channel == channel
+        ]
+        for message in reversed(channel_messages[-limit:]):
+            yield message
+
     channel.send = AsyncMock(side_effect=channel_send)
     channel.purge = AsyncMock(side_effect=channel_purge)
     channel.fetch_message = AsyncMock(side_effect=fetch_message)
     channel.create_thread = AsyncMock(side_effect=create_thread)
+    channel.history = channel_history
     guild.get_channel.side_effect = lambda channel_id: (
         channel if channel_id == 20 else None
     )
     client = Mock(spec=Client)
     client._database = database
+    client.user = SimpleNamespace(id=999)
 
     async def fetch_channel(channel_id: int) -> Mock:
         if channel_id not in threads:
@@ -174,6 +198,7 @@ async def environment(tmp_path: Path, notification_worker: object) -> SimpleName
         client=client,
         messages=messages,
         threads=threads,
+        thread_creation_messages=thread_creation_messages,
     )
 
 
@@ -211,6 +236,38 @@ def interaction(
         manage_messages=True, manage_threads=True
     )
     return context
+
+
+def game_account(member_id: int) -> str:
+    return f"Account-{member_id}"
+
+
+async def submit_base_report(
+    module: QsModule,
+    context: discord.Interaction,
+    phase_index: int,
+    *,
+    member: discord.Member | None = None,
+) -> None:
+    reporter_id = member.id if member is not None else context.user.id
+    await module.report_base(
+        context,
+        20,
+        phase_index,
+        game_account=game_account(reporter_id),
+        member=member,
+    )
+
+
+async def retract_base_report(
+    module: QsModule,
+    context: discord.Interaction,
+    phase_index: int,
+    member_id: int,
+) -> None:
+    await module.withdraw_base(
+        context, 20, phase_index, member_id, game_account(member_id)
+    )
 
 
 def setup_button(panel: QsSetupView, action: str) -> SetupButton:
@@ -355,9 +412,8 @@ async def test_setup_menu_keeps_overview_and_separates_phase_controls(
     context = interaction(environment)
     await setup_button(panel, "phases").callback(context)
     assert [type(item) for item in panel.children] == [
-        PhaseCountSelect,
         PhaseSelect,
-        HourSelect,
+        PhaseTimeButton,
         DurationSelect,
         SetupButton,
     ]
@@ -368,6 +424,94 @@ async def test_setup_menu_keeps_overview_and_separates_phase_controls(
     await setup_button(panel, "back").callback(context)
     assert [item.label for item in panel.children] == expected
     assert panel.embed().to_dict()["fields"] == summary
+    panel.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reset_mode", [False, True])
+async def test_setup_prefills_all_saved_phase_times_and_durations(
+    environment: SimpleNamespace,
+    reset_mode: bool,
+) -> None:
+    eruption_start = int(datetime(2026, 11, 2, tzinfo=UTC).timestamp())
+    assert await environment.module.configure(
+        20,
+        30,
+        "2026-11-02",
+        (0, 2, 4, 6, 8),
+        minutes=(7, 14, 21, 28, 35),
+        eruption_start=eruption_start,
+        durations=(1, 2, 3, 1, 1),
+    )
+    phases = await environment.module.qs.phases(10, 20)
+    panel = await setup_view(environment.module, 20, 100, reset_mode=reset_mode)
+    assert panel.hours == [0, 2, 4, 6, 8]
+    assert panel.minutes == [7, 14, 21, 28, 35]
+    assert panel.durations == [1, 2, 3, 1, 1]
+    last_phase = panel.embed().fields[9]
+    assert f"<t:{phases[-1].starts_at}:F>" in last_phase.value
+    assert (
+        f"<t:{phases[-1].starts_at}:F> – <t:{phases[-1].ends_at}:F>" in panel.content()
+    )
+
+    context = interaction(environment)
+    await setup_button(panel, "phases").callback(context)
+    phase_select = next(
+        item for item in panel.children if isinstance(item, PhaseSelect)
+    )
+    with patch.object(
+        discord.ui.Select, "values", new_callable=PropertyMock, return_value=["5"]
+    ):
+        await phase_select.callback(context)
+    await next(
+        item for item in panel.children if isinstance(item, PhaseTimeButton)
+    ).callback(context)
+    modal = context.response.send_modal.await_args.args[0]
+    assert modal.hour.default == "08"
+    assert modal.minute.default == "35"
+    panel.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("hour", "minute"),
+    [("24", "00"), ("12", "60"), ("no", "15")],
+)
+async def test_phase_time_modal_rejects_invalid_numeric_fields(
+    environment: SimpleNamespace,
+    hour: str,
+    minute: str,
+) -> None:
+    panel = await setup_view(environment.module, 20, 100)
+    modal = PhaseTimeModal(panel)
+    original = (panel.hours[0], panel.minutes[0])
+    context = interaction(environment)
+    with patch.object(
+        discord.ui.TextInput,
+        "value",
+        new_callable=PropertyMock,
+        side_effect=[hour, minute],
+    ):
+        await modal.on_submit(context)
+    assert (panel.hours[0], panel.minutes[0]) == original
+    context.response.send_message.assert_awaited_once()
+    panel.stop()
+
+
+@pytest.mark.asyncio
+async def test_setup_pads_missing_legacy_phase_with_defaults(
+    environment: SimpleNamespace,
+) -> None:
+    phases = await environment.module.qs.phases(10, 20)
+    assert await environment.module.qs.database.execute(
+        "DELETE FROM HsQsPhases WHERE Guild=? AND Channel=? AND Phase=?",
+        (10, 20, 5),
+    )
+    panel = await setup_view(environment.module, 20, 100, reset_mode=True)
+    assert len(phases) == 5
+    assert panel.hours == [0, 2, 4, 6, 8]
+    assert panel.minutes == [0, 0, 0, 0, 0]
+    assert panel.durations == [2, 2, 2, 2, 2]
     panel.stop()
 
 
@@ -389,13 +533,76 @@ async def test_setup_role_and_date_actions_keep_the_overview(
     await setup_button(panel, "date").callback(context)
     modal = context.response.send_modal.await_args.args[0]
     assert isinstance(modal, DateModal)
+    assert modal.date_input.default == panel.date
+    assert modal.time_input.default == "00:00"
     with patch.object(
-        modal.eruption, "parse", return_value=datetime(2026, 11, 2, tzinfo=UTC)
+        discord.ui.TextInput,
+        "value",
+        new_callable=PropertyMock,
+        side_effect=["2026-11-02", "00:00"],
     ):
         await modal.on_submit(context)
     assert panel.date == "2026-11-02"
+    assert panel.eruption_start == int(datetime(2026, 11, 2, tzinfo=UTC).timestamp())
     assert context.response.edit_message.await_args.kwargs["view"] is panel
     assert len(panel.children) == 6
+    panel.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("date", "time"),
+    [
+        ("2026-02-31", "12:00"),
+        ("2026-11-02", "9:00"),
+        ("2026-11-02", "24:00"),
+    ],
+)
+async def test_eruption_start_modal_rejects_invalid_date_and_time(
+    environment: SimpleNamespace,
+    date: str,
+    time: str,
+) -> None:
+    panel = await setup_view(environment.module, 20, 100)
+    original = panel.date, panel.eruption_start
+    modal = DateModal(panel)
+    context = interaction(environment)
+    with patch.object(
+        discord.ui.TextInput,
+        "value",
+        new_callable=PropertyMock,
+        side_effect=[date, time],
+    ):
+        await modal.on_submit(context)
+    assert (panel.date, panel.eruption_start) == original
+    context.response.send_message.assert_awaited_once()
+    panel.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("date", "time"),
+    [("2026-03-29", "02:30"), ("2026-10-25", "02:30")],
+)
+async def test_eruption_start_modal_rejects_ambiguous_or_missing_local_time(
+    environment: SimpleNamespace,
+    date: str,
+    time: str,
+) -> None:
+    panel = await setup_view(environment.module, 20, 100)
+    panel.timezone = "Europe/Berlin"
+    original = panel.date, panel.eruption_start
+    modal = DateModal(panel)
+    context = interaction(environment)
+    with patch.object(
+        discord.ui.TextInput,
+        "value",
+        new_callable=PropertyMock,
+        side_effect=[date, time],
+    ):
+        await modal.on_submit(context)
+    assert (panel.date, panel.eruption_start) == original
+    context.response.send_message.assert_awaited_once()
     panel.stop()
 
 
@@ -488,6 +695,60 @@ async def test_automatic_ping_switches_are_independent_and_manual_ping_is_unaffe
 
 
 @pytest.mark.asyncio
+async def test_phase_start_ping_lists_signups_and_mentions_only_qs_role(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    for member_id in range(100, 109):
+        assert await module.qs.toggle(10, 20, phase.index, member_id)
+
+    assert await module.ping_participants(20, phase)
+
+    thread = environment.threads[phase.thread_id]
+    sent = thread.send.await_args
+    content = sent.kwargs["content"]
+    assert "<@&30> beachtet die Anmeldungen bei den Basenzerstörungen." in content
+    assert "**Bei Abweichungen bitte hier absprechen!**" in content
+    assert "__Zu zerstörende Basen:__" in content
+    positions = [
+        content.index(f"{index}. <@{member_id}>")
+        for index, member_id in enumerate(range(100, 109), 1)
+    ]
+    assert positions == sorted(positions)
+    assert "8. <@107>\n=============\n9. <@108>" in content
+    mentions = sent.kwargs["allowed_mentions"]
+    assert mentions.roles == [environment.role]
+    assert not mentions.users
+    assert not mentions.everyone
+
+
+@pytest.mark.asyncio
+async def test_phase_start_ping_splits_long_signup_lists_without_repinging_role(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    members = tuple(range(300))
+    thread = environment.threads[phase.thread_id]
+    sends_before = thread.send.await_count
+    with patch.object(module.qs, "members", AsyncMock(return_value=members)):
+        assert await module.ping_participants(20, phase)
+
+    sent_messages = thread.send.await_args_list[sends_before:]
+    assert len(sent_messages) > 1
+    contents = [sent.kwargs["content"] for sent in sent_messages]
+    assert all(len(content) <= 2000 for content in contents)
+    combined = "\n".join(contents)
+    assert all(
+        f"{index}. <@{member_id}>" in combined
+        for index, member_id in enumerate(members, 1)
+    )
+    assert sent_messages[0].kwargs["allowed_mentions"].roles == [environment.role]
+    assert all(not sent.kwargs["allowed_mentions"].roles for sent in sent_messages[1:])
+
+
+@pytest.mark.asyncio
 async def test_disabled_notifications_are_consumed_and_settings_survive_reset(
     environment: SimpleNamespace,
 ) -> None:
@@ -498,7 +759,9 @@ async def test_disabled_notifications_are_consumed_and_settings_survive_reset(
     )
     assert await module.qs.toggle(10, 20, 1, 100)
     for number in range(8):
-        await module.qs.report(10, 20, 1, number, f"Player {number}", number)
+        await module.qs.report(
+            10, 20, 1, number, game_account(number), f"Player {number}", number
+        )
     configuration = await module.qs.get(10, 20)
     start, end = configuration.eruption_start, configuration.eruption_end
     sends = environment.channel.send.await_count
@@ -565,8 +828,22 @@ async def test_setup_creates_exact_five_threads_and_persistent_views(
     module = environment.module
     assert isinstance(module, MessageModuleProtocol)
     assert environment.channel.create_thread.await_count == 5
+    assert len(environment.thread_creation_messages) == 5
+    assert all(
+        notice.delete.await_count == 1
+        for notice in environment.thread_creation_messages
+    )
+    assert all(
+        notice.id not in environment.messages
+        for notice in environment.thread_creation_messages
+    )
     assert len(module._views) == 6
     assert all(view.is_persistent() for view in module._views.values())
+    unrelated = await environment.channel.send(content="Another thread")
+    unrelated.type = discord.MessageType.thread_created
+    unrelated.author = SimpleNamespace(id=999)
+    assert await module._refresh(20)
+    assert unrelated.id in environment.messages
     configuration = await module.qs.get(10, 20)
     overview = environment.messages[configuration.message_id]
     embed = overview.sent_kwargs["embeds"][0]
@@ -614,7 +891,7 @@ async def test_deleted_overview_restored_without_losing_data(
 ) -> None:
     module = environment.module
     await module.qs.toggle(10, 20, 1, 100)
-    await module.qs.report(10, 20, 1, 100, "Player", 1)
+    await module.qs.report(10, 20, 1, 100, game_account(100), "Player", 1)
     configuration = await module.qs.get(10, 20)
     del environment.messages[configuration.message_id]
     assert await module.on_raw_message_delete(
@@ -660,7 +937,7 @@ async def test_multi_phase_signup_updates_both_overviews(
     embed = environment.messages[phase.members_message_id].edit.await_args.kwargs[
         "embeds"
     ][0]
-    assert embed.fields[0].value == "1. <@100>"
+    assert embed.fields[0].value == "**1. <@100>**"
     await module.toggle_phase(interaction(environment), 20, 1)
     assert await module.qs.members(10, 20, 1) == ()
     assert await module.qs.members(10, 20, 5) == (100,)
@@ -673,7 +950,9 @@ async def test_member_without_role_cannot_join_or_report(
     context = interaction(environment, roles=False)
     await environment.module.toggle_phase(context, 20, 1)
     context.followup.send.assert_awaited()
-    await environment.module.report_base(interaction(environment, roles=False), 20, 1)
+    await submit_base_report(
+        environment.module, interaction(environment, roles=False), 1
+    )
     assert await environment.module.qs.members(10, 20, 1) == ()
     assert await environment.module.qs.reports(10, 20) == ()
 
@@ -685,17 +964,13 @@ async def test_base_report_requires_phase_to_have_started(
     module = environment.module
     phase = (await module.qs.phases(10, 20))[0]
     context = interaction(environment)
-    with patch(
-        "hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at - 1
-    ):
-        await module.report_base(context, 20, phase.index)
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at - 1):
+        await submit_base_report(module, context, phase.index)
     assert "noch nicht begonnen" in context.followup.send.await_args.args[0]
     assert await module.qs.reports(10, 20) == ()
 
-    with patch(
-        "hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at
-    ):
-        await module.report_base(interaction(environment), 20, phase.index)
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await submit_base_report(module, interaction(environment), phase.index)
     assert len(await module.qs.reports(10, 20)) == 1
 
 
@@ -704,9 +979,9 @@ async def test_reporting_once_across_phases_updates_every_counter(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.report_base(interaction(environment), 20, 1)
+    await submit_base_report(module, interaction(environment), 1)
     repeated = interaction(environment)
-    await module.report_base(repeated, 20, 5)
+    await submit_base_report(module, repeated, 5)
     assert "bereits" in repeated.followup.send.await_args.args[0]
     assert len(await module.qs.reports(10, 20)) == 1
     for phase in await module.qs.phases(10, 20):
@@ -726,7 +1001,7 @@ async def test_invalid_phase_is_rejected_without_data(
 ) -> None:
     for number in (0, 41):
         context = interaction(environment)
-        await environment.module.report_base(context, 20, number)
+        await submit_base_report(environment.module, context, number)
         context.followup.send.assert_awaited()
     assert await environment.module.qs.reports(10, 20) == ()
 
@@ -742,6 +1017,7 @@ async def test_role_rechecked_when_modal_is_submitted(
     await view.children[0].callback(context)
     confirmation = context.response.send_message.await_args.kwargs["view"]
     assert isinstance(confirmation, BaseReportConfirmation)
+    confirmation.select_account("account-0")
     denied = interaction(environment, roles=False)
     denied.message = SimpleNamespace(delete=AsyncMock())
     await confirmation.confirm.callback(denied)
@@ -751,12 +1027,350 @@ async def test_role_rechecked_when_modal_is_submitted(
 
 
 @pytest.mark.asyncio
+async def test_report_uses_display_name_when_member_has_no_linked_accounts(
+    environment: SimpleNamespace,
+) -> None:
+    phase = (await environment.module.qs.phases(10, 20))[0]
+    context = interaction(environment, member_id=5000)
+    await environment.module._views[phase.message_id].children[0].callback(context)
+    assert "Player 5000" in context.response.send_message.await_args.args[0]
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert isinstance(view, BaseReportConfirmation)
+    assert view.choices[0].game_account is None
+    assert view.selection not in view.children
+    assert view.selected_account == view.choices[0].key
+    assert not view.confirm.disabled
+    assert "wähle" not in view.prompt.lower()
+    confirmed = interaction(environment, member_id=5000)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await view.confirm.callback(confirmed)
+    report = (await environment.module.qs.reports(10, 20))[0]
+    assert report.game_account is None
+    assert report.display_name == "Player 5000"
+    environment.guild.get_member.return_value = SimpleNamespace(
+        display_name="Current Display Name"
+    )
+    assert (
+        "Current Display Name"
+        in bases_embeds(environment.guild, (report,))[0].description
+    )
+
+    withdrawal = interaction(environment, member_id=5000)
+    await environment.module._views[phase.message_id].children[1].callback(withdrawal)
+    withdrawal_view = withdrawal.response.send_message.await_args.kwargs["view"]
+    assert isinstance(withdrawal_view, BaseReportConfirmation)
+    assert withdrawal_view.choices[0].game_account is None
+    assert withdrawal_view.selection not in withdrawal_view.children
+    assert withdrawal_view.selected_account == withdrawal_view.choices[0].key
+    assert not withdrawal_view.confirm.disabled
+    assert "wähle" not in withdrawal_view.prompt.lower()
+    confirmed_withdrawal = interaction(environment, member_id=5000)
+    confirmed_withdrawal.message = SimpleNamespace(delete=AsyncMock())
+    await withdrawal_view.confirm.callback(confirmed_withdrawal)
+    assert await environment.module.qs.reports(10, 20) == ()
+
+
+@pytest.mark.asyncio
+async def test_moderator_can_report_and_withdraw_without_linked_accounts(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    moderator = interaction(environment)
+    moderator.user.roles = [environment.moderator]
+    moderator.client = SimpleNamespace(
+        module_manager=SimpleNamespace(get_module=AsyncMock(return_value=module))
+    )
+    target = interaction(environment, member_id=5000).user
+    group = QsGroup()
+    await group.report.callback(group, moderator, target, 1)
+    view = moderator.response.send_message.await_args.kwargs["view"]
+    assert view.selection not in view.children
+    assert not view.confirm.disabled
+    confirmed = interaction(environment)
+    confirmed.user.roles = [environment.moderator]
+    phase = (await module.qs.phases(10, 20))[0]
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await view.confirm.callback(confirmed)
+    report = (await module.qs.reports(10, 20))[0]
+    assert report.member_id == target.id
+    assert report.game_account is None
+    assert report.display_name == target.display_name
+
+    withdrawal = interaction(environment)
+    withdrawal.user.roles = [environment.moderator]
+    withdrawal.client = moderator.client
+    await group.withdraw.callback(group, withdrawal, target)
+    withdrawal_view = withdrawal.response.send_message.await_args.kwargs["view"]
+    assert withdrawal_view.selection not in withdrawal_view.children
+    assert not withdrawal_view.confirm.disabled
+    assert "wähle" not in withdrawal_view.prompt.lower()
+    confirmed_withdrawal = interaction(environment)
+    confirmed_withdrawal.user.roles = [environment.moderator]
+    await withdrawal_view.confirm.callback(confirmed_withdrawal)
+    assert await module.qs.reports(10, 20) == ()
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_with_multiple_identities_keeps_selection(
+    environment: SimpleNamespace,
+) -> None:
+    view = BaseReportConfirmation(
+        environment.module,
+        20,
+        1,
+        5000,
+        choices=(
+            AccountChoice("report-0", None, "Player 5000", report_key="member:5000"),
+            AccountChoice("report-1", "Alt", "Alt", report_key="account:Alt"),
+        ),
+        prompt="Choose report",
+        withdraw_member_id=5000,
+    )
+    assert view.selection in view.children
+    assert not view.confirm.disabled
+    assert view.selected_account == "report-0"
+    assert view.selection.options[0].default
+    view.stop()
+
+
+@pytest.mark.asyncio
+async def test_report_view_paginates_more_than_twenty_five_aliases(
+    environment: SimpleNamespace,
+) -> None:
+    for number in range(26):
+        assert await environment.module.game_accounts.add(
+            guild=environment.guild, member=100, account=f"Extra-{number:02}"
+        )
+    phase = (await environment.module.qs.phases(10, 20))[0]
+    context = interaction(environment)
+    await environment.module._views[phase.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert isinstance(view, BaseReportConfirmation)
+    assert len(view.selection.options) == 25
+    assert view.previous_button is not None and view.previous_button.disabled
+    assert view.next_button is not None and not view.next_button.disabled
+    await view.next_button.callback(context)
+    assert view.page == 1
+    assert len(view.selection.options) == 3
+    assert view.previous_button is not None and not view.previous_button.disabled
+    assert view.next_button is not None and view.next_button.disabled
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moderated", [False, True])
+async def test_main_account_is_default_even_with_linked_accounts(
+    environment: SimpleNamespace, moderated: bool
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    context = interaction(environment)
+    if moderated:
+        context.user.roles = [environment.moderator]
+        context.client = SimpleNamespace(
+            module_manager=SimpleNamespace(get_module=AsyncMock(return_value=module))
+        )
+        target = interaction(environment, member_id=101).user
+        group = QsGroup()
+        await group.report.callback(group, context, target, phase.index)
+    else:
+        target = context.user
+        await module._views[phase.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert view.selection in view.children
+    assert not view.confirm.disabled
+    assert view.selected_account == "discord-display-name"
+    assert view.selection.options[0].label == target.display_name
+    assert view.selection.options[0].default
+    assert view.selection.options[1].value == "account-0"
+
+    confirmed = interaction(environment)
+    if moderated:
+        confirmed.user.roles = [environment.moderator]
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await view.confirm.callback(confirmed)
+    report = (await module.qs.reports(10, 20))[0]
+    assert report.member_id == target.id
+    assert report.game_account is None
+    assert report.display_name == target.display_name
+
+
+@pytest.mark.asyncio
+async def test_selecting_alt_updates_default_option_and_saves_alt(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    context = interaction(environment)
+    await module._views[phase.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    view.select_account("account-0")
+    assert not view.selection.options[0].default
+    assert view.selection.options[1].default
+    confirmed = interaction(environment)
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await view.confirm.callback(confirmed)
+    report = (await module.qs.reports(10, 20))[0]
+    assert report.game_account == game_account(100)
+
+
+@pytest.mark.asyncio
+async def test_main_account_and_alt_can_be_reported_and_withdrawn_separately(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    for selection in ("discord-display-name", "account-0"):
+        context = interaction(environment)
+        await module._views[phase.message_id].children[0].callback(context)
+        view = context.response.send_message.await_args.kwargs["view"]
+        if selection != "discord-display-name":
+            view.select_account(selection)
+        with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+            await view.confirm.callback(interaction(environment))
+    assert {report.game_account for report in await module.qs.reports(10, 20)} == {
+        None,
+        game_account(100),
+    }
+
+    withdrawal = interaction(environment)
+    await module._views[phase.message_id].children[1].callback(withdrawal)
+    view = withdrawal.response.send_message.await_args.kwargs["view"]
+    assert view.selection in view.children
+    assert not view.confirm.disabled
+    main_choice = next(choice for choice in view.choices if choice.game_account is None)
+    assert view.selected_account == main_choice.key
+    alt_choice = next(choice for choice in view.choices if choice.game_account)
+    view.select_account(alt_choice.key)
+    await view.confirm.callback(interaction(environment))
+    remaining = await module.qs.reports(10, 20)
+    assert len(remaining) == 1
+    assert remaining[0].game_account is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moderated", [False, True])
+@pytest.mark.parametrize("withdraw_main", [False, True])
+async def test_withdraw_defaults_to_main_when_alt_was_reported_first(
+    environment: SimpleNamespace, moderated: bool, withdraw_main: bool
+) -> None:
+    module = environment.module
+    target_id = 101 if moderated else 100
+    await module.qs.report(10, 20, 1, target_id, game_account(target_id), "Player", 1)
+    await module.qs.report(10, 20, 1, target_id, None, "Player", 2)
+    context = interaction(environment)
+    phase = (await module.qs.phases(10, 20))[0]
+    if moderated:
+        context.user.roles = [environment.moderator]
+        context.client = SimpleNamespace(
+            module_manager=SimpleNamespace(get_module=AsyncMock(return_value=module))
+        )
+        target = interaction(environment, member_id=target_id).user
+        group = QsGroup()
+        await group.withdraw.callback(group, context, target)
+    else:
+        await module._views[phase.message_id].children[1].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert view.selection in view.children
+    main = next(choice for choice in view.choices if choice.game_account is None)
+    assert view.selected_account == main.key
+    assert not view.confirm.disabled
+    assert next(
+        option for option in view.selection.options if option.value == main.key
+    ).default
+    assert main.label in context.response.send_message.await_args.args[0]
+    if not withdraw_main:
+        alt = next(choice for choice in view.choices if choice.game_account is not None)
+        view.select_account(alt.key)
+        assert next(
+            option for option in view.selection.options if option.value == alt.key
+        ).default
+    confirmed = interaction(environment)
+    if moderated:
+        confirmed.user.roles = [environment.moderator]
+    await view.confirm.callback(confirmed)
+    reports = await module.qs.reports(10, 20)
+    assert len(reports) == 1
+    assert reports[0].game_account == (
+        game_account(target_id) if withdraw_main else None
+    )
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_without_main_report_requires_selection(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    await module.qs.report(10, 20, 1, 100, game_account(100), "Player", 1)
+    phase = (await module.qs.phases(10, 20))[0]
+    context = interaction(environment)
+    await module._views[phase.message_id].children[1].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert view.selected_account is None
+    assert view.confirm.disabled
+    assert view.selection in view.children
+    view.stop()
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_shows_preselected_main_on_later_page(
+    environment: SimpleNamespace,
+) -> None:
+    choices = tuple(
+        AccountChoice(f"report-{index}", f"Alt-{index}", f"Alt-{index}")
+        for index in range(25)
+    ) + (AccountChoice("main", None, "Main"),)
+    view = BaseReportConfirmation(
+        environment.module,
+        20,
+        1,
+        100,
+        choices=choices,
+        prompt="Withdraw",
+        withdraw_member_id=100,
+    )
+    assert view.page == 1
+    assert view.selected_account == "main"
+    assert view.selection.options[0].default
+    view.stop()
+
+
+@pytest.mark.asyncio
+async def test_member_can_report_once_for_each_linked_account(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    assert await module.game_accounts.add(
+        guild=environment.guild, member=100, account="Alt-100"
+    )
+    phase = (await module.qs.phases(10, 20))[0]
+    context = interaction(environment)
+    await module._views[phase.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    view.select_account("account-1")
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await view.confirm.callback(confirmed)
+    await submit_base_report(module, interaction(environment), 2)
+    assert {report.game_account for report in await module.qs.reports(10, 20)} == {
+        "Alt-100",
+        game_account(100),
+    }
+    repeated = interaction(environment)
+    with patch("hmwz.modules.hs.qs.module.time.time", return_value=phase.starts_at):
+        await module.report_base(repeated, 20, phase.index, game_account="Alt-100")
+    assert "bereits" in repeated.followup.send.await_args.args[0]
+    assert len(await module.qs.reports(10, 20)) == 2
+
+
+@pytest.mark.asyncio
 async def test_role_loss_removes_signups_but_keeps_base_history(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
     await module.qs.toggle(10, 20, 1, 100)
-    await module.qs.report(10, 20, 1, 100, "Player", 0)
+    await module.qs.report(10, 20, 1, 100, game_account(100), "Player", 0)
     before = interaction(environment).user
     after = interaction(environment, roles=False).user
     assert await module.on_member_update(before, after)
@@ -814,7 +1428,7 @@ async def test_database_failure_is_explicitly_reported(
             "report",
             AsyncMock(side_effect=aiosqlite.OperationalError("locked")),
         ):
-            await module.report_base(context, 20, 1)
+            await submit_base_report(module, context, 1)
     assert "nicht gespeichert" in context.followup.send.await_args.args[0]
     assert await module.qs.members(10, 20, 1) == ()
     assert await module.qs.reports(10, 20) == ()
@@ -839,25 +1453,12 @@ async def test_discord_failure_is_visible_and_retry_reuses_thread(
 
 
 @pytest.mark.asyncio
-async def test_setup_uses_project_role_picker_and_all_24_hours(
+async def test_setup_uses_phase_picker_and_manual_hour_minute_input(
     environment: SimpleNamespace,
 ) -> None:
     panel = await setup_view(environment.module, 20, 100)
     await setup_button(panel, "phases").callback(interaction(environment))
-    assert (
-        next(item for item in panel.children if isinstance(item, HourSelect))
-        .options[-1]
-        .value
-        == "23"
-    )
-    assert (
-        len(
-            next(
-                item for item in panel.children if isinstance(item, HourSelect)
-            ).options
-        )
-        == 24
-    )
+    assert any(isinstance(item, PhaseTimeButton) for item in panel.children)
     assert (
         len(
             next(
@@ -904,8 +1505,8 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
         (
             discord.Locale.german,
             "Ende",
-            "- Basis zerstört? „Basis als zerstört melden“ klicken und bestätigen.\n"
-            "- Pro Spieler eine Meldung pro Eruption.",
+            "- Basis zerstört? „Basis als zerstört melden“ klicken und den vorausgewählten Discord-Anzeigenamen verwenden oder einen Ingame-Alias auswählen und bestätigen.\n"
+            "- Pro Ingame-Alias oder Discord-Anzeigename eine Meldung pro Eruption.",
             "Basen in dieser Phase zerstört",
             "In dieser Phase gemeldete Basen",
             "Keine",
@@ -913,8 +1514,8 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
         (
             discord.Locale.american_english,
             "End",
-            "- Destroyed a base? Click “Report a destroyed base” and confirm.\n"
-            "- One report per player per eruption.",
+            "- Destroyed a base? Click “Report a destroyed base”, use your preselected Discord display name or choose an in-game alias, then confirm.\n"
+            "- One report per in-game alias or Discord display name per eruption.",
             "Bases destroyed in this phase",
             "Bases reported in this phase",
             "None",
@@ -946,7 +1547,18 @@ def test_phase_overview_shows_separate_times_and_brief_report_instructions(
 def test_numbered_lists_preserve_phase_filtering_and_embed_limits() -> None:
     guild = Mock(spec=discord.Guild, preferred_locale=discord.Locale.german)
     guild.get_member.return_value = None
-    assert member_list(guild, (100, 101)) == "1. <@100>\n2. <@101>"
+    assert member_list(guild, tuple(range(100, 110))) == (
+        "**1. <@100>**\n"
+        "**2. <@101>**\n"
+        "**3. <@102>**\n"
+        "**4. <@103>**\n"
+        "**5. <@104>**\n"
+        "**6. <@105>**\n"
+        "**7. <@106>**\n"
+        "**8. <@107>**\n"
+        "9. <@108>\n"
+        "10. <@109>"
+    )
     assert (
         len(member_list(guild, tuple(10**20 - 1 - index for index in range(200))))
         <= 1024
@@ -983,17 +1595,37 @@ async def test_setup_draft_editing_and_save_end_to_end(
         discord.ui.Select, "values", new_callable=PropertyMock, return_value=["5"]
     ):
         await phase_select.callback(context)
-    hour_select = next(item for item in panel.children if isinstance(item, HourSelect))
+    start_time = next(
+        item for item in panel.children if isinstance(item, PhaseTimeButton)
+    )
+    await start_time.callback(context)
+    time_modal = context.response.send_modal.await_args.args[0]
+    assert isinstance(time_modal, PhaseTimeModal)
+    assert time_modal.hour.default == "22"
+    assert time_modal.minute.default == "00"
     with patch.object(
-        discord.ui.Select, "values", new_callable=PropertyMock, return_value=["22"]
+        discord.ui.TextInput,
+        "value",
+        new_callable=PropertyMock,
+        side_effect=["22", "15"],
     ):
-        await hour_select.callback(context)
+        await time_modal.on_submit(context)
+    duration_select = next(
+        item for item in panel.children if isinstance(item, DurationSelect)
+    )
+    with patch.object(
+        discord.ui.Select, "values", new_callable=PropertyMock, return_value=["1"]
+    ):
+        await duration_select.callback(context)
     await setup_button(panel, "back").callback(context)
     picker = QsRoleSelection(panel)
     await picker.select_entities(context, [31])
     modal = DateModal(panel)
     with patch.object(
-        modal.eruption, "parse", return_value=datetime(2026, 11, 2, tzinfo=UTC)
+        discord.ui.TextInput,
+        "value",
+        new_callable=PropertyMock,
+        side_effect=["2026-11-02", "00:00"],
     ):
         await modal.on_submit(context)
     configuration = await environment.module.qs.get(10, 20)
@@ -1011,7 +1643,10 @@ async def test_setup_draft_editing_and_save_end_to_end(
     assert configuration.role_id == 31
     assert configuration.date == "2026-11-02"
     phases = await environment.module.qs.phases(10, 20)
-    assert phases[-1].starts_at == 1793656800
+    assert phases[-1].starts_at == int(
+        datetime(2026, 11, 2, 22, 15, tzinfo=UTC).timestamp()
+    )
+    assert phases[-1].duration_hours == 1
     assert len(environment.messages) == 12
     panel.stop()
 
@@ -1039,7 +1674,15 @@ async def test_qs_setup_command_opens_owner_bound_shared_panel(
 async def test_successful_and_invalid_base_form_submission(
     environment: SimpleNamespace,
 ) -> None:
-    confirmation = BaseReportConfirmation(environment.module, 20, 5, 100)
+    confirmation = BaseReportConfirmation(
+        environment.module,
+        20,
+        5,
+        100,
+        choices=(AccountChoice("account-0", game_account(100), game_account(100)),),
+        prompt="Confirm report",
+    )
+    confirmation.select_account("account-0")
     invalid = interaction(environment)
     invalid.user.id = 101
     await confirmation.confirm.callback(invalid)
@@ -1047,11 +1690,12 @@ async def test_successful_and_invalid_base_form_submission(
     assert await environment.module.qs.reports(10, 20) == ()
     context = interaction(environment)
     context.message = SimpleNamespace(delete=AsyncMock())
-    assert all(isinstance(item, discord.ui.Button) for item in confirmation.children)
+    assert confirmation.selection in confirmation.children
     await confirmation.confirm.callback(context)
     reports = await environment.module.qs.reports(10, 20)
     assert len(reports) == 1
     assert reports[0].display_name == "Player 100"
+    assert reports[0].game_account == game_account(100)
     assert reports[0].phase_index == 5
 
 
@@ -1119,27 +1763,20 @@ async def test_manager_routes_raw_phase_thread_deletion(
 
 
 @pytest.mark.asyncio
-async def test_four_phases_and_durations_saved_from_setup(
+async def test_five_phases_and_durations_saved_from_setup(
     environment: SimpleNamespace,
 ) -> None:
     panel = await setup_view(environment.module, 20, 100)
     context = interaction(environment)
     await setup_button(panel, "phases").callback(context)
-    selector = next(
-        item for item in panel.children if isinstance(item, PhaseCountSelect)
-    )
-    with patch.object(
-        discord.ui.Select, "values", new_callable=PropertyMock, return_value=["4"]
-    ):
-        await selector.callback(context)
-    assert len(panel.hours) == 4
+    assert len(panel.hours) == 5
     assert (
         len(
             next(
                 item for item in panel.children if isinstance(item, PhaseSelect)
             ).options
         )
-        == 4
+        == 5
     )
     duration = next(item for item in panel.children if isinstance(item, DurationSelect))
     with patch.object(
@@ -1155,10 +1792,10 @@ async def test_four_phases_and_durations_saved_from_setup(
         )
         await save.callback(context)
     phases = await environment.module.qs.phases(10, 20)
-    assert len(phases) == 4
+    assert len(phases) == 5
     assert phases[0].duration_hours == 3
     assert phases[0].ends_at - phases[0].starts_at == 10800
-    assert len(environment.threads) == 4
+    assert len(environment.threads) == 5
     panel.stop()
 
 
@@ -1182,7 +1819,7 @@ async def test_reset_preserves_threads_clears_all_messages_data_and_notification
 ) -> None:
     module = environment.module
     await module.qs.toggle(10, 20, 1, 100)
-    await module.qs.report(10, 20, 1, 100, "Player", 1)
+    await module.qs.report(10, 20, 1, 100, game_account(100), "Player", 1)
     await module.qs.notified(10, 20, "start")
     await module.qs.notified(10, 20, "end")
     await module.qs.notified(10, 20, "goal", 1)
@@ -1194,15 +1831,15 @@ async def test_reset_preserves_threads_clears_all_messages_data_and_notification
     assert await module.reset_tool(
         20,
         "2026-11-02",
-        (0, 3, 6, 22),
+        (0, 3, 6, 20, 22),
         eruption_start=1793577600,
-        durations=(3, 1, 2, 2),
+        durations=(3, 1, 2, 1, 2),
     )
     new_phases = await module.qs.phases(10, 20)
     assert [phase.thread_id for phase in new_phases] == [
-        phase.thread_id for phase in phases[:4]
+        phase.thread_id for phase in phases
     ]
-    assert len(environment.threads) == 4
+    assert len(environment.threads) == 5
     environment.channel.purge.assert_awaited_once()
     channel_purge = environment.channel.purge.await_args.kwargs
     assert channel_purge["limit"] is None
@@ -1309,6 +1946,7 @@ async def test_reset_draft_does_not_delete_until_confirmation(
     environment: SimpleNamespace,
 ) -> None:
     panel = await setup_view(environment.module, 20, 100, reset_mode=True)
+    panel.minutes[0] = 15
     context = interaction(environment)
     save = next(
         item
@@ -1322,6 +1960,10 @@ async def test_reset_draft_does_not_delete_until_confirmation(
     with patch.object(confirmation, "finish", AsyncMock()):
         await confirmation.confirm.callback(context)
     environment.channel.purge.assert_awaited()
+    phases = await environment.module.qs.phases(10, 20)
+    assert phases[0].starts_at == int(
+        datetime(2026, 11, 1, 0, 15, tzinfo=UTC).timestamp()
+    )
     panel.stop()
 
 
@@ -1367,7 +2009,7 @@ async def test_start_end_notifications_once_and_no_offline_catchup(
         30,
         "2026-11-02",
         "UTC",
-        (end, end + 7200, end + 14400, end + 21600),
+        (end, end + 7200, end + 14400, end + 21600, end + 28800),
         eruption_start=end,
     )
     with patch.object(module, "ping", AsyncMock(return_value=True)) as ping:
@@ -1384,11 +2026,13 @@ async def test_eight_base_target_ping_exactly_once_per_phase(
     module = environment.module
     with patch.object(module, "ping", AsyncMock(return_value=True)) as ping:
         for number in range(1, 8):
-            await module.report_base(interaction(environment, member_id=number), 20, 1)
+            await submit_base_report(
+                module, interaction(environment, member_id=number), 1
+            )
         ping.assert_not_awaited()
-        await module.report_base(interaction(environment, member_id=8), 20, 1)
+        await submit_base_report(module, interaction(environment, member_id=8), 1)
         ping.assert_awaited_once_with(20, event="goal", phase_index=1)
-        await module.report_base(interaction(environment, member_id=9), 20, 1)
+        await submit_base_report(module, interaction(environment, member_id=9), 1)
         await module.notifications.goals(20)
         assert ping.await_count == 1
     reports = await module.qs.reports(10, 20)
@@ -1491,12 +2135,13 @@ async def test_reset_command_opens_schedule_draft_and_remove_command_only_previe
 
 
 @pytest.mark.asyncio
-async def test_setup_refuses_to_drop_phase_with_reported_bases(
+async def test_module_rejects_non_five_phase_schedule(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.qs.report(10, 20, 5, 100, "Player", 1)
-    assert not await module.configure(20, 30, "2026-11-01", (0, 2, 4, 6))
+    await module.qs.report(10, 20, 5, 100, game_account(100), "Player", 1)
+    with pytest.raises(ValueError):
+        await module.configure(20, 30, "2026-11-01", (0, 2, 4, 6))
     assert len(await module.qs.phases(10, 20)) == 5
     assert len(environment.threads) == 5
     assert len(await module.qs.reports(10, 20)) == 1
@@ -1543,10 +2188,10 @@ async def test_target_notification_failure_is_reported_and_retryable(
 ) -> None:
     module = environment.module
     for number in range(1, 8):
-        await module.qs.report(10, 20, 1, number, "Player", 1)
+        await module.qs.report(10, 20, 1, number, game_account(number), "Player", 1)
     context = interaction(environment, member_id=8)
     with patch.object(module, "ping", AsyncMock(return_value=False)):
-        await module.report_base(context, 20, 1)
+        await submit_base_report(module, context, 1)
     assert "Ziel-Ping" in context.followup.send.await_args.args[0]
     assert not (await module.qs.phases(10, 20))[0].goal_notified
     with patch.object(module, "ping", AsyncMock(return_value=True)) as ping:
@@ -1561,23 +2206,30 @@ async def test_player_name_is_shown_without_mentions_and_survives_departure(
     module = environment.module
     context = interaction(environment)
     context.user.display_name = "Moon Player"
-    await module.report_base(context, 20, 1)
+    await submit_base_report(module, context, 1)
     reports = await module.qs.reports(10, 20)
     assert reports[0].display_name == "Moon Player"
     listing = bases_embeds(environment.guild, reports)[0].description
-    assert "Moon Player" in listing
+    assert game_account(100) in listing
     assert "<@100>" not in listing
     environment.guild.get_member.return_value = SimpleNamespace(display_name="New Name")
-    assert "New Name" in bases_embeds(environment.guild, reports)[0].description
+    assert game_account(100) in bases_embeds(environment.guild, reports)[0].description
     environment.guild.get_member.return_value = None
-    assert "Moon Player" in bases_embeds(environment.guild, reports)[0].description
+    assert game_account(100) in bases_embeds(environment.guild, reports)[0].description
 
 
 @pytest.mark.asyncio
 async def test_cancel_base_report_does_not_record_data(
     environment: SimpleNamespace,
 ) -> None:
-    view = BaseReportConfirmation(environment.module, 20, 1, 100)
+    view = BaseReportConfirmation(
+        environment.module,
+        20,
+        1,
+        100,
+        choices=(AccountChoice("account-0", game_account(100), game_account(100)),),
+        prompt="Confirm report",
+    )
     context = interaction(environment)
     context.message = SimpleNamespace(delete=AsyncMock())
     await view.cancel.callback(context)
@@ -1633,8 +2285,8 @@ async def test_guild_timezone_update_refreshes_phase_period_buttons(
         20,
         30,
         "2026-11-01",
-        (22, 8, 12, 16),
-        durations=(3, 2, 2, 2),
+        (22, 8, 12, 16, 19),
+        durations=(3, 2, 2, 2, 2),
         eruption_start=start,
     )
     assert await module._refresh(20)
@@ -1645,6 +2297,7 @@ async def test_guild_timezone_update_refreshes_phase_period_buttons(
         "Phase 2 : 08:00 – 10:00",
         "Phase 3 : 12:00 – 14:00",
         "Phase 4 : 16:00 – 18:00",
+        "Phase 5 : 19:00 – 21:00",
     ]
 
     environment.client.get_guild_timezone.return_value = "Europe/Berlin"
@@ -1658,6 +2311,7 @@ async def test_guild_timezone_update_refreshes_phase_period_buttons(
         "Phase 2 : 09:00 – 11:00",
         "Phase 3 : 13:00 – 15:00",
         "Phase 4 : 17:00 – 19:00",
+        "Phase 5 : 20:00 – 22:00",
     ]
     for phase, button in zip(phases, overview.children):
         thread = module._views[phase.message_id]
@@ -1737,7 +2391,7 @@ async def test_deleted_participant_embed_is_restored_without_duplicate_status(
     assert restored.message_id == phase.message_id
     message = environment.messages[restored.members_message_id]
     assert message.sent_kwargs["view"] is None
-    assert message.sent_kwargs["embeds"][0].fields[0].value == "1. <@100>"
+    assert message.sent_kwargs["embeds"][0].fields[0].value == "**1. <@100>**"
     assert len(environment.messages) == 12
 
 
@@ -1798,13 +2452,14 @@ async def test_player_withdraws_own_report_and_can_report_again(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.report_base(interaction(environment), 20, 1)
+    await submit_base_report(module, interaction(environment), 1)
     player = interaction(environment)
     player.user.roles = [environment.role]
     phase = (await module.qs.phases(10, 20))[0]
     await module._views[phase.message_id].children[1].callback(player)
     confirmation = player.response.send_message.await_args.kwargs["view"]
     assert isinstance(confirmation, BaseReportConfirmation)
+    confirmation.select_account("report-0")
     confirmed = interaction(environment)
     confirmed.user.roles = [environment.role]
     await confirmation.confirm.callback(confirmed)
@@ -1816,7 +2471,7 @@ async def test_player_withdraws_own_report_and_can_report_again(
         .edit.await_args.kwargs["embeds"][0]
         .description
     )
-    await module.report_base(interaction(environment), 20, 2)
+    await submit_base_report(module, interaction(environment), 2)
     assert (await module.qs.reports(10, 20))[0].phase_index == 2
 
 
@@ -1825,17 +2480,17 @@ async def test_withdrawal_rejects_other_player_wrong_phase_and_lost_role(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.report_base(interaction(environment), 20, 1)
+    await submit_base_report(module, interaction(environment), 1)
     player = interaction(environment, member_id=101)
     player.user.roles = [environment.role]
-    await module.withdraw_base(player, 20, 1, 100)
+    await retract_base_report(module, player, 1, 100)
     assert player.followup.send.await_count == 1
     own = interaction(environment)
     own.user.roles = [environment.role]
-    await module.withdraw_base(own, 20, 2, 100)
+    await retract_base_report(module, own, 2, 100)
     assert "Keine passende" in own.followup.send.await_args.args[0]
     denied = interaction(environment, roles=False)
-    await module.withdraw_base(denied, 20, 1, 100)
+    await retract_base_report(module, denied, 1, 100)
     assert len(await module.qs.reports(10, 20)) == 1
 
 
@@ -1844,7 +2499,7 @@ async def test_moderator_command_withdraws_foreign_report_and_revalidates_permis
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.report_base(interaction(environment, member_id=101), 20, 1)
+    await submit_base_report(module, interaction(environment, member_id=101), 1)
     moderator = interaction(environment)
     moderator.user.roles = [environment.moderator]
     phase = (await module.qs.phases(10, 20))[0]
@@ -1858,6 +2513,7 @@ async def test_moderator_command_withdraws_foreign_report_and_revalidates_permis
     await group.withdraw.callback(group, moderator, target)
     confirmation = moderator.response.send_message.await_args.kwargs["view"]
     assert isinstance(confirmation, BaseReportConfirmation)
+    confirmation.select_account("report-0")
     assert "Moon" in moderator.response.send_message.await_args.args[0]
     assert "101" not in moderator.response.send_message.await_args.args[0]
     foreign = interaction(environment, member_id=102)
@@ -1869,7 +2525,7 @@ async def test_moderator_command_withdraws_foreign_report_and_revalidates_permis
     assert len(await module.qs.reports(10, 20)) == 1
     allowed = interaction(environment)
     allowed.user.roles = [environment.moderator]
-    await module.withdraw_base(allowed, 20, 1, 101)
+    await retract_base_report(module, allowed, 1, 101)
     assert await module.qs.reports(10, 20) == ()
 
 
@@ -1877,9 +2533,23 @@ async def test_moderator_command_withdraws_foreign_report_and_revalidates_permis
 async def test_withdrawal_cancel_retains_data_and_closes_dialog(
     environment: SimpleNamespace,
 ) -> None:
-    await environment.module.report_base(interaction(environment), 20, 1)
+    await submit_base_report(environment.module, interaction(environment), 1)
     confirmation = BaseReportConfirmation(
-        environment.module, 20, 1, 100, withdraw_member_id=100
+        environment.module,
+        20,
+        1,
+        100,
+        choices=(
+            AccountChoice(
+                "account-0",
+                game_account(100),
+                game_account(100),
+                "Phase 1",
+            ),
+        ),
+        prompt="Retract report",
+        withdraw_member_id=100,
+        withdraw_reports=await environment.module.qs.reports(10, 20),
     )
     context = interaction(environment)
     await confirmation.cancel.callback(context)
@@ -1894,12 +2564,12 @@ async def test_withdrawal_does_not_retrigger_goal_ping(
     module = environment.module
     with patch.object(module, "ping", AsyncMock(return_value=True)) as ping:
         for member_id in range(1, 9):
-            await module.report_base(
-                interaction(environment, member_id=member_id), 20, 1
+            await submit_base_report(
+                module, interaction(environment, member_id=member_id), 1
             )
-        await module.withdraw_base(interaction(environment), 20, 1, 8)
+        await retract_base_report(module, interaction(environment), 1, 8)
         assert len(await module.qs.reports(10, 20)) == 7
-        await module.report_base(interaction(environment, member_id=8), 20, 1)
+        await submit_base_report(module, interaction(environment, member_id=8), 1)
         assert ping.await_count == 1
     assert (await module.qs.phases(10, 20))[0].goal_notified
 
@@ -1909,14 +2579,15 @@ async def test_moderator_button_retracts_only_own_report_without_selection(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.report_base(interaction(environment), 20, 1)
+    await submit_base_report(module, interaction(environment), 1)
     context = interaction(environment)
     phase = (await module.qs.phases(10, 20))[0]
     await module._views[phase.message_id].children[1].callback(context)
     view = context.response.send_message.await_args.kwargs["view"]
     assert isinstance(view, BaseReportConfirmation)
     assert view.withdraw_member_id == 100
-    assert all(isinstance(item, discord.ui.Button) for item in view.children)
+    assert view.selection in view.children
+    view.select_account("report-0")
     assert "Player 100" in context.response.send_message.await_args.args[0]
     view.stop()
 
@@ -1937,6 +2608,7 @@ async def test_moderator_report_command_saves_target_display_name(
     group = QsGroup()
     await group.report.callback(group, moderator, target, 2)
     view = moderator.response.send_message.await_args.kwargs["view"]
+    view.select_account("account-0")
     assert "Moon Player" in moderator.response.send_message.await_args.args[0]
     assert "101" not in moderator.response.send_message.await_args.args[0]
     assert await module.qs.reports(10, 20) == ()
@@ -1948,7 +2620,7 @@ async def test_moderator_report_command_saves_target_display_name(
     assert reports[0].member_id == 101
     assert reports[0].display_name == "Moon Player"
     assert reports[0].phase_index == 2
-    await module.report_base(interaction(environment), 20, 1, member=target)
+    await submit_base_report(module, interaction(environment), 1, member=target)
     assert len(await module.qs.reports(10, 20)) == 1
 
 
@@ -1965,12 +2637,13 @@ async def test_moderator_addition_rejects_lost_permissions_and_invalid_phase(
     target = interaction(environment, member_id=101).user
     await group.report.callback(group, moderator, target, 2)
     view = moderator.response.send_message.await_args.kwargs["view"]
+    view.select_account("account-0")
     denied = interaction(environment)
     denied.user.roles = [environment.role]
     await view.confirm.callback(denied)
     assert await module.qs.reports(10, 20) == ()
     invalid = interaction(environment)
-    await module.report_base(invalid, 20, 6, member=target)
+    await submit_base_report(module, invalid, 6, member=target)
     assert await module.qs.reports(10, 20) == ()
     assert invalid.followup.send.await_count == 1
 
@@ -2004,9 +2677,9 @@ async def test_actions_acknowledge_before_waiting_for_channel_lock(
     if action == "signup":
         task = asyncio.create_task(module.toggle_phase(context, 20, 1))
     elif action == "report":
-        task = asyncio.create_task(module.report_base(context, 20, 1))
+        task = asyncio.create_task(submit_base_report(module, context, 1))
     else:
-        task = asyncio.create_task(module.withdraw_base(context, 20, 1, 100))
+        task = asyncio.create_task(retract_base_report(module, context, 1, 100))
     try:
         await asyncio.wait_for(acknowledged.wait(), timeout=1)
         assert not task.done()
@@ -2071,8 +2744,8 @@ async def test_mixed_mutations_coalesce_without_editing_unrelated_messages(
     configuration = await module.qs.get(10, 20)
     await asyncio.gather(
         module.toggle_phase(interaction(environment, member_id=100), 20, 1),
-        module.report_base(interaction(environment, member_id=101), 20, 2),
-        module.report_base(interaction(environment, member_id=102), 20, 2),
+        submit_base_report(module, interaction(environment, member_id=101), 2),
+        submit_base_report(module, interaction(environment, member_id=102), 2),
     )
     expected = {
         configuration.message_id,
@@ -2166,16 +2839,16 @@ async def test_withdrawal_batch_updates_only_base_surfaces(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.qs.report(10, 20, 1, 100, "First", 0)
-    await module.qs.report(10, 20, 1, 101, "Second", 1)
+    await module.qs.report(10, 20, 1, 100, game_account(100), "First", 0)
+    await module.qs.report(10, 20, 1, 101, game_account(101), "Second", 1)
     assert await module.ensure()
     for message in environment.messages.values():
         message.edit.reset_mock()
     configuration = await module.qs.get(10, 20)
     phases = await module.qs.phases(10, 20)
     await asyncio.gather(
-        module.withdraw_base(interaction(environment), 20, 1, 100),
-        module.withdraw_base(interaction(environment), 20, 1, 101),
+        retract_base_report(module, interaction(environment), 1, 100),
+        retract_base_report(module, interaction(environment), 1, 101),
     )
     expected = {
         configuration.message_id,
@@ -2203,13 +2876,13 @@ async def test_selective_signup_update_recreates_deleted_participant_message(
         .sent_kwargs["embeds"][0]
         .fields[0]
         .value
-        == "1. <@100>"
+        == "**1. <@100>**"
     )
     environment.messages[phase.message_id].edit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_phase_start_mentions_only_enrolled_players_once(
+async def test_phase_start_pings_qs_role_with_enrolled_players_once(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
@@ -2225,9 +2898,13 @@ async def test_phase_start_mentions_only_enrolled_players_once(
     message = calls[0].kwargs
     assert "<@100>" in message["content"] and "<@101>" in message["content"]
     assert "<@102>" not in message["content"]
+    assert (
+        "<@&30> beachtet die Anmeldungen bei den Basenzerstörungen."
+        in message["content"]
+    )
     mentions = message["allowed_mentions"]
-    assert {member.id for member in mentions.users} == {100, 101}
-    assert not mentions.roles and not mentions.everyone
+    assert mentions.roles == [environment.role]
+    assert not mentions.users and not mentions.everyone
     assert (await module.qs.phases(10, 20))[0].start_notified
     restored = QsModule(environment.guild, environment.client)
     await restored.notifications.tick(phase.starts_at + 31, phase.starts_at + 1)
@@ -2281,7 +2958,13 @@ async def test_phase_start_markers_reset_with_new_schedule(
     await module.qs.notified(10, 20, "phase_start", 1)
     assert (await module.qs.phases(10, 20))[0].start_notified
     await module.qs.configure(
-        10, 20, 30, "2026-11-01", "UTC", (0, 7200, 14400, 21600), reset=True
+        10,
+        20,
+        30,
+        "2026-11-01",
+        "UTC",
+        (0, 7200, 14400, 21600, 28800),
+        reset=True,
     )
     assert all(not phase.start_notified for phase in await module.qs.phases(10, 20))
 
@@ -2291,13 +2974,13 @@ async def test_withdrawal_database_error_keeps_report_and_notifies(
     environment: SimpleNamespace,
 ) -> None:
     module = environment.module
-    await module.report_base(interaction(environment), 20, 1)
+    await submit_base_report(module, interaction(environment), 1)
     context = interaction(environment)
     with patch.object(
         module.qs,
         "withdraw_report",
         AsyncMock(side_effect=aiosqlite.OperationalError("failed")),
     ):
-        await module.withdraw_base(context, 20, 1, 100)
+        await retract_base_report(module, context, 1, 100)
     assert len(await module.qs.reports(10, 20)) == 1
     assert context.followup.send.await_count == 1

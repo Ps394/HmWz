@@ -128,9 +128,6 @@ async def reset_event(
                 thread = await existing_thread(module, channel_id, phase)
                 if thread is None:
                     continue
-                if phase.index > len(starts):
-                    await delete_thread(thread, reason="Qs phase removed on reset")
-                    continue
                 if thread.archived or thread.locked:
                     await edit_thread(thread, archived=False, locked=False)
                 await purge_messages(thread, limit=None, reason="Qs cycle reset")
