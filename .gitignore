@@ -3,6 +3,8 @@
 *.db-shm
 *.db-wal
 
+
+html_to_json/
 __pycache__/
 *.py[cod]
 *.egg-info/

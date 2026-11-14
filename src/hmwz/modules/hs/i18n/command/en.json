@@ -15,6 +15,7 @@
   "command.description.wz.channel.add": "Add channels to the WZ cleanup list",
   "command.description.wz.channel.remove": "Remove channels from the WZ cleanup list",
   "command.description.wz.registration.account_add": "Link an in-game account to your Discord member",
+  "command.description.wz.registration.account_import": "Import game accounts from a JSON file",
   "command.description.wz.registration.account_list": "List your linked in-game accounts",
   "command.description.wz.registration.account_remove": "Unlink one of your in-game accounts",
   "command.description.wz.reset_channels": "Clean all configured WZ channels",
@@ -35,6 +36,7 @@
   "parameter.description.qs.setup.role_add.role": "QS registration role",
   "parameter.description.qs.setup.role_remove.role": "QS registration role to remove",
   "parameter.description.wz.registration.account": "In-game account name",
+  "parameter.description.wz.registration.account_import.file": "JSON file containing Discord usernames and players",
   "parameter.description.wz.registration.register.role": "Registration role",
   "parameter.description.wz.registration.reset.ephemeral": "Whether the response should be private (default: false)",
   "parameter.description.wz.registration.reset.purge": "Whether configured channels are purged during reset (default: false)"

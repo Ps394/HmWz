@@ -15,6 +15,7 @@
   "command.description.wz.channel.add": "Fügt Kanäle zur WZ-Bereinigungsliste hinzu",
   "command.description.wz.channel.remove": "Entfernt Kanäle aus der WZ-Bereinigungsliste",
   "command.description.wz.registration.account_add": "Einen Ingame-Account mit deinem Discord-Mitglied verknüpfen",
+  "command.description.wz.registration.account_import": "Ingame-Accounts aus einer JSON-Datei importieren",
   "command.description.wz.registration.account_list": "Deine verknüpften Ingame-Accounts anzeigen",
   "command.description.wz.registration.account_remove": "Einen verknüpften Ingame-Account entfernen",
   "command.description.wz.reset_channels": "Bereinigt alle konfigurierten WZ-Kanäle",
@@ -35,6 +36,7 @@
   "parameter.description.qs.setup.role_add.role": "QS-Anmeldungsrolle",
   "parameter.description.qs.setup.role_remove.role": "Zu entfernende QS-Anmeldungsrolle",
   "parameter.description.wz.registration.account": "Name des Ingame-Accounts",
+  "parameter.description.wz.registration.account_import.file": "JSON-Datei mit Discord-Benutzern und Spielern",
   "parameter.description.wz.registration.register.role": "Anmeldungsrolle",
   "parameter.description.wz.registration.reset.ephemeral": "Festlegen, ob die Antwort privat sein soll (Standard: false)",
   "parameter.description.wz.registration.reset.purge": "Festlegen, ob konfigurierte Kanäle beim Reset bereinigt werden (Standard: false)"

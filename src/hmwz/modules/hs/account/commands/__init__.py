@@ -2,7 +2,7 @@ from discord.app_commands import Group, locale_str
 
 from hmwz.i18n import CommandLocalizations
 
-from . import add, list, remove
+from . import add, import_accounts, list, remove
 
 __all__ = ["AccountGroup"]
 
@@ -19,5 +19,6 @@ class AccountGroup(Group):
             ),
         )
         self.add_command(add.account_add)
+        self.add_command(import_accounts.account_import)
         self.add_command(remove.account_remove)
         self.add_command(list.account_list)

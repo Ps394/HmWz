@@ -90,6 +90,20 @@ Autocomplete, zum Beispiel `Europe/Berlin`. Moderatorrolle erforderlich.
 Spielkonten sind pro Server eindeutig einem Discord-Mitglied zugeordnet. Die
 Konten werden für Registrierungsbefehle verwendet.
 
+### `/account account-import`
+
+Importiert Spielkonten aus einer JSON-Datei für den aktuellen Server.
+Moderatorrolle und aktivierter Server Members Intent sind erforderlich.
+Die Datei darf höchstens 2 MiB groß sein und enthält eine Liste von Objekten
+mit `discord_username` und `players`. Discord-Benutzernamen werden eindeutig
+aufgelöst; fehlende oder mehrdeutige Benutzer und fremd vergebene Spielkonten
+werden übersprungen und in einem privaten Bericht aufgeführt. Bestehende
+Verknüpfungen bleiben unverändert. Der Import kann wiederholt werden.
+
+| Parameter | Typ | Beschreibung |
+| --- | --- | --- |
+| `file` | Anhang | JSON-Datei mit den zu importierenden Spielkonten. |
+
 ### `/account account-add`
 
 Verknüpft einen Ingame-Account mit deinem Discord-Mitglied. Ein Account darf
