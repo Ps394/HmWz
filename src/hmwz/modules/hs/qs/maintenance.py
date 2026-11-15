@@ -48,14 +48,14 @@ def stop_views(
     ids.update(phase.message_id for phase in phases)
     for message_id in ids:
         if message_id is not None:
-            view = module._views.pop(message_id, None)
+            view = module.publisher.views.pop(message_id, None)
             if view is not None:
                 view.stop()
 
 
 async def remove_event(module: QsModule, channel_id: int) -> bool:
     """Delete managed threads, overview messages and data, preserving the main channel."""
-    async with module._lock(channel_id):
+    async with module.publisher.lock(channel_id):
         configuration = await module.qs.get(module.guild.id, channel_id)
         if configuration is None:
             return True
@@ -106,7 +106,7 @@ async def reset_event(
     durations: tuple[int, ...],
 ) -> bool:
     """Purge all event-channel messages and atomically start a fresh cycle."""
-    async with module._lock(channel_id):
+    async with module.publisher.lock(channel_id):
         configuration = await module.qs.get(module.guild.id, channel_id)
         channel = module.guild.get_channel(channel_id)
         if (
@@ -143,7 +143,7 @@ async def reset_event(
                 durations=durations,
                 reset=True,
             )
-            return await module._refresh(channel_id)
+            return await module.publisher.refresh(channel_id)
         except (discord.HTTPException, aiosqlite.Error, RuntimeError):
             _logger.exception(
                 "%s Qs reset failed; retry reset to finish.", log_guild(module.guild)

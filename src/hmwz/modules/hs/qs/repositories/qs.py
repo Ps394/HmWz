@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from hmwz.sqlite_db import Base, Database
 
-from ..models import BaseReport, Configuration, Phase, PingSettings, validate_schedule
+from ..models import (
+    BaseReport,
+    Configuration,
+    MemberSignup,
+    Phase,
+    PingSettings,
+    validate_schedule,
+)
 from .bases import BaseReportRepository
 from .members import MemberRepository
 from .phases import PhaseRepository
@@ -73,6 +80,10 @@ class QsRepository(Base):
                 ("StartNotified", "INTEGER NOT NULL DEFAULT 0"),
             )
         ):
+            return False
+        if not await self._members.ensure_columns((("GameAccount", "TEXT"),)):
+            return False
+        if not await self._members.migrate_schema():
             return False
         if not await self.database.execute(
             "UPDATE HsQsEvents SET EruptionStart=(SELECT MIN(StartsAt) FROM HsQsPhases "
@@ -251,6 +262,12 @@ class QsRepository(Base):
         """Return a phase's signed-up Discord members."""
         return await self._members.get(guild_id, channel_id, phase_index)
 
+    async def member_signups(
+        self, guild_id: int, channel_id: int, phase_index: int
+    ) -> tuple[MemberSignup, ...]:
+        """Return a phase's member signups with their selected accounts."""
+        return await self._members.get_signups(guild_id, channel_id, phase_index)
+
     async def save_members_message(
         self, guild_id: int, channel_id: int, phase_index: int, message_id: int
     ) -> bool:
@@ -260,10 +277,43 @@ class QsRepository(Base):
         )
 
     async def toggle(
-        self, guild_id: int, channel_id: int, phase_index: int, member_id: int
+        self,
+        guild_id: int,
+        channel_id: int,
+        phase_index: int,
+        member_id: int,
+        game_account: str | None = None,
     ) -> bool:
         """Atomically toggle phase participation and return the new joined state."""
-        return await self._members.toggle(guild_id, channel_id, phase_index, member_id)
+        return await self._members.toggle(
+            guild_id, channel_id, phase_index, member_id, game_account
+        )
+
+    async def join(
+        self,
+        guild_id: int,
+        channel_id: int,
+        phase_index: int,
+        member_id: int,
+        game_account: str | None,
+    ) -> bool:
+        """Add or update one phase signup without removing an existing signup."""
+        return await self._members.join(
+            guild_id, channel_id, phase_index, member_id, game_account
+        )
+
+    async def remove_signup(
+        self,
+        guild_id: int,
+        channel_id: int,
+        phase_index: int,
+        member_id: int,
+        game_account: str | None,
+    ) -> bool:
+        """Remove one account signup without affecting the member's others."""
+        return await self._members.remove_signup(
+            guild_id, channel_id, phase_index, member_id, game_account
+        )
 
     async def reports(self, guild_id: int, channel_id: int) -> tuple[BaseReport, ...]:
         """Return all player reports in submission order."""

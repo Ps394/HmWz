@@ -29,14 +29,8 @@ from hmwz.ui.components.localized import LocalizedButton, LocalizedSelect
 
 from .models import PHASE_COUNT, PingSettings, phase_starts, validate_schedule
 from .models.ping_settings import PING_EVENTS, PingEvent
+from .access import can_manage
 from .module import QsModule
-
-
-def can_manage(member: discord.Member | discord.User) -> bool:
-    """Match the project's moderator/officer role convention."""
-    return isinstance(member, discord.Member) and any(
-        role.name in MODERATOR_ROLES for role in member.roles
-    )
 
 
 class PhaseSelect(LocalizedSelect):
@@ -170,44 +164,32 @@ class DateModal(discord.ui.Modal):
 
 
 class PhaseTimeModal(discord.ui.Modal):
-    """Edit the selected phase's local start hour and minute."""
+    """Edit the selected phase's local start time in HH:MM format."""
 
     def __init__(self, panel: QsSetupView) -> None:
         super().__init__(title=t(panel.module.guild, "qs.event.time_title"))
         self.panel = panel
         self.phase_index = panel.selected_phase
         index = self.phase_index - 1
-        self.hour = discord.ui.TextInput(
-            label=t(panel.module.guild, "qs.event.start_hour"),
-            default=f"{panel.hours[index]:02}",
-            min_length=1,
-            max_length=2,
+        self.time_input = discord.ui.TextInput(
+            label=t(panel.module.guild, "qs.event.phase_start_time"),
+            default=f"{panel.hours[index]:02}:{panel.minutes[index]:02}",
+            min_length=5,
+            max_length=5,
         )
-        self.minute = discord.ui.TextInput(
-            label=t(panel.module.guild, "qs.event.start_minute"),
-            default=f"{panel.minutes[index]:02}",
-            min_length=1,
-            max_length=2,
-        )
-        self.add_item(self.hour)
-        self.add_item(self.minute)
+        self.add_item(self.time_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        """Validate both numeric fields before updating the unsaved draft."""
+        """Validate the HH:MM value before updating the unsaved draft."""
         if not await self.panel.interaction_check(interaction):
             return
-        hour_text, minute_text = self.hour.value.strip(), self.minute.value.strip()
-        if (
-            not hour_text.isascii()
-            or not hour_text.isdigit()
-            or not minute_text.isascii()
-            or not minute_text.isdigit()
-        ):
+        time_text = self.time_input.value.strip()
+        if re.fullmatch(r"[0-9]{2}:[0-9]{2}", time_text) is None:
             await send_interaction_response(
                 interaction, t(interaction, "qs.event.invalid_phase_time")
             )
             return
-        hour, minute = int(hour_text), int(minute_text)
+        hour, minute = (int(value) for value in time_text.split(":"))
         if not 0 <= hour <= 23 or not 0 <= minute <= 59:
             await send_interaction_response(
                 interaction, t(interaction, "qs.event.invalid_phase_time")
@@ -220,7 +202,7 @@ class PhaseTimeModal(discord.ui.Modal):
 
 
 class PhaseTimeButton(LocalizedButton):
-    """Open numeric inputs for the selected phase's start time."""
+    """Open the time input for the selected phase's start time."""
 
     def __init__(self, panel: QsSetupView) -> None:
         super().__init__(

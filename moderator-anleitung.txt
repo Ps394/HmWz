@@ -86,22 +86,27 @@ Im Setup-Menü stehen folgende Einstellungen zur Verfügung:
   verwenden die globale Guild-Zeitzone. Moderatoren setzen sie mit
   `/set-timezone`, zum Beispiel `Europe/Berlin`. Die Anzeige von Discord-
   Zeitstempeln richtet sich anschließend nach der lokalen Zeitzone der Person.
-* **Rush-Start:** Startdatum und -uhrzeit des Rush-Zyklus.
+* **Rush-Start:** Startdatum und -uhrzeit des Rush-Zyklus in getrennten Feldern.
 * **Zielzeit:** Optionaler frühester Endzeitpunkt. Spenden können die Rush-Zeit
   nicht über dieses Ziel hinaus verkürzen. Das Ziel muss nach dem Start und
   mindestens 24 Stunden vor dem ursprünglichen Ende liegen.
 * **Spendenhistorie:** Blendet die Liste der Spenden des aktuellen Zyklus ein
   oder aus.
 * **All-Time-Spendencharts:** Blendet das kanalbezogene Ranking über mehrere
-  Zyklen ein oder aus.
+  Zyklen ein oder aus. Der Titel enthält den Namen der zugehörigen
+  Spendenübersicht.
+* **Ranking-Kanal:** Optional ein separater Textkanal für das All-Time-Ranking;
+  standardmäßig wird der Spendenkanal verwendet. Der Bot benötigt dort die
+  Rechte „Kanäle ansehen“, „Nachrichten senden“, „Nachrichtenverlauf anzeigen“
+  und „Links einbetten“.
 * **Spendenstatus:** Aktiviert oder pausiert neue Spenden in diesem Kanal.
-* **JSON-Exportkanal:** Optionaler Textkanal, in den der aktuelle Zyklus
-  exportiert wird. Der Bot benötigt dort die Rechte „Nachrichten senden“ und
-  „Dateien anhängen“.
+* **JSON-Exportkanal:** Optionaler Textkanal für die vollständige Historie aller
+  Zyklen. Der Bot benötigt dort die Rechte „Nachrichten senden“ und „Dateien
+  anhängen“.
 * **Speichern:** Übernimmt die Einstellungen und aktualisiert die öffentlichen
   Übersichts- und Spendenmeldungen.
 
-Eine Rush-Periode dauert neun Tage. Spenden sind nur möglich, solange sie
+Eine Rush-Periode dauert zehn Tage. Spenden sind nur möglich, solange sie
 innerhalb des Zeitraums liegen und weder die verbleibende Zeit noch eine
 konfigurierte Zielzeit überschreiten. Änderungen im Einrichtungsdialog werden
 erst mit „Speichern“ übernommen.
@@ -111,9 +116,10 @@ erst mit „Speichern“ übernommen.
   /donation reset
 ```
 Startet im aktuellen Kanal einen neuen Spendenzyklus. Bei einer Rush-Spende
-öffnet sich ein Dialog für den Startzeitpunkt und optional eine Zielzeit; bei
+öffnet sich ein Dialog mit getrennten Datums- und Uhrzeitfeldern für den
+Startzeitpunkt und optional eine Zielzeit; bei
 einfachen Spenden muss der Reset bestätigt werden. Ist ein JSON-Exportkanal
-konfiguriert, exportiert der Bot die bisherigen Spenden vor dem Wechsel.
+konfiguriert, exportiert der Bot die gesamte Spendenhistorie vor dem Wechsel.
 Schlägt dieser Export fehl, wird der Zyklus nicht zurückgesetzt. Das
 All-Time-Ranking bleibt erhalten.
 
@@ -121,9 +127,9 @@ All-Time-Ranking bleibt erhalten.
 ```
   /donation snapshot
 ```
-Exportiert die Spenden des aktuellen Zyklus in den konfigurierten
-JSON-Exportkanal, ohne den Zyklus zurückzusetzen. Dafür muss ein Exportkanal
-eingerichtet sein.
+Exportiert die vollständige Spendenhistorie aller Zyklen des aktuellen Kanals
+in den konfigurierten JSON-Exportkanal, ohne den Zyklus zurückzusetzen. Dafür
+muss ein Exportkanal eingerichtet sein.
 
 ### SPENDENÜBERSICHT ENTFERNEN
 ```

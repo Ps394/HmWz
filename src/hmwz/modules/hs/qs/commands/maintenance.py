@@ -15,7 +15,7 @@ from hmwz.ui.components.localized import localize_buttons
 from hmwz.utils.interactions import log_guild
 
 from ..module import QsModule
-from ..setup import can_manage
+from ..access import can_manage
 
 _logger = logging.getLogger(__name__)
 

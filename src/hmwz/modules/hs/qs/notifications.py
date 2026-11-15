@@ -68,7 +68,7 @@ class QsNotifications:
         """Skip offline deadlines; notify once for crossed online deadlines and goals."""
         module = self.module
         for configuration in await module.qs.all(module.guild.id):
-            async with module._lock(configuration.channel_id):
+            async with module.publisher.lock(configuration.channel_id):
                 current = await module.qs.get(module.guild.id, configuration.channel_id)
                 if current is None or current.state != "active":
                     continue
@@ -89,7 +89,7 @@ class QsNotifications:
                                 "Failed to persist skipped Qs notification."
                             )
                         self.pending.discard(key)
-                    elif await module.ping(current.channel_id, event=event):
+                    elif await module.pings.ping(current.channel_id, event=event):
                         if not await module.qs.notified(
                             module.guild.id, current.channel_id, event
                         ):
@@ -108,7 +108,7 @@ class QsNotifications:
                         phase.starts_at <= previous and key not in self.pending
                     )
                     try:
-                        delivered = skipped or await module.ping_participants(
+                        delivered = skipped or await module.phase_pings.ping_participants(
                             current.channel_id, phase
                         )
                     except (discord.HTTPException, discord.RateLimited, RuntimeError):
@@ -144,7 +144,7 @@ class QsNotifications:
                 < PHASE_GOAL
             ):
                 continue
-            if not await module.ping(channel_id, event="goal", phase_index=phase.index):
+            if not await module.pings.ping(channel_id, event="goal", phase_index=phase.index):
                 success = False
             elif not await module.qs.notified(
                 module.guild.id, channel_id, "goal", phase.index

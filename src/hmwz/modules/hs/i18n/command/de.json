@@ -3,7 +3,6 @@
   "command.description.qs.admin.report": "Basenzerstörung für einen Spieler melden",
   "command.description.qs.admin.reset": "Qs-Kanäle bereinigen und neue Eruptions- und Phasenzeitpunkte festlegen",
   "command.description.qs.admin.withdraw": "Basenmeldung eines Spielers zurücknehmen",
-  "command.description.qs.event.ping_command": "Die für diesen Kanal konfigurierte Qs-Rolle benachrichtigen",
   "command.description.qs.event.setup": "Qs-Rolle, Eruptionsstart und vier bis fünf Phasen konfigurieren",
   "command.description.qs.reset_channels": "Bereinigt nach Bestätigung alle konfigurierten QS-Kanäle",
   "command.description.qs.reset_roles": "Entfernt nach Bestätigung die QS-Rollen des aktuellen Kanals von Servermitgliedern",

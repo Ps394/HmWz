@@ -19,7 +19,8 @@ in einer SQLite-Datenbank.
   sich anmelden und zerstörte Basen melden. Benachrichtigungen sind konfigurierbar.
 - **Spendenübersichten:** Erfasse Credit-/Ressourcenspenden oder Rush-Spenden
   mit Bestätigung, Historie und optionalem Ziel.
-- **Exporte und Werkzeuge:** Exportiere Registrierungen und Spendenzyklen.
+- **Exporte und Werkzeuge:** Exportiere Registrierungen und die gesamte
+  Spendenhistorie.
   Moderationsbefehle helfen bei Kanalbereinigung und Serverzeitzone.
 - **Lokalisierung und Monitoring:** Slash-Commands unterstützen deutsche und
   englische Lokalisierungen. Optionales Monitoring protokolliert
