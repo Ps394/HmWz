@@ -1,4 +1,4 @@
-"""Explicit export of the active donation cycle."""
+"""Explicit export of the all-time donation history."""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ from ..module import DonationModule
     description=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get(
             "command.description.donation.snapshot",
-            "Export a JSON snapshot of the current donation cycle",
+            "Export the all-time donation history as JSON",
         ),
         key="donation.snapshot.description",
     ),
 )
 @app_commands.checks.has_any_role(*MODERATOR_ROLES)
 async def snapshot(interaction: discord.Interaction) -> None:
-    """Export all current-cycle donations without resetting the cycle."""
+    """Export the all-time donation history without resetting the cycle."""
     guild = interaction.guild
     channel_id = interaction.channel_id
     manager = getattr(interaction.client, "module_manager", None)

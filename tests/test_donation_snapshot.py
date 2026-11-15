@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -118,7 +119,7 @@ async def test_snapshot_preserves_exact_amounts_and_optional_rush_hours(
 
 
 @pytest.mark.asyncio
-async def test_snapshot_exports_all_current_cycle_records_and_leaves_history_unchanged(
+async def test_snapshot_exports_all_time_history_and_leaves_donations_unchanged(
     tmp_path: Path,
 ) -> None:
     database = Database(folder=str(tmp_path), filename="snapshot.db")
@@ -186,16 +187,60 @@ async def test_snapshot_exports_all_current_cycle_records_and_leaves_history_unc
     result: Snapshot = delivery.export.await_args.args[0]
     assert result.payload["cycle"] == 2
     records = json.loads(json.dumps(result.payload))["donations"]
-    assert len(records) == 25
+    assert len(records) == 26
     assert [item["amount"] for item in records] == [
         str(amount) for amount in range(25, 0, -1)
-    ]
+    ] + ["99"]
+    assert records[0]["cycle"] == 2
+    assert records[-1]["cycle"] == 1
     settings = await repository.get_channel(guild=guild, channel_id=789)
     assert settings is not None and settings.current_cycle == 2
     assert (
         len(await repository.get_donations(guild=guild, channel_id=789, limit=None))
         == 26
     )
+
+
+@pytest.mark.asyncio
+async def test_all_time_snapshot_uses_current_cycle_for_rush_end() -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    configuration = DonationChannel(
+        channel_id=789,
+        overview_message_id=None,
+        ranking_message_id=None,
+        title="Rush",
+        description="",
+        goal_hours=None,
+        current_cycle=2,
+        rush_start_at=start,
+        target_at=start + timedelta(days=5),
+    )
+    repository = Mock(spec=DonationRepository)
+    repository.get_donations_for_export = AsyncMock(
+        return_value=(
+            DonationRecord(1, "Donor", Decimal(1), "crystals", "24h", "old", 1),
+            DonationRecord(1, "Donor", Decimal(1), "crystals", "8h", "new", 2),
+        )
+    )
+    repository.get_summary = AsyncMock(
+        side_effect=(DonationSummary(2, 32), DonationSummary(1, 8))
+    )
+    builder = DonationSnapshotBuilder(
+        guild=Mock(spec=discord.Guild), donations=repository
+    )
+
+    result = await builder.build(
+        configuration=configuration,
+        destination_channel_id=321,
+        event_type="cycle-reset",
+    )
+
+    assert result is not None
+    assert (
+        result.payload["end_at"] == (start + timedelta(days=10, hours=-8)).isoformat()
+    )
+    assert [record["cycle"] for record in result.payload["donations"]] == [1, 2]
+    assert repository.get_summary.await_args_list[1].kwargs["cycle"] == 2
 
 
 @pytest.mark.asyncio

@@ -28,6 +28,45 @@ from hmwz.sqlite_db import Database
 
 
 @pytest.mark.asyncio
+async def test_ranking_channel_round_trip_and_detachment(tmp_path: Path) -> None:
+    database = Database(folder=str(tmp_path), filename="ranking-channel.db")
+    guild = cast(discord.Guild, SimpleNamespace(id=123, name="test guild"))
+    repository = DonationRepository(database)
+
+    assert await repository.ensure_schema()
+    assert await repository.configure_channel(
+        guild=guild,
+        channel_id=789,
+        title="Donations",
+        description="",
+        show_ranking=True,
+        ranking_channel_id=654,
+    )
+    stored = await repository.get_channel(guild=guild, channel_id=789)
+    assert stored is not None and stored.ranking_channel_id == 654
+
+    assert await repository.set_message(
+        guild=guild, channel_id=789, message_id=502, ranking=True
+    )
+    owners = await repository.get_channels_by_ranking_message(
+        guild=guild, message_ids=(502,)
+    )
+    assert [owner.channel_id for owner in owners] == [789]
+    assert (
+        await repository.get_channels_by_ranking_message(guild=guild, message_ids=())
+        == ()
+    )
+
+    assert await repository.clear_ranking_channel(
+        guild=guild, ranking_channel_id=654
+    ) == (789,)
+    detached = await repository.get_channel(guild=guild, channel_id=789)
+    assert detached is not None
+    assert detached.ranking_channel_id is None
+    assert detached.ranking_message_id is None
+
+
+@pytest.mark.asyncio
 async def test_donation_types_channels_and_entries_are_persisted(
     tmp_path: Path,
 ) -> None:

@@ -36,3 +36,4 @@ class DonationSetupDraft:
     export_channel_id: int | None = None
     accelerated_hours: int = 0
     target_at: datetime | None = None
+    ranking_channel_id: int | None = None

@@ -40,3 +40,4 @@ class DonationChannel:
     donations_enabled: bool = True
     export_channel_id: int | None = None
     target_at: datetime | None = None
+    ranking_channel_id: int | None = None

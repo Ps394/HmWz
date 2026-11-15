@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @app_commands.command(
-    name="account-remove",
+    name="remove",
     description=command_description(
         "command.description.wz.registration.account_remove",
         "Unlink one of your in-game accounts",

@@ -14,6 +14,7 @@ class DonationRecord:
     unit: str
     time_reduction: str | None
     created_at: str
+    cycle: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

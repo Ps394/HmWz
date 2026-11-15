@@ -21,7 +21,7 @@ MAX_IMPORT_SIZE = 2 * 1024 * 1024
 
 
 @app_commands.command(
-    name="account-import",
+    name="import",
     description=command_description(
         "command.description.wz.registration.account_import",
         "Import game accounts from a JSON file",

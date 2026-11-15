@@ -128,11 +128,31 @@ def donation_setup_panel(
             inline=True,
         )
     embed.add_field(
+        name=t(interaction, "donation.setup.ranking_channel"),
+        value=_ranking_channel_status(draft, interaction),
+        inline=False,
+    )
+    embed.add_field(
         name=t(interaction, "donation.setup.export_channel"),
         value=_export_channel_status(draft, interaction),
         inline=False,
     )
     return embed
+
+
+def _ranking_channel_status(
+    draft: DonationSetupDraft, interaction: discord.Interaction
+) -> str:
+    if draft.ranking_channel_id is None:
+        return t(interaction, "donation.setup.ranking_channel_default")
+    channel = draft.module.guild.get_channel(draft.ranking_channel_id)
+    if isinstance(channel, discord.TextChannel):
+        return channel.mention
+    return t(
+        interaction,
+        "donation.setup.export_channel_unavailable",
+        channel_id=draft.ranking_channel_id,
+    )
 
 
 def _export_channel_status(

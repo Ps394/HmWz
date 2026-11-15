@@ -34,6 +34,7 @@ DonationSetupAction = Literal[
     "content",
     "values",
     "ranking",
+    "ranking_channel",
     "start",
     "target",
     "visibility",
@@ -170,6 +171,9 @@ class DonationSetupKindSelect(discord.ui.Select):
             export_channel_id=(
                 configuration.export_channel_id if configuration is not None else None
             ),
+            ranking_channel_id=(
+                configuration.ranking_channel_id if configuration is not None else None
+            ),
             target_at=(
                 configuration.target_at
                 if configuration is not None and kind == "time_reduction"
@@ -226,6 +230,7 @@ class DonationSetupButton(discord.ui.Button):
         "content": "donation.setup.edit_content",
         "values": "donation.type.credit.edit_values",
         "ranking": "donation.setup.toggle_ranking",
+        "ranking_channel": "donation.setup.ranking_channel",
         "start": "donation.type.rush.setup.edit_start",
         "target": "donation.type.rush.setup.edit_target",
         "visibility": "donation.setup.toggle_visibility",
@@ -268,6 +273,7 @@ class DonationSetupButton(discord.ui.Button):
                 "content": "📝",
                 "values": "💰",
                 "ranking": "🏆",
+                "ranking_channel": "📊",
                 "start": "🕒",
                 "target": "🎯",
                 "visibility": "👁️",
@@ -332,7 +338,7 @@ class DonationExportChannelSelect(discord.ui.ChannelSelect):
 
 
 class DonationExportChannelView(DonationSetupOwnerView):
-    """Choose or disable the channel used for cycle JSON exports."""
+    """Choose or disable the channel used for all-time JSON exports."""
 
     def __init__(self, setup_view: DonationSetupView) -> None:
         super().__init__(setup_view.draft.owner_id, timeout=180)
@@ -378,6 +384,103 @@ class DonationExportChannelView(DonationSetupOwnerView):
         )
 
 
+class DonationRankingChannelSelect(discord.ui.ChannelSelect):
+    """Select a text channel where the all-time donation charts are published."""
+
+    def __init__(self, setup_view: DonationSetupView) -> None:
+        super().__init__(
+            channel_types=[discord.ChannelType.text],
+            placeholder=t(
+                setup_view.draft.module.guild,
+                "donation.setup.ranking_channel_select",
+            ),
+            min_values=1,
+            max_values=1,
+        )
+        self.setup_view = setup_view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        selected = self.values[0]
+        guild = self.setup_view.draft.module.guild
+        channel = guild.get_channel(selected.id)
+        if not isinstance(channel, discord.TextChannel):
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.ranking_channel_invalid")
+            )
+            return
+        bot_member = guild.me
+        if bot_member is None:
+            await _send_temporary_response(
+                interaction, t(interaction, "donation.error.ranking_channel_invalid")
+            )
+            return
+        permissions = channel.permissions_for(bot_member)
+        if (
+            not permissions.view_channel
+            or not permissions.send_messages
+            or not permissions.read_message_history
+            or not permissions.embed_links
+        ):
+            await _send_temporary_response(
+                interaction,
+                t(interaction, "donation.error.ranking_channel_permissions"),
+            )
+            return
+        self.setup_view.draft.ranking_channel_id = channel.id
+        await interaction.response.edit_message(
+            content=None,
+            embed=donation_setup_panel(self.setup_view.draft, interaction),
+            view=self.setup_view,
+        )
+
+
+class DonationRankingChannelView(DonationSetupOwnerView):
+    """Choose the channel used for the all-time donation charts."""
+
+    def __init__(self, setup_view: DonationSetupView) -> None:
+        super().__init__(setup_view.draft.owner_id, timeout=180)
+        self.setup_view = setup_view
+        self.add_item(DonationRankingChannelSelect(setup_view))
+        labels = {
+            "donation:setup:ranking-reset": "donation.setup.ranking_channel_reset",
+            "donation:setup:ranking-back": "donation.setup.export_back",
+        }
+        for item in self.children:
+            if isinstance(item, discord.ui.Button) and item.custom_id in labels:
+                item.label = t(setup_view.draft.module.guild, labels[item.custom_id])
+
+    @discord.ui.button(
+        label="Use donation channel",
+        style=discord.ButtonStyle.danger,
+        custom_id="donation:setup:ranking-reset",
+        row=1,
+    )
+    async def use_donation_channel(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.setup_view.draft.ranking_channel_id = None
+        await interaction.response.edit_message(
+            content=None,
+            embed=donation_setup_panel(self.setup_view.draft, interaction),
+            view=self.setup_view,
+        )
+
+    @discord.ui.button(
+        label="Back",
+        style=discord.ButtonStyle.secondary,
+        custom_id="donation:setup:ranking-back",
+        row=1,
+    )
+    async def back(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.edit_message(
+            content=None,
+            embed=donation_setup_panel(self.setup_view.draft, interaction),
+            view=self.setup_view,
+        )
+
+
 class DonationSetupView(DonationSetupOwnerView):
     """Menu for editing each section of a donation setup."""
 
@@ -397,6 +500,7 @@ class DonationSetupView(DonationSetupOwnerView):
             self.add_item(DonationSetupButton(self, "start", row=row))
             self.add_item(DonationSetupButton(self, "target", row=row))
         self.add_item(DonationSetupButton(self, "ranking", row=row + 1))
+        self.add_item(DonationSetupButton(self, "ranking_channel", row=row + 1))
         self.add_item(DonationSetupButton(self, "visibility", row=row + 1))
         self.add_item(DonationSetupButton(self, "donations", row=row + 1))
         self.add_item(DonationSetupButton(self, "export", row=row + 2))
@@ -414,6 +518,12 @@ class DonationSetupView(DonationSetupOwnerView):
             case "ranking":
                 self.draft.show_ranking = not self.draft.show_ranking
                 await self.refresh(interaction)
+            case "ranking_channel":
+                await interaction.response.edit_message(
+                    content=t(interaction, "donation.setup.ranking_channel_prompt"),
+                    embed=None,
+                    view=DonationRankingChannelView(self),
+                )
             case "visibility":
                 self.draft.show_donations = not self.draft.show_donations
                 await self.refresh(interaction)
@@ -513,6 +623,7 @@ async def _save_setup(
         donations_enabled=draft.donations_enabled,
         export_channel_id=draft.export_channel_id,
         target_at=draft.target_at if draft.kind == "time_reduction" else None,
+        ranking_channel_id=draft.ranking_channel_id,
     )
     if not saved:
         await _send_setup_followup_error(interaction, "donation.error.setup_save")

@@ -28,6 +28,8 @@ from hmwz.modules.donation.commands.setup.config.view import (
     DonationSetupView,
     DonationExportChannelSelect,
     DonationExportChannelView,
+    DonationRankingChannelSelect,
+    DonationRankingChannelView,
     _save_setup,
 )
 from hmwz.modules.donation.commands.setup.config.draft import DonationSetupDraft
@@ -141,6 +143,7 @@ async def test_rush_setup_menu_splits_configuration_into_sections() -> None:
         "start",
         "target",
         "ranking",
+        "ranking_channel",
         "visibility",
         "donations",
         "export",
@@ -320,6 +323,132 @@ async def test_setup_can_select_a_json_export_channel() -> None:
     assert response["content"] is None
     assert response["embed"].fields[-1].value == "<#987>"
     assert interaction.response.edit_message.await_args.kwargs["view"] is setup_view
+
+
+@pytest.mark.asyncio
+async def test_setup_can_select_and_reset_a_dedicated_ranking_channel() -> None:
+    ranking_channel = Mock(spec=discord.TextChannel)
+    ranking_channel.id = 654
+    ranking_channel.mention = "<#654>"
+    ranking_channel.permissions_for.return_value = SimpleNamespace(
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
+        embed_links=True,
+    )
+    selected_channel = Mock(spec=discord.app_commands.AppCommandChannel)
+    selected_channel.id = ranking_channel.id
+    guild = SimpleNamespace(
+        locale="de",
+        get_channel=Mock(return_value=ranking_channel),
+        me=Mock(spec=discord.Member),
+    )
+    draft = DonationSetupDraft(
+        module=cast(DonationModule, SimpleNamespace(guild=guild)),
+        channel_id=456,
+        owner_id=789,
+        kind="simple",
+        title="Overview",
+        description="",
+        unit="Credits",
+        choices=(),
+        time_reductions=(),
+        goal_hours=None,
+        recent_limit=20,
+        show_ranking=True,
+        rush_start_at=None,
+    )
+    setup_view = DonationSetupView(draft)
+    ranking_view = DonationRankingChannelView(setup_view)
+    select = next(
+        item
+        for item in ranking_view.children
+        if isinstance(item, DonationRankingChannelSelect)
+    )
+    interaction = SimpleNamespace(
+        locale="de",
+        response=SimpleNamespace(edit_message=AsyncMock()),
+    )
+
+    with patch.object(
+        DonationRankingChannelSelect,
+        "values",
+        new_callable=PropertyMock,
+        return_value=[selected_channel],
+    ):
+        await select.callback(interaction)
+
+    assert draft.ranking_channel_id == ranking_channel.id
+    ranking_channel.permissions_for.assert_called_once_with(guild.me)
+    response = interaction.response.edit_message.await_args.kwargs
+    assert response["content"] is None
+    fields = {field.name: field.value for field in response["embed"].fields}
+    assert fields["Ranking-Kanal"] == "<#654>"
+    assert response["view"] is setup_view
+
+    reset_interaction = SimpleNamespace(
+        locale="de",
+        user=SimpleNamespace(id=789),
+        response=SimpleNamespace(edit_message=AsyncMock()),
+    )
+    await ranking_view.use_donation_channel.callback(reset_interaction)
+    assert draft.ranking_channel_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "missing", ["view_channel", "send_messages", "read_message_history", "embed_links"]
+)
+async def test_ranking_channel_requires_permissions_to_publish_and_update(
+    missing: str,
+) -> None:
+    permissions = {
+        "view_channel": True,
+        "send_messages": True,
+        "read_message_history": True,
+        "embed_links": True,
+    }
+    permissions[missing] = False
+    channel = Mock(spec=discord.TextChannel)
+    channel.id = 654
+    channel.permissions_for.return_value = SimpleNamespace(**permissions)
+    guild = SimpleNamespace(
+        locale="de",
+        me=Mock(spec=discord.Member),
+        get_channel=Mock(return_value=channel),
+    )
+    draft = DonationSetupDraft(
+        module=cast(DonationModule, SimpleNamespace(guild=guild)),
+        channel_id=456,
+        owner_id=789,
+        kind="simple",
+        title="Overview",
+        description="",
+        unit="Credits",
+        choices=(),
+        time_reductions=(),
+        goal_hours=None,
+        recent_limit=20,
+        show_ranking=True,
+        rush_start_at=None,
+    )
+    select = DonationRankingChannelSelect(DonationSetupView(draft))
+    interaction = SimpleNamespace(locale="de", response=SimpleNamespace())
+    with (
+        patch.object(
+            DonationRankingChannelSelect,
+            "values",
+            new_callable=PropertyMock,
+            return_value=[SimpleNamespace(id=654)],
+        ),
+        patch(
+            "hmwz.modules.donation.commands.setup.config.view._send_temporary_response",
+            new_callable=AsyncMock,
+        ) as notify,
+    ):
+        await select.callback(interaction)
+    assert draft.ranking_channel_id is None
+    notify.assert_awaited_once()
 
 
 @pytest.mark.asyncio

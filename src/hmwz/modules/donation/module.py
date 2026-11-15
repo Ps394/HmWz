@@ -129,6 +129,7 @@ class DonationModule(
         donations_enabled: bool = True,
         export_channel_id: int | None = None,
         target_at: datetime | None = None,
+        ranking_channel_id: int | None = None,
     ) -> bool:
         """Persist the channel's single-unit donation setup and publish it."""
         async with self._cycle_lock(channel_id):
@@ -146,6 +147,20 @@ class DonationModule(
                     channel_id,
                 )
                 return False
+            current = await self.donations.get_channel(
+                guild=self.guild, channel_id=channel_id
+            )
+            if (
+                current is not None
+                and (current.ranking_channel_id or channel_id)
+                != (ranking_channel_id or channel_id)
+                and not await self._clear_ranking_message(
+                    channel_id,
+                    current.ranking_message_id,
+                    ranking_channel_id=current.ranking_channel_id,
+                )
+            ):
+                return False
             if not await self.donations.configure_channel(
                 guild=self.guild,
                 channel_id=channel_id,
@@ -160,6 +175,7 @@ class DonationModule(
                 donations_enabled=donations_enabled,
                 export_channel_id=export_channel_id,
                 target_at=target_at,
+                ranking_channel_id=ranking_channel_id,
             ):
                 return False
             if not await self.donations.configure_type(
@@ -188,14 +204,24 @@ class DonationModule(
         if configuration is None:
             return False
         channel = self.guild.get_channel(channel_id)
-        message_ids = (
+        ranking_channel = (
+            self.guild.get_channel(configuration.ranking_channel_id)
+            if configuration.ranking_channel_id is not None
+            else channel
+        )
+        local_message_ids = (
             configuration.overview_message_id,
-            configuration.ranking_message_id,
             configuration.history_message_id,
         )
-        if any(message_id is not None for message_id in message_ids) and not isinstance(
-            channel, discord.TextChannel
-        ):
+        local_ranking_message_id = (
+            configuration.ranking_message_id
+            if configuration.ranking_channel_id is None
+            else None
+        )
+        if any(
+            message_id is not None
+            for message_id in (*local_message_ids, local_ranking_message_id)
+        ) and not isinstance(channel, discord.TextChannel):
             _logger.error(
                 "%s Cannot remove donation messages because channel %s is unavailable.",
                 self.guild.name,
@@ -210,28 +236,37 @@ class DonationModule(
 
         self._views.pop(channel_id, None)
         self._rush_view_states.pop(channel_id, None)
+        message_ids = (
+            configuration.overview_message_id,
+            configuration.ranking_message_id,
+            configuration.history_message_id,
+        )
         for message_id in message_ids:
             if message_id is not None:
                 self._registered_message_ids.discard(message_id)
 
         success = True
-        if isinstance(channel, discord.TextChannel):
-            for message_id in message_ids:
-                if message_id is None:
-                    continue
-                try:
-                    message = await channel.fetch_message(message_id)
-                    await message.delete()
-                except discord.NotFound:
-                    continue
-                except discord.HTTPException:
-                    _logger.exception(
-                        "%s Failed to remove donation message %s in channel %s.",
-                        self.guild.name,
-                        message_id,
-                        channel_id,
-                    )
-                    success = False
+        deletions = (
+            (channel, configuration.overview_message_id),
+            (ranking_channel, configuration.ranking_message_id),
+            (channel, configuration.history_message_id),
+        )
+        for target, message_id in deletions:
+            if message_id is None or not isinstance(target, discord.TextChannel):
+                continue
+            try:
+                message = await target.fetch_message(message_id)
+                await message.delete()
+            except discord.NotFound:
+                continue
+            except discord.HTTPException:
+                _logger.exception(
+                    "%s Failed to remove donation message %s in channel %s.",
+                    self.guild.name,
+                    message_id,
+                    target.id,
+                )
+                success = False
         return success
 
     async def start_donation(
@@ -340,7 +375,7 @@ class DonationModule(
         rush_start_at: datetime | None,
         target_at: datetime | None = None,
     ) -> tuple[bool, bool, bool]:
-        """Export and reset the current cycle before refreshing public messages."""
+        """Export all history and reset the cycle before refreshing messages."""
         if target_at is not None:
             try:
                 if rush_start_at is None:
@@ -362,11 +397,11 @@ class DonationModule(
         return True, await self.compose_overview(channel_id), False
 
     async def export_current_cycle(self, channel_id: int) -> bool:
-        """Export every donation in the current cycle when a destination is set."""
+        """Export the all-time donation history when a destination is set."""
         return await self._snapshot_exporter.export(channel_id, "cycle-reset")
 
     async def export_donation_snapshot(self, channel_id: int) -> bool:
-        """Export the active cycle on request without changing any donations."""
+        """Export the all-time history on request without changing any donations."""
         donation_type = await self.donations.get_type(
             guild=self.guild, channel_id=channel_id
         )
@@ -480,19 +515,38 @@ class DonationModule(
             view=view,
         )
         if configuration.show_ranking:
-            ranking_embed = DonationOverview.create_ranking_embed(
-                self.guild, donation_type, ranking
-            )
-            ranking_ok = await self._sync_message(
-                channel=channel,
-                channel_id=channel_id,
-                message_id=configuration.ranking_message_id,
-                embed=ranking_embed,
-                ranking=True,
-            )
+            ranking_channel: discord.abc.GuildChannel | None = channel
+            if configuration.ranking_channel_id is not None:
+                ranking_channel = self.guild.get_channel(
+                    configuration.ranking_channel_id
+                )
+            if not isinstance(ranking_channel, discord.TextChannel):
+                _logger.error(
+                    "%s Donation ranking channel %s is unavailable or is not a "
+                    "text channel.",
+                    self.guild.name,
+                    configuration.ranking_channel_id,
+                )
+                ranking_ok = False
+            else:
+                ranking_embed = DonationOverview.create_ranking_embed(
+                    self.guild,
+                    donation_type,
+                    ranking,
+                    donation_title=configuration.title,
+                )
+                ranking_ok = await self._sync_message(
+                    channel=ranking_channel,
+                    channel_id=channel_id,
+                    message_id=configuration.ranking_message_id,
+                    embed=ranking_embed,
+                    ranking=True,
+                )
         else:
             ranking_ok = await self._clear_ranking_message(
-                channel_id, configuration.ranking_message_id
+                channel_id,
+                configuration.ranking_message_id,
+                ranking_channel_id=configuration.ranking_channel_id,
             )
         if configuration.show_donations:
             history_embed = DonationOverview.create_history_embed(
@@ -639,12 +693,53 @@ class DonationModule(
         return await self.donations.remove_guild(guild=guild)
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
-        """Remove the channel setup when its Discord channel is deleted."""
+        """Remove the channel setup and detach rankings when a channel is deleted."""
         if channel.guild.id != self.guild.id:
             return False
-        return await self.donations.remove_channel(
+        configuration = await self.donations.get_channel(
             guild=self.guild, channel_id=channel.id
         )
+        if not await self.donations.remove_channel(
+            guild=self.guild, channel_id=channel.id
+        ):
+            return False
+        ranking_removed = True
+        if (
+            configuration is not None
+            and configuration.ranking_channel_id is not None
+            and configuration.ranking_channel_id != channel.id
+            and configuration.ranking_message_id is not None
+        ):
+            ranking_channel = self.guild.get_channel(configuration.ranking_channel_id)
+            if not isinstance(ranking_channel, discord.TextChannel):
+                _logger.error(
+                    "%s Cannot remove donation ranking in unavailable channel %s.",
+                    self.guild.name,
+                    configuration.ranking_channel_id,
+                )
+                ranking_removed = False
+            else:
+                try:
+                    message = await ranking_channel.fetch_message(
+                        configuration.ranking_message_id
+                    )
+                    await message.delete()
+                except discord.NotFound:
+                    pass
+                except discord.HTTPException:
+                    _logger.exception(
+                        "%s Failed to remove donation ranking in channel %s.",
+                        self.guild.name,
+                        configuration.ranking_channel_id,
+                    )
+                    ranking_removed = False
+        affected = await self.donations.clear_ranking_channel(
+            guild=self.guild, ranking_channel_id=channel.id
+        )
+        if affected is None:
+            return False
+        results = [await self.compose_overview(channel_id) for channel_id in affected]
+        return ranking_removed and all(results)
 
     async def on_raw_message_delete(
         self, payload: events.RawMessageDeleteEvent
@@ -655,33 +750,40 @@ class DonationModule(
         configuration = await self.donations.get_channel(
             guild=self.guild, channel_id=payload.channel_id
         )
-        if configuration is None:
-            return True
-        if payload.message_id == configuration.overview_message_id:
-            cleared_overview = await self.donations.set_message(
-                guild=self.guild,
-                channel_id=payload.channel_id,
-                message_id=None,
-            )
-            if not cleared_overview or not await self._clear_ranking_message(
-                payload.channel_id, configuration.ranking_message_id
-            ):
-                return False
-            return await self.compose_overview(payload.channel_id)
-        if payload.message_id == configuration.ranking_message_id:
+        if configuration is not None:
+            if payload.message_id == configuration.overview_message_id:
+                if not await self.donations.set_message(
+                    guild=self.guild,
+                    channel_id=payload.channel_id,
+                    message_id=None,
+                ):
+                    return False
+                if (
+                    configuration.ranking_channel_id is None
+                    and not await self._clear_ranking_message(
+                        payload.channel_id, configuration.ranking_message_id
+                    )
+                ):
+                    return False
+                return await self.compose_overview(payload.channel_id)
+            if payload.message_id == configuration.history_message_id:
+                return await self.donations.set_message(
+                    guild=self.guild,
+                    channel_id=payload.channel_id,
+                    message_id=None,
+                    history=True,
+                ) and await self.compose_overview(payload.channel_id)
+        for owner in await self.donations.get_channels_by_ranking_message(
+            guild=self.guild, message_ids=(payload.message_id,)
+        ):
+            if (owner.ranking_channel_id or owner.channel_id) != payload.channel_id:
+                continue
             return await self.donations.set_message(
                 guild=self.guild,
-                channel_id=payload.channel_id,
+                channel_id=owner.channel_id,
                 message_id=None,
                 ranking=True,
-            ) and await self.compose_overview(payload.channel_id)
-        if payload.message_id == configuration.history_message_id:
-            return await self.donations.set_message(
-                guild=self.guild,
-                channel_id=payload.channel_id,
-                message_id=None,
-                history=True,
-            ) and await self.compose_overview(payload.channel_id)
+            ) and await self.compose_overview(owner.channel_id)
         return True
 
     async def on_raw_bulk_message_delete(
@@ -690,57 +792,66 @@ class DonationModule(
         """Recreate public donation messages that were bulk deleted."""
         if payload.guild_id != self.guild.id:
             return False
+        deleted = set(payload.message_ids)
+        refresh: set[int] = set()
         configuration = await self.donations.get_channel(
             guild=self.guild, channel_id=payload.channel_id
         )
-        if configuration is None:
-            return True
-        deleted = set(payload.message_ids)
-        if configuration.overview_message_id in deleted:
+        if configuration is not None:
+            if configuration.overview_message_id in deleted:
+                if not await self.donations.set_message(
+                    guild=self.guild,
+                    channel_id=payload.channel_id,
+                    message_id=None,
+                ):
+                    return False
+                if (
+                    configuration.ranking_channel_id is None
+                    and configuration.ranking_message_id not in deleted
+                    and not await self._clear_ranking_message(
+                        payload.channel_id, configuration.ranking_message_id
+                    )
+                ):
+                    return False
+                refresh.add(payload.channel_id)
+            if configuration.history_message_id in deleted:
+                if not await self.donations.set_message(
+                    guild=self.guild,
+                    channel_id=payload.channel_id,
+                    message_id=None,
+                    history=True,
+                ):
+                    return False
+                refresh.add(payload.channel_id)
+        for owner in await self.donations.get_channels_by_ranking_message(
+            guild=self.guild, message_ids=tuple(deleted)
+        ):
+            if (owner.ranking_channel_id or owner.channel_id) != payload.channel_id:
+                continue
             if not await self.donations.set_message(
                 guild=self.guild,
-                channel_id=payload.channel_id,
-                message_id=None,
-            ):
-                return False
-            if (
-                configuration.ranking_message_id not in deleted
-                and not await self._clear_ranking_message(
-                    payload.channel_id, configuration.ranking_message_id
-                )
-            ):
-                return False
-        if configuration.ranking_message_id in deleted:
-            if not await self.donations.set_message(
-                guild=self.guild,
-                channel_id=payload.channel_id,
+                channel_id=owner.channel_id,
                 message_id=None,
                 ranking=True,
             ):
                 return False
-        if configuration.history_message_id in deleted:
-            if not await self.donations.set_message(
-                guild=self.guild,
-                channel_id=payload.channel_id,
-                message_id=None,
-                history=True,
-            ):
+            refresh.add(owner.channel_id)
+        for channel_id in refresh:
+            if not await self.compose_overview(channel_id):
                 return False
-        if (
-            configuration.overview_message_id in deleted
-            or configuration.ranking_message_id in deleted
-            or configuration.history_message_id in deleted
-        ):
-            return await self.compose_overview(payload.channel_id)
         return True
 
     async def _clear_ranking_message(
-        self, channel_id: int, message_id: int | None
+        self,
+        channel_id: int,
+        message_id: int | None,
+        *,
+        ranking_channel_id: int | None = None,
     ) -> bool:
         """Delete the old ranking before a recreated overview to retain ordering."""
         if message_id is None:
             return True
-        channel = self.guild.get_channel(channel_id)
+        channel = self.guild.get_channel(ranking_channel_id or channel_id)
         if isinstance(channel, discord.TextChannel):
             try:
                 message = await channel.fetch_message(message_id)

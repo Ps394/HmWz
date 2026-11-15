@@ -20,7 +20,7 @@ from hmwz.modules.snapshots import Snapshot
 
 
 @pytest.mark.asyncio
-async def test_reset_exports_every_current_cycle_donation_before_advancing() -> None:
+async def test_reset_exports_the_all_time_history_before_advancing() -> None:
     events: list[tuple[str, object]] = []
     records = (
         DonationRecord(
@@ -123,7 +123,7 @@ async def test_reset_exports_every_current_cycle_donation_before_advancing() -> 
         ],
     }
     donations.get_donations_for_export.assert_awaited_once_with(
-        guild=guild, channel_id=789, cycle=3
+        guild=guild, channel_id=789
     )
 
 

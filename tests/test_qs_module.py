@@ -42,8 +42,10 @@ from hmwz.modules.hs.qs.views import (
     BaseReportConfirmation,
     OverviewView,
     PhaseView,
+    SignupConfirmation,
 )
 from hmwz.modules.hs.account.repositories import MemberGameAccountRepository
+from hmwz.modules.hs.qs.repositories.members import MemberSignup
 from hmwz.modules.manager import Manager
 from hmwz.modules.protocols import MessageModuleProtocol
 from hmwz.sqlite_db import Database
@@ -319,8 +321,8 @@ def test_main_overview_highlights_localized_signup_count(
             "Eruptionsstart",
             "Eruptionsende",
             (
-                "- Anmelden: Phasenbutton klicken.",
-                "- Abmelden: denselben Button erneut klicken.",
+                "- Anmelden: Anmelden-Schaltfläche klicken, Hauptaccount (Discord-Mitglied) verwenden oder einen verknüpften Ingame-Account auswählen und bestätigen. Mehrere Accounts sind möglich.",
+                "- Abmelden: die Abmelden-Schaltfläche der Phase klicken und den Account auswählen.",
                 "- Mehrere Phasen möglich – jede Anmeldung ist unabhängig.",
             ),
         ),
@@ -329,8 +331,8 @@ def test_main_overview_highlights_localized_signup_count(
             "Eruption start",
             "Eruption end",
             (
-                "- Join: click a phase button.",
-                "- Leave: click the same button again.",
+                "- Join: click Sign up, use the main account (Discord member) or choose a linked in-game account, then confirm. Multiple accounts are allowed.",
+                "- Leave: click the phase's Unregister button and choose the account to remove.",
                 "- Multiple phases allowed – each signup is independent.",
             ),
         ),
@@ -855,7 +857,7 @@ async def test_setup_creates_exact_five_threads_and_persistent_views(
     assert all(
         field.value.startswith("👥 **Anmeldungen: 0**\n") for field in embed.fields
     )
-    assert len(overview.sent_kwargs["view"].children) == 5
+    assert len(overview.sent_kwargs["view"].children) == 10
     assert all(
         len(environment.messages[phase.message_id].sent_kwargs["view"].children) == 2
         for phase in await module.qs.phases(10, 20)
@@ -941,6 +943,122 @@ async def test_multi_phase_signup_updates_both_overviews(
     await module.toggle_phase(interaction(environment), 20, 1)
     assert await module.qs.members(10, 20, 1) == ()
     assert await module.qs.members(10, 20, 5) == (100,)
+
+
+@pytest.mark.asyncio
+async def test_phase_signup_can_select_linked_account(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    configuration = await module.qs.get(10, 20)
+    assert configuration is not None
+    context = interaction(environment)
+    await module._views[configuration.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert isinstance(view, SignupConfirmation)
+    assert view.selected_account == "main-account"
+    assert not view.confirm.disabled
+    assert {option.label for option in view.selection.options} == {
+        "Discord-Anzeigename",
+        "Account-100",
+    }
+
+    view.select_account("account-0")
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == (
+        MemberSignup(100, "Account-100"),
+    )
+    updated = environment.messages[phase.members_message_id].edit.await_args.kwargs[
+        "embeds"
+    ][0]
+    assert "Account-100" in updated.fields[0].value
+    assert "<@100>" in updated.fields[0].value
+
+    context = interaction(environment)
+    await module._views[configuration.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert isinstance(view, SignupConfirmation)
+    assert view.selected_account == "main-account"
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == (
+        MemberSignup(100, None),
+        MemberSignup(100, "Account-100"),
+    )
+
+    unregister = interaction(environment)
+    await module._views[configuration.message_id].children[5].callback(unregister)
+    unregister_view = unregister.response.send_message.await_args.kwargs["view"]
+    assert isinstance(unregister_view, SignupConfirmation)
+    unregister_view.select_account("signup-1")
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await unregister_view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == (
+        MemberSignup(100, None),
+    )
+
+    unregister = interaction(environment)
+    await module._views[configuration.message_id].children[5].callback(unregister)
+    unregister_view = unregister.response.send_message.await_args.kwargs["view"]
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await unregister_view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == ()
+
+
+@pytest.mark.asyncio
+async def test_phase_signup_defaults_to_main_account_without_selection(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[1]
+    configuration = await module.qs.get(10, 20)
+    assert configuration is not None
+    context = interaction(environment)
+    await module._views[configuration.message_id].children[1].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert isinstance(view, SignupConfirmation)
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == (
+        MemberSignup(100, None),
+    )
+    unregister = interaction(environment)
+    await module._views[configuration.message_id].children[6].callback(unregister)
+    unregister_view = unregister.response.send_message.await_args.kwargs["view"]
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await unregister_view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == ()
+
+
+@pytest.mark.asyncio
+async def test_phase_signup_rejects_an_account_unlinked_before_confirmation(
+    environment: SimpleNamespace,
+) -> None:
+    module = environment.module
+    phase = (await module.qs.phases(10, 20))[0]
+    configuration = await module.qs.get(10, 20)
+    assert configuration is not None
+    context = interaction(environment)
+    await module._views[configuration.message_id].children[0].callback(context)
+    view = context.response.send_message.await_args.kwargs["view"]
+    assert isinstance(view, SignupConfirmation)
+    view.select_account("account-0")
+    assert await module.game_accounts.remove(
+        guild=environment.guild, member=100, account="Account-100"
+    )
+    confirmed = interaction(environment)
+    confirmed.message = SimpleNamespace(delete=AsyncMock())
+    await view.confirm.callback(confirmed)
+    assert await module.qs.member_signups(10, 20, phase.index) == ()
+    assert "nicht mehr" in confirmed.followup.send.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -2266,8 +2384,13 @@ async def test_signup_buttons_show_phase_period_in_configured_timezone(
     overview = OverviewView(environment.module, 20, (phase,), timezone)
     thread = PhaseView(environment.module, 20, phase)
     button = overview.children[0]
-    assert button.label == f"Phase 1 : {expected}"
+    assert button.label == f"Anmelden · Phase 1 : {expected}"
     assert button.custom_id == "qs:toggle:20:1"
+    unregister = overview.children[1]
+    assert unregister.label == f"Abmelden · Phase 1 : {expected}"
+    assert unregister.custom_id == "qs:leave:20:1"
+    assert button.row == 0
+    assert unregister.row == 1
     assert len(thread.children) == 2
     assert thread.children[0].custom_id == "qs:report:20:1"
     overview.stop()
@@ -2293,11 +2416,16 @@ async def test_guild_timezone_update_refreshes_phase_period_buttons(
     configuration = await module.qs.get(10, 20)
     overview = module._views[configuration.message_id]
     assert [button.label for button in overview.children] == [
-        "Phase 1 : 22:00 – 01:00",
-        "Phase 2 : 08:00 – 10:00",
-        "Phase 3 : 12:00 – 14:00",
-        "Phase 4 : 16:00 – 18:00",
-        "Phase 5 : 19:00 – 21:00",
+        "Anmelden · Phase 1 : 22:00 – 01:00",
+        "Anmelden · Phase 2 : 08:00 – 10:00",
+        "Anmelden · Phase 3 : 12:00 – 14:00",
+        "Anmelden · Phase 4 : 16:00 – 18:00",
+        "Anmelden · Phase 5 : 19:00 – 21:00",
+        "Abmelden · Phase 1 : 22:00 – 01:00",
+        "Abmelden · Phase 2 : 08:00 – 10:00",
+        "Abmelden · Phase 3 : 12:00 – 14:00",
+        "Abmelden · Phase 4 : 16:00 – 18:00",
+        "Abmelden · Phase 5 : 19:00 – 21:00",
     ]
 
     environment.client.get_guild_timezone.return_value = "Europe/Berlin"
@@ -2307,18 +2435,24 @@ async def test_guild_timezone_update_refreshes_phase_period_buttons(
     phases = await module.qs.phases(10, 20)
     overview = module._views[configuration.message_id]
     assert [button.label for button in overview.children] == [
-        "Phase 1 : 23:00 – 02:00",
-        "Phase 2 : 09:00 – 11:00",
-        "Phase 3 : 13:00 – 15:00",
-        "Phase 4 : 17:00 – 19:00",
-        "Phase 5 : 20:00 – 22:00",
+        "Anmelden · Phase 1 : 23:00 – 02:00",
+        "Anmelden · Phase 2 : 09:00 – 11:00",
+        "Anmelden · Phase 3 : 13:00 – 15:00",
+        "Anmelden · Phase 4 : 17:00 – 19:00",
+        "Anmelden · Phase 5 : 20:00 – 22:00",
+        "Abmelden · Phase 1 : 23:00 – 02:00",
+        "Abmelden · Phase 2 : 09:00 – 11:00",
+        "Abmelden · Phase 3 : 13:00 – 15:00",
+        "Abmelden · Phase 4 : 17:00 – 19:00",
+        "Abmelden · Phase 5 : 20:00 – 22:00",
     ]
-    for phase, button in zip(phases, overview.children):
+    for phase, button in zip(phases, overview.children[: len(phases)]):
         thread = module._views[phase.message_id]
         assert len(thread.children) == 2
         assert thread.children[0].custom_id == f"qs:report:20:{phase.index}"
         environment.threads[phase.thread_id].edit.assert_awaited_with(
-            name=button.label.replace(" : ", " - "), archived=False
+            name=button.label.removeprefix("Anmelden · ").replace(" : ", " - "),
+            archived=False,
         )
 
 

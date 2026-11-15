@@ -101,7 +101,8 @@ async def test_target_modal_sets_highlights_clears_and_rejects_invalid_targets(
     interaction = cast(discord.Interaction, SimpleNamespace(locale="de"))
     target = rush_end_at(draft.rush_start_at, 51)
     modal = DonationRushTargetModal(view)
-    modal.target_input._value = discord.utils.format_dt(target, "F")
+    modal.target_input.date_input._value = target.strftime("%Y-%m-%d")
+    modal.target_input.time_input._value = target.strftime("%H:%M")
     await modal.on_submit(interaction)
     assert draft.target_at == target
     embed = donation_setup_panel(draft, interaction)
@@ -113,9 +114,9 @@ async def test_target_modal_sets_highlights_clears_and_rejects_invalid_targets(
         for f in donation_setup_panel(draft, interaction).fields
         if f.name == "🎯 Zielzeit"
     )
-    modal.target_input._value = discord.utils.format_dt(
-        target + timedelta(minutes=30), "F"
-    )
+    late = target + timedelta(minutes=30)
+    modal.target_input.date_input._value = late.strftime("%Y-%m-%d")
+    modal.target_input.time_input._value = late.strftime("%H:%M")
     with patch(
         "hmwz.modules.donation.type.rush.setup.send_temporary_response",
         new_callable=AsyncMock,
@@ -123,7 +124,8 @@ async def test_target_modal_sets_highlights_clears_and_rejects_invalid_targets(
         await modal.on_submit(interaction)
     notify.assert_awaited_once()
     assert draft.target_at == target
-    modal.target_input._value = ""
+    modal.target_input.date_input._value = ""
+    modal.target_input.time_input._value = ""
     await modal.on_submit(interaction)
     assert draft.target_at is None
 
@@ -136,8 +138,10 @@ async def test_reset_accepts_an_optional_new_target(draft: DonationSetupDraft) -
     modal = DonationRushResetModal(module, 456, 789)
     start = draft.rush_start_at
     target = rush_end_at(start, 24)
-    modal.timestamp_input._value = discord.utils.format_dt(start, "F")
-    modal.target_input._value = discord.utils.format_dt(target, "F")
+    modal.start_input.date_input._value = start.strftime("%Y-%m-%d")
+    modal.start_input.time_input._value = start.strftime("%H:%M")
+    modal.target_input.date_input._value = target.strftime("%Y-%m-%d")
+    modal.target_input.time_input._value = target.strftime("%H:%M")
     interaction = Mock(spec=discord.Interaction)
     interaction.user.id = 789
     interaction.response.defer = AsyncMock()
@@ -177,33 +181,36 @@ async def test_toggle_refreshes_button_labels_and_clears_old_content(
 
 
 @pytest.mark.asyncio
-async def test_setup_start_modal_uses_single_timestamp_input(
+async def test_setup_start_modal_uses_separate_date_and_time_inputs(
     draft: DonationSetupDraft,
 ) -> None:
     view = DonationSetupView(draft)
     modal = DonationRushStartModal(view)
-    assert len(modal.children) == 1
-    assert modal.timestamp_input.default == "2026-10-31 12:00"
-    modal.timestamp_input._value = modal.timestamp_input.default
-    assert modal.timestamp_input.parse() == draft.rush_start_at
-    modal.timestamp_input._value = "<t:1793448000:F>"
+    assert len(modal.children) == 2
+    assert modal.start_input.date_input.default == "2026-10-31"
+    assert modal.start_input.time_input.default == "12:00"
+    modal.start_input.date_input._value = modal.start_input.date_input.default
+    modal.start_input.time_input._value = modal.start_input.time_input.default
+    assert modal.start_input.parse() == draft.rush_start_at
+    modal.start_input.time_input._value = "14:00"
     view.refresh = AsyncMock()
     interaction = Mock(spec=discord.Interaction)
     await modal.on_submit(interaction)
-    assert draft.rush_start_at == datetime.fromtimestamp(1793448000, UTC)
+    assert draft.rush_start_at == datetime(2026, 10, 31, 14, tzinfo=UTC)
     view.refresh.assert_awaited_once_with(interaction)
 
 
 @pytest.mark.asyncio
-async def test_reset_start_modal_uses_the_same_timestamp_parser(
+async def test_reset_start_modal_uses_the_same_date_and_time_parser(
     draft: DonationSetupDraft,
 ) -> None:
     module = Mock(spec=DonationModule)
     module.guild = draft.module.guild
     module.reset_cycle = AsyncMock(return_value=(True, True, False))
     modal = DonationRushResetModal(module, 456, 789)
-    assert len(modal.children) == 2
-    modal.timestamp_input._value = "1793448000"
+    assert len(modal.children) == 4
+    modal.start_input.date_input._value = "2026-10-31"
+    modal.start_input.time_input._value = "12:00"
     interaction = Mock(spec=discord.Interaction)
     interaction.user.id = 789
     interaction.response.defer = AsyncMock()
@@ -212,7 +219,7 @@ async def test_reset_start_modal_uses_the_same_timestamp_parser(
     )
     await modal.on_submit(interaction)
     module.reset_cycle.assert_awaited_once_with(
-        456, rush_start_at=datetime.fromtimestamp(1793448000, UTC), target_at=None
+        456, rush_start_at=datetime(2026, 10, 31, 12, tzinfo=UTC), target_at=None
     )
 
 
@@ -235,14 +242,16 @@ async def test_unpadded_target_date_in_reset_and_setup(
         module.guild = draft.module.guild
         module.reset_cycle = AsyncMock(return_value=(True, True, False))
         modal = DonationRushResetModal(module, 456, 789)
-        modal.timestamp_input._value = "2026-10-31 10:57"
+        modal.start_input.date_input._value = "2026-10-31"
+        modal.start_input.time_input._value = "10:57"
         notify_path = "hmwz.modules.donation.type.rush.reset._send_temporary_response"
     else:
         view = DonationSetupView(draft)
         view.refresh = AsyncMock()
         modal = DonationRushTargetModal(view)
         notify_path = "hmwz.modules.donation.type.rush.setup.send_temporary_response"
-    modal.target_input._value = f"2026-11-3 22:{minutes}"
+    modal.target_input.date_input._value = "2026-11-3"
+    modal.target_input.time_input._value = f"22:{minutes}"
     with patch(notify_path, new_callable=AsyncMock) as notify:
         await modal.on_submit(interaction)
     notify.assert_not_awaited()
@@ -265,7 +274,8 @@ async def test_start_change_rounds_existing_target_on_new_grid(
     view = DonationSetupView(draft)
     view.refresh = AsyncMock()
     modal = DonationRushStartModal(view)
-    modal.timestamp_input._value = "2026-10-31 10:57"
+    modal.start_input.date_input._value = "2026-10-31"
+    modal.start_input.time_input._value = "10:57"
     await modal.on_submit(Mock(spec=discord.Interaction))
     assert draft.rush_start_at == datetime(2026, 10, 31, 10, 57, tzinfo=UTC)
     assert draft.target_at == datetime(2026, 11, 3, 22, 57, tzinfo=UTC)
@@ -278,7 +288,8 @@ async def test_invalid_timestamp_notifies_without_saving(
 ) -> None:
     view = DonationSetupView(draft)
     modal = DonationRushStartModal(view)
-    modal.timestamp_input._value = "not a timestamp"
+    modal.start_input.date_input._value = "not a date"
+    modal.start_input.time_input._value = "12:00"
     view.refresh = AsyncMock()
     original = draft.rush_start_at
     with patch(
@@ -286,6 +297,38 @@ async def test_invalid_timestamp_notifies_without_saving(
         new_callable=AsyncMock,
     ) as notify:
         await modal.on_submit(Mock(spec=discord.Interaction))
+    notify.assert_awaited_once()
+    view.refresh.assert_not_awaited()
+    assert draft.rush_start_at == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("date", "time"),
+    [
+        ("2026-03-29", "02:30"),
+        ("2026-10-25", "02:30"),
+        ("2026-10-31", ""),
+    ],
+)
+async def test_separate_rush_inputs_reject_ambiguous_or_incomplete_times(
+    draft: DonationSetupDraft, date: str, time: str
+) -> None:
+    draft.timezone_name = "Europe/Berlin"
+    original = draft.rush_start_at
+    view = DonationSetupView(draft)
+    view.refresh = AsyncMock()
+    modal = DonationRushStartModal(view)
+    modal.start_input.date_input._value = date
+    modal.start_input.time_input._value = time
+    interaction = cast(discord.Interaction, SimpleNamespace(locale="de"))
+
+    with patch(
+        "hmwz.modules.donation.type.rush.setup.send_temporary_response",
+        new_callable=AsyncMock,
+    ) as notify:
+        await modal.on_submit(interaction)
+
     notify.assert_awaited_once()
     view.refresh.assert_not_awaited()
     assert draft.rush_start_at == original
@@ -306,8 +349,10 @@ async def test_setup_uses_guild_timezone_without_module_timezone_control(
     assert not any(isinstance(item, discord.ui.Select) for item in view.children)
     assert draft.rush_start_at == start and draft.target_at == target
     modal = DonationRushStartModal(view)
-    assert modal.timestamp_input.default == "2026-10-31 13:00"
-    modal.timestamp_input._value = "31.10.2026 14:00"
+    assert modal.start_input.date_input.default == "2026-10-31"
+    assert modal.start_input.time_input.default == "13:00"
+    modal.start_input.date_input._value = "31.10.2026"
+    modal.start_input.time_input._value = "14:00"
     await modal.on_submit(interaction)
     assert draft.rush_start_at == datetime(2026, 10, 31, 13, tzinfo=UTC)
     assert draft.target_at == target
@@ -324,7 +369,9 @@ async def test_setup_does_not_expose_a_per_channel_timezone(
     draft.timezone_name = "UTC+1"
     view = DonationSetupView(draft)
     assert not any(isinstance(item, discord.ui.Select) for item in view.children)
-    assert DonationRushStartModal(view).timestamp_input.default == "2026-10-31 13:00"
+    modal = DonationRushStartModal(view)
+    assert modal.start_input.date_input.default == "2026-10-31"
+    assert modal.start_input.time_input.default == "13:00"
 
 
 @pytest.mark.asyncio
@@ -345,10 +392,12 @@ async def test_timezone_and_parsed_instants_survive_save_and_reopening(
     view = DonationSetupView(draft)
     view.refresh = AsyncMock()
     start_modal = DonationRushStartModal(view)
-    start_modal.timestamp_input._value = "31.10.2026 12:00"
+    start_modal.start_input.date_input._value = "31.10.2026"
+    start_modal.start_input.time_input._value = "12:00"
     await start_modal.on_submit(interaction)
     target_modal = DonationRushTargetModal(view)
-    target_modal.target_input._value = "08.11.2026 12:00"
+    target_modal.target_input.date_input._value = "08.11.2026"
+    target_modal.target_input.time_input._value = "12:00"
     await target_modal.on_submit(interaction)
     assert await repository.configure_channel(
         guild=guild,
@@ -368,8 +417,13 @@ async def test_timezone_and_parsed_instants_survive_save_and_reopening(
     assert reopened.rush_start_at == datetime(2026, 10, 31, 11, tzinfo=UTC)
     assert reopened.target_at == datetime(2026, 11, 8, 11, tzinfo=UTC)
     reset_modal = DonationRushResetModal(Mock(guild=guild), 456, 789, "Europe/Berlin")
-    reset_modal.timestamp_input._value = reset_modal.timestamp_input.default
-    suggested = reset_modal.timestamp_input.parse()
+    reset_modal.start_input.date_input._value = (
+        reset_modal.start_input.date_input.default
+    )
+    reset_modal.start_input.time_input._value = (
+        reset_modal.start_input.time_input.default
+    )
+    suggested = reset_modal.start_input.parse()
     assert suggested is not None and suggested.second == suggested.microsecond == 0
 
 
@@ -404,12 +458,14 @@ async def test_reset_command_uses_configured_timezone_and_local_input(
     await reset.callback(interaction)
     modal = interaction.response.send_modal.await_args.args[0]
     assert (
-        modal.timestamp_input.timezone_name
+        modal.start_input.timezone_name
         == modal.target_input.timezone_name
         == "Europe/Berlin"
     )
-    modal.timestamp_input._value = "31.10.2026 12:00"
-    modal.target_input._value = "08.11.2026 12:00"
+    modal.start_input.date_input._value = "31.10.2026"
+    modal.start_input.time_input._value = "12:00"
+    modal.target_input.date_input._value = "08.11.2026"
+    modal.target_input.time_input._value = "12:00"
     interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock(
         return_value=SimpleNamespace(delete=AsyncMock())

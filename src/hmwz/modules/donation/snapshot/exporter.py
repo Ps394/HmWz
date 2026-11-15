@@ -16,7 +16,7 @@ _logger = logging.getLogger(__name__)
 
 
 class DonationSnapshotExporter:
-    """Export an active cycle to its channel-specific JSON destination."""
+    """Export the all-time donation history to its channel-specific destination."""
 
     def __init__(
         self,
@@ -65,9 +65,8 @@ class DonationSnapshotExporter:
             return False
         if not await self.exporter.export(snapshot):
             _logger.error(
-                "%s Failed to export donation cycle %s from channel %s.",
+                "%s Failed to export donation history from channel %s.",
                 self.guild.name,
-                configuration.current_cycle,
                 channel_id,
             )
             return False

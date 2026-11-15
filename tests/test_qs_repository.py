@@ -11,6 +11,7 @@ from hmwz.modules.hs.qs.models import (
     validate_schedule,
 )
 from hmwz.modules.hs.qs.repositories import QsRepository
+from hmwz.modules.hs.qs.models import MemberSignup
 from hmwz.modules.hs.qs.repositories.bases import (
     BaseLimitReached,
     DuplicateBaseReport,
@@ -171,6 +172,45 @@ async def test_multi_phase_signups_and_channel_isolation(
     await repository.configure(10, 21, 31, "2026-11-01", "UTC", (0,) * 5)
     assert await repository.members(10, 21, 5) == ()
     assert await repository.members(11, 20, 5) == ()
+
+
+@pytest.mark.asyncio
+async def test_member_signup_accounts_migrate_and_persist(
+    repository: QsRepository,
+) -> None:
+    assert await repository.database.execute("DROP TABLE HsQsMembers")
+    assert await repository.database.execute(
+        """
+        CREATE TABLE HsQsMembers (
+            Guild INTEGER NOT NULL,
+            Channel INTEGER NOT NULL,
+            Phase INTEGER NOT NULL,
+            Member INTEGER NOT NULL,
+            GameAccount TEXT,
+            PRIMARY KEY (Guild, Channel, Phase, Member),
+            FOREIGN KEY (Guild, Channel, Phase)
+                REFERENCES HsQsPhases (Guild, Channel, Phase) ON DELETE CASCADE
+        ) WITHOUT ROWID
+        """
+    )
+    assert await repository.database.execute(
+        "INSERT INTO HsQsMembers VALUES (10, 20, 1, 100, NULL)"
+    )
+    assert await repository.ensure_schema()
+    assert not await repository.database.fetch_all("PRAGMA foreign_key_check")
+    assert await repository.member_signups(10, 20, 1) == (MemberSignup(100, None),)
+    assert await repository.join(10, 20, 1, 100, "Account-100")
+    assert await repository.member_signups(10, 20, 1) == (
+        MemberSignup(100, None),
+        MemberSignup(100, "Account-100"),
+    )
+    assert await repository.members(10, 20, 1) == (100, 100)
+    assert not await repository.toggle(10, 20, 1, 100)
+    assert await repository.member_signups(10, 20, 1) == (
+        MemberSignup(100, "Account-100"),
+    )
+    assert await repository.remove_signup(10, 20, 1, 100, "Account-100")
+    assert await repository.member_signups(10, 20, 1) == ()
 
 
 @pytest.mark.asyncio

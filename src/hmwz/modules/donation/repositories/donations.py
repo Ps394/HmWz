@@ -6,6 +6,8 @@ import logging
 import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+
+import aiosqlite
 import discord
 
 from hmwz import sqlite_db
@@ -62,6 +64,7 @@ class DonationRepository(sqlite_db.Base):
                 DonationsEnabled INTEGER NOT NULL DEFAULT 1,
                 ExportChannel INTEGER,
                 TargetAt TEXT,
+                RankingChannel INTEGER,
                 PRIMARY KEY (Guild, Channel)
             ) WITHOUT ROWID
             """,
@@ -131,6 +134,7 @@ class DonationRepository(sqlite_db.Base):
                     ("DonationsEnabled", "INTEGER NOT NULL DEFAULT 1"),
                     ("ExportChannel", "INTEGER"),
                     ("TargetAt", "TEXT"),
+                    ("RankingChannel", "INTEGER"),
                 ),
             )
             and await self.ensure_columns_for(
@@ -186,6 +190,7 @@ class DonationRepository(sqlite_db.Base):
         donations_enabled: bool = True,
         export_channel_id: int | None = None,
         target_at: datetime | None = None,
+        ranking_channel_id: int | None = None,
     ) -> bool:
         """Create or update the channel's donation-system settings."""
         if not 1 <= recent_limit <= 20:
@@ -229,9 +234,9 @@ class DonationRepository(sqlite_db.Base):
                     (
                         Guild, Channel, Title, Description, GoalHours, RecentLimit,
                         ShowRanking, RushStartAt, Timezone, ShowDonations,
-                        DonationsEnabled, ExportChannel, TargetAt
+                        DonationsEnabled, ExportChannel, TargetAt, RankingChannel
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (Guild, Channel) DO UPDATE SET
                     Title = excluded.Title,
                     Description = excluded.Description,
@@ -243,7 +248,8 @@ class DonationRepository(sqlite_db.Base):
                     ShowDonations = excluded.ShowDonations,
                     DonationsEnabled = excluded.DonationsEnabled,
                     ExportChannel = excluded.ExportChannel,
-                    TargetAt = excluded.TargetAt
+                    TargetAt = excluded.TargetAt,
+                    RankingChannel = excluded.RankingChannel
                 """,
                 (
                     guild.id,
@@ -261,6 +267,7 @@ class DonationRepository(sqlite_db.Base):
                     target_at.astimezone(timezone.utc).isoformat()
                     if target_at is not None
                     else None,
+                    ranking_channel_id,
                 ),
             )
         except Exception:
@@ -333,6 +340,42 @@ class DonationRepository(sqlite_db.Base):
             )
             return ()
 
+    _CHANNEL_COLUMNS = """
+                    Channel, Message, RankingMessage, SummaryMessage, Title,
+                    Description, GoalHours, RecentLimit, ShowRanking, RushStartAt,
+                    CurrentCycle, Timezone, ShowDonations, DonationsEnabled,
+                    ExportChannel, TargetAt, RankingChannel
+    """
+
+    def _row_to_channel(self, row: aiosqlite.Row) -> DonationChannel:
+        """Map a channel settings row onto the immutable configuration model."""
+        return DonationChannel(
+            channel_id=row["Channel"],
+            overview_message_id=row["Message"],
+            ranking_message_id=row["RankingMessage"],
+            history_message_id=row["SummaryMessage"],
+            title=row["Title"],
+            description=row["Description"],
+            goal_hours=row["GoalHours"],
+            recent_limit=row["RecentLimit"],
+            show_ranking=bool(row["ShowRanking"]),
+            rush_start_at=(
+                self._parse_rush_start(row["RushStartAt"])
+                if row["RushStartAt"] is not None
+                else None
+            ),
+            current_cycle=row["CurrentCycle"],
+            show_donations=bool(row["ShowDonations"]),
+            donations_enabled=bool(row["DonationsEnabled"]),
+            export_channel_id=row["ExportChannel"],
+            target_at=(
+                self._parse_rush_start(row["TargetAt"])
+                if row["TargetAt"] is not None
+                else None
+            ),
+            ranking_channel_id=row["RankingChannel"],
+        )
+
     async def get_channel(
         self, *, guild: discord.Guild, channel_id: int
     ) -> DonationChannel | None:
@@ -340,11 +383,7 @@ class DonationRepository(sqlite_db.Base):
         try:
             row = await self.database.fetch_one(
                 f"""
-                SELECT
-                    Channel, Message, RankingMessage, SummaryMessage, Title,
-                    Description, GoalHours, RecentLimit, ShowRanking, RushStartAt,
-                    CurrentCycle, Timezone, ShowDonations, DonationsEnabled,
-                    ExportChannel, TargetAt
+                SELECT {self._CHANNEL_COLUMNS}
                 FROM {self.channel_table_name}
                 WHERE Guild = ? AND Channel = ?
                 """,
@@ -352,31 +391,7 @@ class DonationRepository(sqlite_db.Base):
             )
             if row is None:
                 return None
-            return DonationChannel(
-                channel_id=row["Channel"],
-                overview_message_id=row["Message"],
-                ranking_message_id=row["RankingMessage"],
-                history_message_id=row["SummaryMessage"],
-                title=row["Title"],
-                description=row["Description"],
-                goal_hours=row["GoalHours"],
-                recent_limit=row["RecentLimit"],
-                show_ranking=bool(row["ShowRanking"]),
-                rush_start_at=(
-                    self._parse_rush_start(row["RushStartAt"])
-                    if row["RushStartAt"] is not None
-                    else None
-                ),
-                current_cycle=row["CurrentCycle"],
-                show_donations=bool(row["ShowDonations"]),
-                donations_enabled=bool(row["DonationsEnabled"]),
-                export_channel_id=row["ExportChannel"],
-                target_at=(
-                    self._parse_rush_start(row["TargetAt"])
-                    if row["TargetAt"] is not None
-                    else None
-                ),
-            )
+            return self._row_to_channel(row)
         except Exception:
             _logger.exception(
                 "%s Failed to load donation channel %s.",
@@ -384,6 +399,30 @@ class DonationRepository(sqlite_db.Base):
                 channel_id,
             )
             return None
+
+    async def get_channels_by_ranking_message(
+        self, *, guild: discord.Guild, message_ids: tuple[int, ...]
+    ) -> tuple[DonationChannel, ...]:
+        """Return channel settings whose ranking message is one of the given IDs."""
+        if not message_ids:
+            return ()
+        try:
+            placeholders = ", ".join("?" for _ in message_ids)
+            rows = await self.database.fetch_all(
+                f"""
+                SELECT {self._CHANNEL_COLUMNS}
+                FROM {self.channel_table_name}
+                WHERE Guild = ? AND RankingMessage IN ({placeholders})
+                """,
+                (guild.id, *message_ids),
+            )
+            return tuple(self._row_to_channel(row) for row in rows)
+        except Exception:
+            _logger.exception(
+                "%s Failed to look up donation ranking messages.",
+                self.log_prefix(guild),
+            )
+            return ()
 
     async def set_message(
         self,
@@ -591,9 +630,9 @@ class DonationRepository(sqlite_db.Base):
         *,
         guild: discord.Guild,
         channel_id: int,
-        cycle: int,
+        cycle: int | None = None,
     ) -> tuple[DonationRecord, ...] | None:
-        """Return every donation in a cycle, preserving query failures as None."""
+        """Return the all-time history (or one cycle), preserving failures as None."""
         return await self._get_donations(
             guild=guild,
             channel_id=channel_id,
@@ -611,7 +650,8 @@ class DonationRepository(sqlite_db.Base):
     ) -> tuple[DonationRecord, ...] | None:
         try:
             query = f"""
-                SELECT Member, MemberName, Amount, Unit, TimeReduction, CreatedAt
+                SELECT Member, MemberName, Amount, Unit, TimeReduction, CreatedAt,
+                    Cycle
                 FROM {self.entry_table_name}
                 WHERE Guild = ? AND Channel = ?
                     AND (? IS NULL OR Cycle = ?)
@@ -648,6 +688,7 @@ class DonationRepository(sqlite_db.Base):
                         unit=row["Unit"],
                         time_reduction=row["TimeReduction"],
                         created_at=row["CreatedAt"],
+                        cycle=row["Cycle"],
                     )
                 )
             return tuple(records)
@@ -847,6 +888,39 @@ class DonationRepository(sqlite_db.Base):
                 channel_id,
             )
             return False
+
+    async def clear_ranking_channel(
+        self, *, guild: discord.Guild, ranking_channel_id: int
+    ) -> tuple[int, ...] | None:
+        """Detach a deleted ranking channel and return affected donation channels."""
+        try:
+            rows = await self.database.fetch_all(
+                f"""
+                SELECT Channel
+                FROM {self.channel_table_name}
+                WHERE Guild = ? AND RankingChannel = ?
+                """,
+                (guild.id, ranking_channel_id),
+            )
+            if not rows:
+                return ()
+            if not await self.database.execute(
+                f"""
+                UPDATE {self.channel_table_name}
+                SET RankingChannel = NULL, RankingMessage = NULL
+                WHERE Guild = ? AND RankingChannel = ?
+                """,
+                (guild.id, ranking_channel_id),
+            ):
+                return None
+            return tuple(row["Channel"] for row in rows)
+        except Exception:
+            _logger.exception(
+                "%s Failed to detach donation ranking channel %s.",
+                self.log_prefix(guild),
+                ranking_channel_id,
+            )
+            return None
 
     async def remove_channel(self, *, guild: discord.Guild, channel_id: int) -> bool:
         """Remove a donation system and all associated history and rankings."""

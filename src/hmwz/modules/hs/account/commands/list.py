@@ -17,7 +17,7 @@ _ACCOUNT_EMBED_DESCRIPTION_LIMIT = 3500
 
 
 @app_commands.command(
-    name="account-list",
+    name="list",
     description=command_description(
         "command.description.wz.registration.account_list",
         "List your linked in-game accounts",

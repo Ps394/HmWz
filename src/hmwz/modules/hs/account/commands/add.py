@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @app_commands.command(
-    name="account-add",
+    name="add",
     description=command_description(
         "command.description.wz.registration.account_add",
         "Link an in-game account to your Discord member",

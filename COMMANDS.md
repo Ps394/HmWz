@@ -325,7 +325,9 @@ erfordern eine Moderatorrolle.
 Öffnet ein privates Setup ohne Slash-Parameter. Bei einer neuen Einrichtung
 wählst du zwischen einfachen Credit-/Ressourcenspenden und Rush-Spenden. Im
 Setup lassen sich Titel, Beschreibung, Darstellung, Betragsauswahl und optional
-ein JSON-Exportkanal festlegen. Jede Spende muss vor dem Speichern bestätigt
+separate Kanäle für das All-Time-Ranking und den JSON-Export festlegen. Der
+Ranking-Kanal benötigt **View Channels**, **Send Messages**, **Read Message
+History** und **Embed Links**. Jede Spende muss vor dem Speichern bestätigt
 werden.
 
 Rush-Spenden bieten **1 h**, **8 h** und **24 h**. Ihre Preise berücksichtigen
@@ -343,12 +345,13 @@ Parameter.
 ### `/donation reset`
 
 Startet nach Bestätigung einen neuen Spendenzyklus. Bei Rush-Spenden führt der
-Dialog auch die benötigten Datums- und Zeiteingaben. Dabei gilt die mit
+Dialog getrennte Felder für Datum und Uhrzeit. Dabei gilt die mit
 `/set-timezone` gesetzte Zeitzone. Ist ein Exportkanal konfiguriert, wird vor
-dem Zykluswechsel ein Export erstellt. Schlägt dieser fehl, wird der Reset
-abgebrochen. Keine Parameter.
+dem Zykluswechsel die gesamte Spendenhistorie exportiert. Schlägt dieser fehl,
+wird der Reset abgebrochen. Keine Parameter.
 
 ### `/donation snapshot`
 
-Exportiert den aktuellen Spendenzyklus als JSON in den eingerichteten
-Exportkanal, ohne den Zyklus zurückzusetzen. Keine Parameter.
+Exportiert die vollständige Spendenhistorie aller Zyklen des aktuellen Kanals
+als JSON in den eingerichteten Exportkanal, ohne den Zyklus zurückzusetzen.
+Keine Parameter.

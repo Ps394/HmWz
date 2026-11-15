@@ -18,7 +18,7 @@ _logger = logging.getLogger(__name__)
 
 
 class DonationSnapshotBuilder:
-    """Build JSON-compatible snapshots without truncating cycle history."""
+    """Build JSON-compatible snapshots of the complete all-time history."""
 
     def __init__(self, *, guild: discord.Guild, donations: DonationRepository) -> None:
         self.guild = guild
@@ -31,21 +31,20 @@ class DonationSnapshotBuilder:
         destination_channel_id: int,
         event_type: DonationEventType,
     ) -> Snapshot | None:
-        """Build a snapshot, rejecting failed queries or incomplete history."""
+        """Build an all-time snapshot, rejecting failed queries or incomplete history."""
         channel_id = configuration.channel_id
         cycle = configuration.current_cycle
         records = await self.donations.get_donations_for_export(
-            guild=self.guild, channel_id=channel_id, cycle=cycle
+            guild=self.guild, channel_id=channel_id
         )
         summary = await self.donations.get_summary(
-            guild=self.guild, channel_id=channel_id, cycle=cycle
+            guild=self.guild, channel_id=channel_id
         )
         if records is None or summary is None or len(records) != summary.donation_count:
             _logger.error(
-                "%s Cannot export all donations for channel %s, cycle %s.",
+                "%s Cannot export all donations for channel %s.",
                 self.guild.name,
                 channel_id,
-                cycle,
             )
             return None
 
@@ -64,6 +63,8 @@ class DonationSnapshotBuilder:
             }
             if record.time_reduction is not None:
                 donation["time_reduction"] = record.time_reduction
+            if record.cycle is not None:
+                donation["cycle"] = record.cycle
             donations.append(donation)
 
         filename = f"donation-{channel_id}-cycle-{cycle}"
@@ -79,8 +80,13 @@ class DonationSnapshotBuilder:
         if configuration.target_at is not None:
             payload["target_at"] = configuration.target_at.isoformat()
             if configuration.rush_start_at is not None:
+                cycle_summary = await self.donations.get_summary(
+                    guild=self.guild, channel_id=channel_id, cycle=cycle
+                )
+                if cycle_summary is None:
+                    return None
                 payload["end_at"] = rush_end_at(
-                    configuration.rush_start_at, summary.time_reduction_hours
+                    configuration.rush_start_at, cycle_summary.time_reduction_hours
                 ).isoformat()
         return Snapshot(
             destination_channel_id=destination_channel_id,

@@ -64,6 +64,8 @@ class DonationOverview:
         guild: discord.Guild,
         donation_type: DonationType,
         ranking: tuple[DonationRank, ...],
+        *,
+        donation_title: str | None = None,
     ) -> discord.Embed:
         """Build a donor ranking grouped by the channel's single donation unit."""
         unit = (
@@ -74,10 +76,12 @@ class DonationOverview:
         icon = emojis.get(
             "crystal" if donation_type.kind == "time_reduction" else "credit", guild
         )
-        embed = create_embed(
-            title=t(guild, "donation.ranking.title"),
-            color=discord.Color.gold(),
-        )
+        title = t(guild, "donation.ranking.title")
+        if donation_title:
+            title = f"{title} – {donation_title}"
+        if len(title) > 256:
+            title = f"{title[:255]}…"
+        embed = create_embed(title=title, color=discord.Color.gold())
         if donation_type.kind == "simple":
             embed.timestamp = None
         lines = []
