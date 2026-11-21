@@ -9,3 +9,4 @@ class MemberSignup:
 
     member_id: int
     game_account: str | None
+    base_destroyed: bool = False

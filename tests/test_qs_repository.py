@@ -198,6 +198,16 @@ async def test_member_signup_accounts_migrate_and_persist(
     )
     assert await repository.ensure_schema()
     assert not await repository.database.fetch_all("PRAGMA foreign_key_check")
+    columns = {
+        row["name"]
+        for row in await repository.database.fetch_all("PRAGMA table_info(HsQsMembers)")
+    }
+    assert "CreatedAt" in columns
+    migrated = await repository.database.fetch_one(
+        "SELECT CreatedAt FROM HsQsMembers "
+        "WHERE Guild=10 AND Channel=20 AND Phase=1 AND Member=100"
+    )
+    assert migrated is not None and migrated["CreatedAt"] == 0
     assert await repository.member_signups(10, 20, 1) == (MemberSignup(100, None),)
     assert await repository.join(10, 20, 1, 100, "Account-100")
     assert await repository.member_signups(10, 20, 1) == (
@@ -211,6 +221,50 @@ async def test_member_signup_accounts_migrate_and_persist(
     )
     assert await repository.remove_signup(10, 20, 1, 100, "Account-100")
     assert await repository.member_signups(10, 20, 1) == ()
+
+
+@pytest.mark.asyncio
+async def test_signup_order_uses_chronology_and_account_priority(
+    repository: QsRepository,
+) -> None:
+    await repository.configure(
+        10,
+        20,
+        30,
+        "2026-11-01",
+        "UTC",
+        (1_000, 10_000, 20_000, 30_000, 40_000),
+    )
+    await repository.join(10, 20, 1, 100, "Account-100", created_at=10)
+    await repository.join(10, 20, 2, 100, "Account-100", created_at=20)
+    await repository.join(10, 20, 1, 103, "Account-103", created_at=15)
+    await repository.join(10, 20, 2, 103, "Account-103", created_at=25)
+    await repository.join(10, 20, 2, 101, "Account-101", created_at=30)
+    await repository.join(10, 20, 2, 102, "Account-102", created_at=5)
+    await repository.report(10, 20, 2, 102, "Account-102", "Player 102", 40)
+
+    before_phase_one_ends = await repository.member_signups(10, 20, 2, now=5_000)
+    assert before_phase_one_ends == (
+        MemberSignup(102, "Account-102", True),
+        MemberSignup(101, "Account-101"),
+        MemberSignup(100, "Account-100"),
+        MemberSignup(103, "Account-103"),
+    )
+
+    after_phase_one_ends = await repository.member_signups(10, 20, 2, now=8_201)
+    assert after_phase_one_ends == (
+        MemberSignup(102, "Account-102", True),
+        MemberSignup(100, "Account-100"),
+        MemberSignup(103, "Account-103"),
+        MemberSignup(101, "Account-101"),
+    )
+
+    await repository.join(10, 20, 3, 102, "Account-102", created_at=40)
+    await repository.join(10, 20, 3, 101, "Account-101", created_at=50)
+    assert await repository.member_signups(10, 20, 3, now=5_000) == (
+        MemberSignup(101, "Account-101"),
+        MemberSignup(102, "Account-102", True),
+    )
 
 
 @pytest.mark.asyncio

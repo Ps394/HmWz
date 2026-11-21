@@ -732,9 +732,7 @@ async def test_phase_start_ping_does_not_list_or_split_many_signups(
     signups = tuple(range(300))
     thread = environment.threads[phase.thread_id]
     sends_before = thread.send.await_count
-    with patch.object(
-        module.qs, "members", AsyncMock(return_value=signups)
-    ) as members:
+    with patch.object(module.qs, "members", AsyncMock(return_value=signups)) as members:
         assert await module.phase_pings.ping_participants(20, phase)
 
     sent_messages = thread.send.await_args_list[sends_before:]
@@ -745,8 +743,7 @@ async def test_phase_start_ping_does_not_list_or_split_many_signups(
         "**Bei Abweichungen bitte hier absprechen!**"
     )
     assert not any(
-        f"<@{member_id}>" in sent_messages[0].kwargs["content"]
-        for member_id in signups
+        f"<@{member_id}>" in sent_messages[0].kwargs["content"] for member_id in signups
     )
     assert sent_messages[0].kwargs["allowed_mentions"].roles == [environment.role]
     members.assert_awaited_once()
@@ -991,19 +988,25 @@ async def test_phase_signup_can_select_linked_account(
     confirmed.message = SimpleNamespace(delete=AsyncMock())
     await view.confirm.callback(confirmed)
     assert await module.qs.member_signups(10, 20, phase.index) == (
-        MemberSignup(100, None),
         MemberSignup(100, "Account-100"),
+        MemberSignup(100, None),
     )
 
     no_accounts_left = interaction(environment)
-    await module.publisher.views[configuration.message_id].children[0].callback(
-        no_accounts_left
+    await (
+        module.publisher.views[configuration.message_id]
+        .children[0]
+        .callback(no_accounts_left)
     )
     assert "bereits" in no_accounts_left.response.send_message.await_args.args[0]
     assert "view" not in no_accounts_left.response.send_message.await_args.kwargs
 
     unregister = interaction(environment)
-    await module.publisher.views[configuration.message_id].children[5].callback(unregister)
+    await (
+        module.publisher.views[configuration.message_id]
+        .children[5]
+        .callback(unregister)
+    )
     unregister_view = unregister.response.send_message.await_args.kwargs["view"]
     assert isinstance(unregister_view, SignupConfirmation)
     assert {option.label for option in unregister_view.selection.options} == {
@@ -1019,7 +1022,11 @@ async def test_phase_signup_can_select_linked_account(
     )
 
     unregister = interaction(environment)
-    await module.publisher.views[configuration.message_id].children[5].callback(unregister)
+    await (
+        module.publisher.views[configuration.message_id]
+        .children[5]
+        .callback(unregister)
+    )
     unregister_view = unregister.response.send_message.await_args.kwargs["view"]
     confirmed = interaction(environment)
     confirmed.message = SimpleNamespace(delete=AsyncMock())
@@ -1046,7 +1053,11 @@ async def test_phase_signup_defaults_to_main_account_without_selection(
         MemberSignup(100, None),
     )
     unregister = interaction(environment)
-    await module.publisher.views[configuration.message_id].children[6].callback(unregister)
+    await (
+        module.publisher.views[configuration.message_id]
+        .children[6]
+        .callback(unregister)
+    )
     unregister_view = unregister.response.send_message.await_args.kwargs["view"]
     confirmed = interaction(environment)
     confirmed.message = SimpleNamespace(delete=AsyncMock())
@@ -1098,12 +1109,18 @@ async def test_base_report_requires_phase_to_have_started(
     module = environment.module
     phase = (await module.qs.phases(10, 20))[0]
     context = interaction(environment)
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at - 1):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at - 1,
+    ):
         await submit_base_report(module, context, phase.index)
     assert "noch nicht begonnen" in context.followup.send.await_args.args[0]
     assert await module.qs.reports(10, 20) == ()
 
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
         await submit_base_report(module, interaction(environment), phase.index)
     assert len(await module.qs.reports(10, 20)) == 1
 
@@ -1166,7 +1183,11 @@ async def test_report_uses_display_name_when_member_has_no_linked_accounts(
 ) -> None:
     phase = (await environment.module.qs.phases(10, 20))[0]
     context = interaction(environment, member_id=5000)
-    await environment.module.publisher.views[phase.message_id].children[0].callback(context)
+    await (
+        environment.module.publisher.views[phase.message_id]
+        .children[0]
+        .callback(context)
+    )
     assert "Player 5000" in context.response.send_message.await_args.args[0]
     view = context.response.send_message.await_args.kwargs["view"]
     assert isinstance(view, BaseReportConfirmation)
@@ -1178,14 +1199,19 @@ async def test_report_uses_display_name_when_member_has_no_linked_accounts(
     assert "wähle" not in view.prompt.lower()
     confirmed = interaction(environment, member_id=5000)
     confirmed.message = SimpleNamespace(delete=AsyncMock())
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
         await view.confirm.callback(confirmed)
     report = (await environment.module.qs.reports(10, 20))[0]
     assert report.game_account is None
     assert report.display_name == "Player 5000"
     repeated = interaction(environment, member_id=5000)
-    await environment.module.publisher.views[phase.message_id].children[0].callback(
-        repeated
+    await (
+        environment.module.publisher.views[phase.message_id]
+        .children[0]
+        .callback(repeated)
     )
     assert "keinen Account mehr" in repeated.response.send_message.await_args.args[0]
     assert "view" not in repeated.response.send_message.await_args.kwargs
@@ -1198,7 +1224,11 @@ async def test_report_uses_display_name_when_member_has_no_linked_accounts(
     )
 
     withdrawal = interaction(environment, member_id=5000)
-    await environment.module.publisher.views[phase.message_id].children[1].callback(withdrawal)
+    await (
+        environment.module.publisher.views[phase.message_id]
+        .children[1]
+        .callback(withdrawal)
+    )
     withdrawal_view = withdrawal.response.send_message.await_args.kwargs["view"]
     assert isinstance(withdrawal_view, BaseReportConfirmation)
     assert withdrawal_view.choices[0].game_account is None
@@ -1231,7 +1261,10 @@ async def test_moderator_can_report_and_withdraw_without_linked_accounts(
     confirmed = interaction(environment)
     confirmed.user.roles = [environment.moderator]
     phase = (await module.qs.phases(10, 20))[0]
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
         await view.confirm.callback(confirmed)
     report = (await module.qs.reports(10, 20))[0]
     assert report.member_id == target.id
@@ -1285,7 +1318,11 @@ async def test_report_view_paginates_more_than_twenty_five_aliases(
         )
     phase = (await environment.module.qs.phases(10, 20))[0]
     context = interaction(environment)
-    await environment.module.publisher.views[phase.message_id].children[0].callback(context)
+    await (
+        environment.module.publisher.views[phase.message_id]
+        .children[0]
+        .callback(context)
+    )
     view = context.response.send_message.await_args.kwargs["view"]
     assert isinstance(view, BaseReportConfirmation)
     assert len(view.selection.options) == 25
@@ -1328,7 +1365,10 @@ async def test_main_account_is_default_even_with_linked_accounts(
     confirmed = interaction(environment)
     if moderated:
         confirmed.user.roles = [environment.moderator]
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
         await view.confirm.callback(confirmed)
     report = (await module.qs.reports(10, 20))[0]
     assert report.member_id == target.id
@@ -1349,7 +1389,10 @@ async def test_selecting_alt_updates_default_option_and_saves_alt(
     assert not view.selection.options[0].default
     assert view.selection.options[1].default
     confirmed = interaction(environment)
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
         await view.confirm.callback(confirmed)
     report = (await module.qs.reports(10, 20))[0]
     assert report.game_account == game_account(100)
@@ -1367,7 +1410,10 @@ async def test_main_account_and_alt_can_be_reported_and_withdrawn_separately(
         view = context.response.send_message.await_args.kwargs["view"]
         if selection != "discord-display-name":
             view.select_account(selection)
-        with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+        with patch(
+            "hmwz.modules.hs.qs.phases.bases.service.time.time",
+            return_value=phase.starts_at,
+        ):
             await view.confirm.callback(interaction(environment))
     assert {report.game_account for report in await module.qs.reports(10, 20)} == {
         None,
@@ -1491,7 +1537,10 @@ async def test_member_can_report_once_for_each_linked_account(
     view.select_account("account-1")
     confirmed = interaction(environment)
     confirmed.message = SimpleNamespace(delete=AsyncMock())
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
         await view.confirm.callback(confirmed)
     await submit_base_report(module, interaction(environment), 2)
     assert {report.game_account for report in await module.qs.reports(10, 20)} == {
@@ -1506,18 +1555,23 @@ async def test_member_can_report_once_for_each_linked_account(
     assert {choice.game_account for choice in report_view.choices} == {None}
 
     withdrawal_context = interaction(environment)
-    await module.publisher.views[phase.message_id].children[1].callback(
-        withdrawal_context
+    await (
+        module.publisher.views[phase.message_id]
+        .children[1]
+        .callback(withdrawal_context)
     )
-    withdrawal_view = withdrawal_context.response.send_message.await_args.kwargs[
-        "view"
-    ]
+    withdrawal_view = withdrawal_context.response.send_message.await_args.kwargs["view"]
     assert isinstance(withdrawal_view, BaseReportConfirmation)
     assert {choice.game_account for choice in withdrawal_view.choices} == {"Alt-100"}
 
     repeated = interaction(environment)
-    with patch("hmwz.modules.hs.qs.phases.bases.service.time.time", return_value=phase.starts_at):
-        await module.bases.report_base(repeated, 20, phase.index, game_account="Alt-100")
+    with patch(
+        "hmwz.modules.hs.qs.phases.bases.service.time.time",
+        return_value=phase.starts_at,
+    ):
+        await module.bases.report_base(
+            repeated, 20, phase.index, game_account="Alt-100"
+        )
     assert "bereits" in repeated.followup.send.await_args.args[0]
     assert len(await module.qs.reports(10, 20)) == 2
 
@@ -1655,6 +1709,9 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
         )
         < 1024
     )
+    guild.get_member.side_effect = lambda member_id: SimpleNamespace(
+        display_name=f"Player {member_id}"
+    )
     assert member_list(
         guild,
         (
@@ -1662,10 +1719,25 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
             MemberSignup(101, None),
             MemberSignup(102, "Account-102"),
         ),
-    ) == (
-        "🎯 #1 · Account-100 (<@100>)\n"
-        "🎯 #2 · <@101>\n"
-        "🎯 #3 · Account-102 (<@102>)"
+    ) == ("🎯 #1 · Account-100\n🎯 #2 · Player 101\n🎯 #3 · Account-102")
+    with patch(
+        "hmwz.modules.hs.qs.phases.embeds.emojis.get",
+        side_effect=lambda name, _: (
+            "<:qs_station:123>"
+            if name == "qs-station"
+            else "<:qs_station_destroyed:456>"
+        ),
+    ):
+        destroyed = member_list(
+            guild,
+            (
+                MemberSignup(100, "Account-100", True),
+                MemberSignup(101, "Account-101"),
+            ),
+        )
+    assert destroyed == (
+        "<:qs_station_destroyed:456> #1 · Account-100\n"
+        "<:qs_station:123> #2 · Account-101"
     )
     participants = participants_embed(
         guild,
@@ -1674,7 +1746,7 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
     )
     assert participants.title == "Phase 1 - Anmeldungen"
     assert not participants.fields
-    assert "➕ #9 · <@108>" in participants.description
+    assert "➖ #9 · Player 108" in participants.description
 
 
 @pytest.mark.parametrize(
@@ -1724,23 +1796,27 @@ def test_phase_overview_shows_separate_times_and_brief_report_instructions(
 
 def test_numbered_lists_preserve_phase_filtering_and_embed_limits() -> None:
     guild = Mock(spec=discord.Guild, preferred_locale=discord.Locale.german)
-    guild.get_member.return_value = None
+    guild.get_member.side_effect = lambda member_id: SimpleNamespace(
+        display_name=f"Player {member_id}"
+    )
     assert member_list(guild, tuple(range(100, 110))) == (
-        "🎯 #1 · <@100>\n"
-        "🎯 #2 · <@101>\n"
-        "🎯 #3 · <@102>\n"
-        "🎯 #4 · <@103>\n"
-        "🎯 #5 · <@104>\n"
-        "🎯 #6 · <@105>\n"
-        "🎯 #7 · <@106>\n"
-        "🎯 #8 · <@107>\n"
-        "➕ #9 · <@108>\n"
-        "➕ #10 · <@109>"
+        "🎯 #1 · Player 100\n"
+        "🎯 #2 · Player 101\n"
+        "🎯 #3 · Player 102\n"
+        "🎯 #4 · Player 103\n"
+        "🎯 #5 · Player 104\n"
+        "🎯 #6 · Player 105\n"
+        "🎯 #7 · Player 106\n"
+        "🎯 #8 · Player 107\n"
+        "➖ #9 · Player 108\n"
+        "➖ #10 · Player 109"
     )
     assert (
         len(member_list(guild, tuple(10**20 - 1 - index for index in range(200))))
         <= 1024
     )
+    guild.get_member.side_effect = None
+    guild.get_member.return_value = None
     reports = (
         BaseReport(100, 2, "Other", 0),
         BaseReport(101, 1, "First", 1),
@@ -2230,7 +2306,9 @@ async def test_notification_failure_retries_without_marking_delivered(
 ) -> None:
     module = environment.module
     start = (await module.qs.get(10, 20)).eruption_start
-    with patch.object(module.pings, "ping", AsyncMock(side_effect=[False, True])) as ping:
+    with patch.object(
+        module.pings, "ping", AsyncMock(side_effect=[False, True])
+    ) as ping:
         await module.notifications.tick(start + 1, start - 1)
         assert not (await module.qs.get(10, 20)).start_notified
         await module.notifications.tick(start + 31, start + 1)
@@ -2432,8 +2510,7 @@ async def test_signup_buttons_have_short_labels_and_pair_rows(
 ) -> None:
     start = int(datetime(2026, 11, 1, 21, tzinfo=UTC).timestamp())
     phases = tuple(
-        Phase(index, start + (index - 1) * 3600, None, None, 2)
-        for index in range(1, 6)
+        Phase(index, start + (index - 1) * 3600, None, None, 2) for index in range(1, 6)
     )
     phase = phases[0]
     overview = OverviewView(environment.module, 20, phases)
@@ -2551,8 +2628,11 @@ async def test_participant_lists_are_only_posted_in_their_phase_threads(
             else participants.sent_kwargs
         )
         embed = kwargs["embeds"][0]
-        assert ("<@100>" in embed.description) == (phase.index == 1)
-        assert ("<@101>" in embed.description) == (phase.index == 2)
+        assert "<@100>" not in embed.description
+        assert "<@101>" not in embed.description
+        assert ("Anzeigename nicht verfüg" in embed.description) == (
+            phase.index in (1, 2)
+        )
         status = environment.messages[phase.message_id].sent_kwargs["embeds"][0]
         assert "<@100>" not in str(status.to_dict())
         assert "<@101>" not in str(status.to_dict())
@@ -2896,7 +2976,9 @@ async def test_burst_signups_patch_only_affected_lists_and_overview_once(
     module = environment.module
     phases = await module.qs.phases(10, 20)
     configuration = await module.qs.get(10, 20)
-    with patch("hmwz.modules.hs.qs.publishing.fetch_message", wraps=fetch_message) as fetch:
+    with patch(
+        "hmwz.modules.hs.qs.publishing.fetch_message", wraps=fetch_message
+    ) as fetch:
         await asyncio.gather(
             module.signups.toggle_phase(interaction(environment, member_id=100), 20, 1),
             module.signups.toggle_phase(interaction(environment, member_id=101), 20, 1),
@@ -2960,7 +3042,8 @@ async def test_batched_failure_notifies_every_saved_signup(
         interaction(environment, member_id=101),
     )
     await asyncio.gather(
-        module.signups.toggle_phase(first, 20, 1), module.signups.toggle_phase(second, 20, 1)
+        module.signups.toggle_phase(first, 20, 1),
+        module.signups.toggle_phase(second, 20, 1),
     )
     assert await module.qs.members(10, 20, 1) == (100, 101)
     for context in (first, second):

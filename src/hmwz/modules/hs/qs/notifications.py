@@ -98,9 +98,17 @@ class QsNotifications:
                     else:
                         self.pending.add(key)
                 await self.goals(current.channel_id)
-                for phase in await module.qs.phases(
-                    module.guild.id, current.channel_id
+                phases = await module.qs.phases(module.guild.id, current.channel_id)
+                if (
+                    previous is not None
+                    and any(previous < phase.ends_at <= now for phase in phases)
+                    and not await module.publisher.refresh(
+                        current.channel_id,
+                        signup_phases={phase.index for phase in phases},
+                    )
                 ):
+                    raise RuntimeError("Failed to refresh Qs signup priorities.")
+                for phase in phases:
                     if phase.start_notified or phase.starts_at > now:
                         continue
                     key = (current.channel_id, phase.starts_at, f"phase:{phase.index}")
@@ -108,8 +116,11 @@ class QsNotifications:
                         phase.starts_at <= previous and key not in self.pending
                     )
                     try:
-                        delivered = skipped or await module.phase_pings.ping_participants(
-                            current.channel_id, phase
+                        delivered = (
+                            skipped
+                            or await module.phase_pings.ping_participants(
+                                current.channel_id, phase
+                            )
                         )
                     except (discord.HTTPException, discord.RateLimited, RuntimeError):
                         _logger.exception(
@@ -144,7 +155,9 @@ class QsNotifications:
                 < PHASE_GOAL
             ):
                 continue
-            if not await module.pings.ping(channel_id, event="goal", phase_index=phase.index):
+            if not await module.pings.ping(
+                channel_id, event="goal", phase_index=phase.index
+            ):
                 success = False
             elif not await module.qs.notified(
                 module.guild.id, channel_id, "goal", phase.index

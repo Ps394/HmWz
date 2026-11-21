@@ -16,6 +16,13 @@ _logger = logging.getLogger(__name__)
 ASSET_DIRECTORY: Final[Path] = Path(__file__).parent / "assets"
 MAX_IMAGE_BYTES: Final[int] = 256 * 1024
 _IMAGE_SUFFIXES: Final[frozenset[str]] = frozenset({".png", ".jpg", ".jpeg", ".gif"})
+_ASSET_NAME_ALIASES: Final[dict[str, str]] = {
+    "qs-station": "qs_station",
+    "qs-station-destroyed": "qs_station_destroyed",
+}
+_REFRESHED_ASSETS: Final[frozenset[str]] = frozenset(
+    {"qs_station", "qs_station_destroyed"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +31,7 @@ class UploadResult:
 
     created: tuple[str, ...] = ()
     reused: tuple[str, ...] = ()
+    updated: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
 
 
@@ -73,10 +81,15 @@ class EmojiUploader:
 
         created: list[str] = []
         reused: list[str] = []
+        updated: list[str] = []
         failed: list[str] = []
-        name_counts = Counter(asset.stem.lower() for asset in assets)
+        emoji_names = {
+            asset: _ASSET_NAME_ALIASES.get(asset.stem.lower(), asset.stem)
+            for asset in assets
+        }
+        name_counts = Counter(name.lower() for name in emoji_names.values())
         for asset in assets:
-            name = asset.stem
+            name = emoji_names[asset]
             if (
                 re.fullmatch(r"[A-Za-z0-9_]{2,32}", name) is None
                 or name_counts[name.lower()] > 1
@@ -84,10 +97,22 @@ class EmojiUploader:
                 _logger.error("Invalid or duplicate emoji asset name: %s", asset.name)
                 failed.append(asset.name)
                 continue
-            if name.lower() in self.mentions:
+            existing_emoji = next(
+                (emoji for emoji in existing if emoji.name.lower() == name.lower()),
+                None,
+            )
+            if existing_emoji is not None and name.lower() in _REFRESHED_ASSETS:
+                try:
+                    await existing_emoji.delete()
+                    self.mentions.pop(name.lower(), None)
+                except (discord.HTTPException, discord.MissingApplicationID):
+                    _logger.exception("Failed to refresh emoji %s.", name)
+                    failed.append(name)
+                    continue
+            elif name.lower() in self.mentions:
                 reused.append(name)
                 continue
-            if any(emoji.name.lower() == name.lower() for emoji in existing):
+            if existing_emoji is not None and name.lower() not in _REFRESHED_ASSETS:
                 _logger.error("Application emoji %s exists but is unavailable.", name)
                 failed.append(name)
                 continue
@@ -111,12 +136,18 @@ class EmojiUploader:
                 failed.append(name)
                 continue
             self.mentions[name.lower()] = str(emoji)
-            created.append(name)
-        result = UploadResult(tuple(created), tuple(reused), tuple(failed))
+            if existing_emoji is None:
+                created.append(name)
+            else:
+                updated.append(name)
+        result = UploadResult(
+            tuple(created), tuple(reused), tuple(updated), tuple(failed)
+        )
         _logger.info(
-            "Application emojis: %s created, %s reused, %s failed.",
+            "Application emojis: %s created, %s reused, %s updated, %s failed.",
             len(created),
             len(reused),
+            len(updated),
             len(failed),
         )
         return result

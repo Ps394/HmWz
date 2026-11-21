@@ -200,6 +200,73 @@ async def test_unavailable_uploaded_emoji_is_reported(
 
 
 @pytest.mark.asyncio
+async def test_qs_station_asset_uses_discord_compatible_name(
+    client: Client, uploader: EmojiUploader, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_asset(uploader.asset_directory, "qs-station.png")
+    emoji = make_emoji(client, "qs_station")
+    monkeypatch.setattr(client, "fetch_application_emojis", AsyncMock(return_value=[]))
+    create = AsyncMock(return_value=emoji)
+    monkeypatch.setattr(client, "create_application_emoji", create)
+
+    assert await uploader.sync() == UploadResult(created=("qs_station",))
+    create.assert_awaited_once_with(
+        name="qs_station",
+        image=(uploader.asset_directory / "qs-station.png").read_bytes(),
+    )
+    assert emojis.get("qs-station", client) == "<:qs_station:456>"
+
+
+@pytest.mark.asyncio
+async def test_qs_station_destroyed_asset_uses_discord_compatible_name(
+    client: Client, uploader: EmojiUploader, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_asset(uploader.asset_directory, "qs-station-destroyed.png")
+    emoji = make_emoji(client, "qs_station_destroyed")
+    monkeypatch.setattr(client, "fetch_application_emojis", AsyncMock(return_value=[]))
+    create = AsyncMock(return_value=emoji)
+    monkeypatch.setattr(client, "create_application_emoji", create)
+
+    assert await uploader.sync() == UploadResult(created=("qs_station_destroyed",))
+    create.assert_awaited_once_with(
+        name="qs_station_destroyed",
+        image=(uploader.asset_directory / "qs-station-destroyed.png").read_bytes(),
+    )
+    assert emojis.get("qs-station-destroyed", client) == "<:qs_station_destroyed:456>"
+
+
+@pytest.mark.asyncio
+async def test_qs_assets_are_refreshed_but_other_emojis_are_reused(
+    client: Client, uploader: EmojiUploader, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_asset(uploader.asset_directory, "qs-station.png")
+    write_asset(uploader.asset_directory, "credit.png")
+    station = make_emoji(client, "qs_station", 123)
+    credit = make_emoji(client, "credit", 456)
+    delete = AsyncMock()
+    monkeypatch.setattr(discord.Emoji, "delete", delete)
+    replacement = make_emoji(client, "qs_station", 789)
+    monkeypatch.setattr(
+        client,
+        "fetch_application_emojis",
+        AsyncMock(return_value=[station, credit]),
+    )
+    create = AsyncMock(return_value=replacement)
+    monkeypatch.setattr(client, "create_application_emoji", create)
+
+    assert await uploader.sync() == UploadResult(
+        reused=("credit",), updated=("qs_station",)
+    )
+    delete.assert_awaited_once()
+    create.assert_awaited_once_with(
+        name="qs_station",
+        image=(uploader.asset_directory / "qs-station.png").read_bytes(),
+    )
+    assert emojis.get("credit", client) == "<:credit:456>"
+    assert emojis.get("qs-station", client) == "<:qs_station:789>"
+
+
+@pytest.mark.asyncio
 async def test_invalid_duplicate_and_ignored_assets(
     client: Client, uploader: EmojiUploader, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -252,10 +319,18 @@ def test_lookup_is_client_scoped_and_supports_guilds(
     client: Client, guild: discord.Guild
 ) -> None:
     client.emoji_uploader.mentions["cristall"] = "<:cristall:456>"
+    client.emoji_uploader.mentions["qs_station"] = "<:qs_station:789>"
+    client.emoji_uploader.mentions["qs_station_destroyed"] = (
+        "<:qs_station_destroyed:101112>"
+    )
     assert emojis.get("CRYSTAL", guild) == "<:cristall:456>"
     assert emojis.get("crystal", client) == "<:cristall:456>"
     assert emojis.get("crystal") == emojis.CRYSTAL
     assert emojis.get("success", guild) == emojis.SUCCESS
+    assert emojis.get("qs-station", guild) == "<:qs_station:789>"
+    assert emojis.get("qs-station-destroyed", guild) == "<:qs_station_destroyed:101112>"
+    assert emojis.get("qs-station") == emojis.QS_STATION
+    assert emojis.get("qs-station-destroyed") == emojis.QS_STATION_DESTROYED
     with pytest.raises(KeyError):
         emojis.get("typo", client)
 

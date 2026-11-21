@@ -25,6 +25,8 @@ UNREGISTER: Final[str] = "➖"
 PERMA_REGISTRATION: Final[str] = "🔒"
 NORMAL_REGISTRATION: Final[str] = "🔓"
 GAMEPAD: Final[str] = "🎮"
+QS_STATION: Final[str] = "🎯"
+QS_STATION_DESTROYED: Final[str] = "💥"
 
 
 # Navigation / UI hints
@@ -55,6 +57,8 @@ _FALLBACKS: Final[dict[str, str]] = {
     "perma_registration": PERMA_REGISTRATION,
     "normal_registration": NORMAL_REGISTRATION,
     "gamepad": GAMEPAD,
+    "qs_station": QS_STATION,
+    "qs_station_destroyed": QS_STATION_DESTROYED,
     "next": NEXT,
     "previous": PREVIOUS,
     "up": UP,
@@ -90,6 +94,8 @@ def get(
     name = name.lower()
     if name == "crystal":
         name = "cristall"
+    elif name in ("qs-station", "qs-station-destroyed"):
+        name = name.replace("-", "_")
     client: discord.Client | None
     if isinstance(context, discord.Interaction):
         client = context.client

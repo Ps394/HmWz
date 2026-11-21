@@ -5,6 +5,7 @@ from datetime import datetime
 
 import discord
 
+from hmwz.emojis import emojis
 from hmwz.i18n import t
 from hmwz.ui.components.timestamp_input import resolve_timezone
 from hmwz.ui.embeds import create_embed
@@ -54,10 +55,16 @@ def member_list(
         if isinstance(signup, MemberSignup):
             member = signup.member_id
             account = signup.game_account
+            base_destroyed = signup.base_destroyed
         else:
             member = signup
             account = accounts.get(member) if accounts is not None else None
-        marker = "🎯" if index <= PHASE_GOAL else "➕"
+            base_destroyed = False
+        marker = (
+            emojis.get("qs-station", context)
+            if index <= PHASE_GOAL
+            else "➖"
+        )
         if account:
             name = escape_discord_text(account[:24])
             line = t(
@@ -66,16 +73,23 @@ def member_list(
                 marker=marker,
                 index=index,
                 account=name,
-                member=member,
             )
         else:
+            discord_member = context.get_member(member)
+            name = (
+                discord_member.display_name
+                if discord_member is not None
+                else t(context, "qs.event.unknown_player")
+            )
             line = t(
                 context,
                 "qs.event.member_signup_main",
                 marker=marker,
                 index=index,
-                member=member,
+                account=escape_discord_text(name[:24]),
             )
+        if base_destroyed:
+            line += f" {emojis.get('qs-station-destroyed', context)}"
         if len("\n".join((*lines, line))) > 850:
             break
         lines.append(line)

@@ -13,7 +13,6 @@ from hmwz.i18n import t
 from hmwz.ui.messages import (
     defer_interaction,
     send_followup,
-    send_interaction_message,
     send_interaction_response,
 )
 from hmwz.utils.interactions import log_guild
@@ -37,6 +36,25 @@ class SignupService:
     def _refresh_hint(self, interaction: discord.Interaction, refreshed: bool) -> str:
         return "" if refreshed else "\n" + t(interaction, "qs.event.refresh_failed")
 
+    async def _queue_account_updates(
+        self,
+        channel_id: int,
+        phase_index: int,
+        member_id: int,
+        game_account: str | None,
+    ) -> tuple[asyncio.Task[bool], ...]:
+        module = self.module
+        affected = set(
+            await module.qs.signup_phases(
+                module.guild.id, channel_id, member_id, game_account
+            )
+        )
+        affected.add(phase_index)
+        return tuple(
+            module.publisher.queue_update(channel_id, index)
+            for index in sorted(affected)
+        )
+
     async def toggle_phase(
         self, interaction: discord.Interaction, channel_id: int, phase_index: int
     ) -> None:
@@ -53,13 +71,19 @@ class SignupService:
                     module.guild.id, channel_id, phase_index, interaction.user.id
                 )
             except aiosqlite.Error:
-                _logger.exception("%s Failed to save Qs signup.", log_guild(module.guild))
+                _logger.exception(
+                    "%s Failed to save Qs signup.", log_guild(module.guild)
+                )
                 await send_followup(
                     interaction, t(interaction, "qs.event.database_failed")
                 )
                 return
-            update = module.publisher.queue_update(channel_id, phase_index)
-        refreshed = await asyncio.shield(update)
+            updates = await self._queue_account_updates(
+                channel_id, phase_index, interaction.user.id, None
+            )
+        refreshed = all(
+            await asyncio.gather(*(asyncio.shield(task) for task in set(updates)))
+        )
         await send_followup(
             interaction,
             t(interaction, "qs.event.joined" if joined else "qs.event.left")
@@ -131,7 +155,7 @@ class SignupService:
             channel_id,
             phase_index,
             interaction.user.id,
-            choices,
+            tuple(choices),
             t(
                 interaction,
                 "qs.event.signup_confirmation",
@@ -176,6 +200,13 @@ class SignupService:
                 interaction, t(interaction, "qs.event.signup_missing")
             )
             return
+        selectable_signups = sorted(
+            signups,
+            key=lambda signup: (
+                signup.game_account is not None,
+                signup.game_account.casefold() if signup.game_account else "",
+            ),
+        )
         choices = tuple(
             AccountChoice(
                 key=f"signup-{index}",
@@ -186,7 +217,7 @@ class SignupService:
                     else signup.game_account
                 ),
             )
-            for index, signup in enumerate(signups)
+            for index, signup in enumerate(selectable_signups)
         )
         view = SignupConfirmation(
             module,
@@ -280,13 +311,19 @@ class SignupService:
                 ):
                     raise aiosqlite.Error("Failed to save Qs signup.")
             except aiosqlite.Error:
-                _logger.exception("%s Failed to save Qs signup.", log_guild(module.guild))
+                _logger.exception(
+                    "%s Failed to save Qs signup.", log_guild(module.guild)
+                )
                 await send_followup(
                     interaction, t(interaction, "qs.event.database_failed")
                 )
                 return
-            update = module.publisher.queue_update(channel_id, phase_index)
-        refreshed = await asyncio.shield(update)
+            updates = await self._queue_account_updates(
+                channel_id, phase_index, interaction.user.id, game_account
+            )
+        refreshed = all(
+            await asyncio.gather(*(asyncio.shield(task) for task in set(updates)))
+        )
         await send_followup(
             interaction,
             t(interaction, "qs.event.joined")
@@ -352,8 +389,12 @@ class SignupService:
                     interaction, t(interaction, "qs.event.database_failed")
                 )
                 return
-            update = module.publisher.queue_update(channel_id, phase_index)
-        refreshed = await asyncio.shield(update)
+            updates = await self._queue_account_updates(
+                channel_id, phase_index, interaction.user.id, game_account
+            )
+        refreshed = all(
+            await asyncio.gather(*(asyncio.shield(task) for task in set(updates)))
+        )
         await send_followup(
             interaction,
             t(interaction, "qs.event.signup_removed")
@@ -370,7 +411,9 @@ class SignupService:
                 if member_id
                 in await module.qs.members(module.guild.id, channel_id, phase.index)
             ]
-            if not await module.qs.remove_member(module.guild.id, member_id, channel_id):
+            if not await module.qs.remove_member(
+                module.guild.id, member_id, channel_id
+            ):
                 return False
             updates = [
                 module.publisher.queue_update(channel_id, index) for index in affected

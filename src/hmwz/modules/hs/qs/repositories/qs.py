@@ -263,10 +263,29 @@ class QsRepository(Base):
         return await self._members.get(guild_id, channel_id, phase_index)
 
     async def member_signups(
-        self, guild_id: int, channel_id: int, phase_index: int
+        self,
+        guild_id: int,
+        channel_id: int,
+        phase_index: int,
+        *,
+        now: int | None = None,
     ) -> tuple[MemberSignup, ...]:
         """Return a phase's member signups with their selected accounts."""
-        return await self._members.get_signups(guild_id, channel_id, phase_index)
+        return await self._members.get_signups(
+            guild_id, channel_id, phase_index, now=now
+        )
+
+    async def signup_phases(
+        self,
+        guild_id: int,
+        channel_id: int,
+        member_id: int,
+        game_account: str | None,
+    ) -> tuple[int, ...]:
+        """Return all phases containing the same account's signups."""
+        return await self._members.phases_for_signup(
+            guild_id, channel_id, member_id, game_account
+        )
 
     async def save_members_message(
         self, guild_id: int, channel_id: int, phase_index: int, message_id: int
@@ -283,10 +302,17 @@ class QsRepository(Base):
         phase_index: int,
         member_id: int,
         game_account: str | None = None,
+        *,
+        created_at: int | None = None,
     ) -> bool:
         """Atomically toggle phase participation and return the new joined state."""
         return await self._members.toggle(
-            guild_id, channel_id, phase_index, member_id, game_account
+            guild_id,
+            channel_id,
+            phase_index,
+            member_id,
+            game_account,
+            created_at=created_at,
         )
 
     async def join(
@@ -296,10 +322,17 @@ class QsRepository(Base):
         phase_index: int,
         member_id: int,
         game_account: str | None,
+        *,
+        created_at: int | None = None,
     ) -> bool:
         """Add or update one phase signup without removing an existing signup."""
         return await self._members.join(
-            guild_id, channel_id, phase_index, member_id, game_account
+            guild_id,
+            channel_id,
+            phase_index,
+            member_id,
+            game_account,
+            created_at=created_at,
         )
 
     async def remove_signup(

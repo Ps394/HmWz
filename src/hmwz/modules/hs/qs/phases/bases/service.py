@@ -129,7 +129,17 @@ class BaseService:
                 return
             notified = await module.notifications.goals(channel_id)
             update = module.publisher.queue_update(channel_id, phase_index, bases=True)
-        refreshed = await asyncio.shield(update)
+            signup_updates = tuple(
+                module.publisher.queue_update(channel_id, signup_phase)
+                for signup_phase in await module.qs.signup_phases(
+                    module.guild.id, channel_id, reporter.id, game_account
+                )
+            )
+        refreshed = all(
+            await asyncio.gather(
+                *(asyncio.shield(task) for task in {update, *signup_updates})
+            )
+        )
         await send_followup(
             interaction,
             t(interaction, "qs.event.reported")
@@ -182,7 +192,17 @@ class BaseService:
                 )
                 return
             update = module.publisher.queue_update(channel_id, phase_index, bases=True)
-        refreshed = await asyncio.shield(update)
+            signup_updates = tuple(
+                module.publisher.queue_update(channel_id, signup_phase)
+                for signup_phase in await module.qs.signup_phases(
+                    module.guild.id, channel_id, member_id, game_account
+                )
+            )
+        refreshed = all(
+            await asyncio.gather(
+                *(asyncio.shield(task) for task in {update, *signup_updates})
+            )
+        )
         await send_followup(
             interaction,
             t(interaction, "qs.event.withdrawn")
