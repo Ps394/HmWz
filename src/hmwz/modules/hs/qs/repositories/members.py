@@ -151,20 +151,21 @@ class MemberRepository(Base):
                 FROM HsQsMembers signup
                 WHERE signup.Guild=? AND signup.Channel=? AND signup.Phase=?
             )
-            SELECT Member, GameAccount,
+            SELECT signup.Member, signup.GameAccount,
                 EXISTS (
                     SELECT 1
                     FROM HsQsBases report
                     WHERE report.Guild=?
                         AND report.Channel=?
                         AND report.ReportKey=CASE
-                            WHEN GameAccount=''
-                                THEN 'member:' || Member
-                            ELSE 'account:' || GameAccount
+                            WHEN signup.GameAccount=''
+                                THEN 'member:' || signup.Member
+                            ELSE 'account:' || signup.GameAccount
                         END COLLATE NOCASE
                 ) AS BaseDestroyed
-            FROM Prioritized
-            ORDER BY Priority, CreatedAt, Member, GameAccount COLLATE NOCASE
+            FROM Prioritized signup
+            ORDER BY signup.Priority, signup.CreatedAt, signup.Member,
+                signup.GameAccount COLLATE NOCASE
             """,
             (
                 phase_index,

@@ -1752,7 +1752,7 @@ def test_destroyed_base_listing_obeys_discord_limits_and_lists_all_40() -> None:
             ),
         )
     assert destroyed == (
-        "<:qs_station_destroyed:456> #1 · Account-100\n"
+        "<:qs_station:123> #1 · Account-100 <:qs_station_destroyed:456>\n"
         "<:qs_station:123> #2 · Account-101"
     )
     participants = participants_embed(

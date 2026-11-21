@@ -268,6 +268,20 @@ async def test_signup_order_uses_chronology_and_account_priority(
 
 
 @pytest.mark.asyncio
+async def test_destroyed_marker_matches_only_reported_main_account(
+    repository: QsRepository,
+) -> None:
+    await repository.join(10, 20, 1, 100, None, created_at=10)
+    await repository.join(10, 20, 1, 101, None, created_at=20)
+    await repository.report(10, 20, 1, 100, None, "Player 100", 30)
+
+    assert await repository.member_signups(10, 20, 1) == (
+        MemberSignup(100, None, True),
+        MemberSignup(101, None),
+    )
+
+
+@pytest.mark.asyncio
 async def test_report_once_per_alias_and_base_across_phases(
     repository: QsRepository,
 ) -> None:
