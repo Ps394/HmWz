@@ -1,9 +1,12 @@
+import asyncio
 from types import SimpleNamespace
 from typing import ClassVar, cast
+from unittest.mock import AsyncMock
 
 import discord
 import pytest
 
+from hmwz.client import Client
 from hmwz.modules import manager as manager_module
 from hmwz.modules.manager import Manager
 
@@ -24,6 +27,35 @@ class RecordingModule:
         assert channel.guild is not None
         self.deleted_guild_ids.append(channel.guild.id)
         return True
+
+
+@pytest.mark.asyncio
+async def test_client_close_cancels_monitoring_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    finished = asyncio.Event()
+
+    async def worker() -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            finished.set()
+
+    client = Client(intents=discord.Intents.none())
+    task = asyncio.create_task(worker())
+    client._monitoring_task = task
+    client.module_manager.close = AsyncMock()
+    discord_close = AsyncMock()
+    monkeypatch.setattr(discord.Client, "close", discord_close)
+    await asyncio.sleep(0)
+
+    await client.close()
+
+    assert task.cancelled()
+    assert finished.is_set()
+    assert client._monitoring_task is None
+    client.module_manager.close.assert_awaited_once_with()
+    discord_close.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

@@ -54,6 +54,7 @@ class Client(discord.Client):
         self.CommandTree = discord.app_commands.CommandTree(self)
         self.global_command_sync = global_command_sync
         self._commands_initialized = False
+        self._monitoring_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self):
         """
@@ -72,14 +73,29 @@ class Client(discord.Client):
         await self.emoji_uploader.sync()
         await self.register_commands()
 
-        asyncio.create_task(monitoring.resource_monitor_loop())
+        if self._monitoring_task is None or self._monitoring_task.done():
+            self._monitoring_task = asyncio.create_task(
+                monitoring.resource_monitor_loop(),
+                name="hmwz-resource-monitor",
+            )
 
         return await super().setup_hook()
 
     async def close(self) -> None:
         """Stop module workers before disconnecting the Discord client."""
-        await self.module_manager.close()
-        await super().close()
+        try:
+            await self.module_manager.close()
+        finally:
+            try:
+                if self._monitoring_task is not None:
+                    self._monitoring_task.cancel()
+                    try:
+                        await self._monitoring_task
+                    except asyncio.CancelledError:
+                        pass
+                    self._monitoring_task = None
+            finally:
+                await super().close()
 
     async def get_guild_timezone(self, guild_id: int) -> str:
         """Return the configured IANA timezone for a guild."""

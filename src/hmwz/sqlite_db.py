@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, suppress
 from typing import ClassVar, Sequence, cast
 
 import aiosqlite
@@ -281,6 +282,20 @@ class Database:
                     )
                     await asyncio.sleep(delay)
         return False
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[aiosqlite.Connection]:
+        """Run multiple writes atomically while honoring the shared write lock."""
+        async with self._write_lock:
+            async with self.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                try:
+                    yield connection
+                    await connection.commit()
+                except BaseException:
+                    with suppress(aiosqlite.Error):
+                        await connection.rollback()
+                    raise
 
     async def fetch_all(
         self, query: str, params: tuple = ()

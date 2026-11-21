@@ -5,11 +5,14 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import AsyncMock, Mock
 
+import aiosqlite
 import discord
 import pytest
 
 from hmwz.modules.donation.overview import DonationOverview
+from hmwz.modules.donation.module import DonationModule
 from hmwz.modules.donation.models import (
     DonationSummary,
     DonationType,
@@ -25,6 +28,35 @@ from hmwz.modules.donation.type.credit.validation import (
     parse_choices,
 )
 from hmwz.sqlite_db import Database
+
+
+@pytest.mark.asyncio
+async def test_donation_configuration_rolls_back_when_type_write_fails(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="atomic-config.db")
+    guild = cast(discord.Guild, SimpleNamespace(id=123, name="test guild"))
+    client = SimpleNamespace(
+        _database=database,
+        get_guild_timezone=AsyncMock(return_value="UTC"),
+        add_view=Mock(),
+    )
+    module = DonationModule(guild, client)
+    assert await module.sync()
+    module.compose_overview = AsyncMock(return_value=True)
+    module.donations.configure_type = AsyncMock(
+        side_effect=aiosqlite.OperationalError("simulated type failure")
+    )
+    donation_type = DonationType("Credits", "simple", "Credits", "free", (), ())
+
+    assert not await module.configure_donation(
+        456,
+        title="Donations",
+        description="",
+        donation_type=donation_type,
+    )
+    assert await module.donations.get_channel(guild=guild, channel_id=456) is None
+    assert await module.donations.get_type(guild=guild, channel_id=456) is None
 
 
 @pytest.mark.asyncio
@@ -64,6 +96,39 @@ async def test_ranking_channel_round_trip_and_detachment(tmp_path: Path) -> None
     assert detached is not None
     assert detached.ranking_channel_id is None
     assert detached.ranking_message_id is None
+
+
+@pytest.mark.asyncio
+async def test_donation_channel_deletion_rolls_back_partial_writes(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="atomic-delete.db")
+    guild = cast(discord.Guild, SimpleNamespace(id=123, name="test guild"))
+    repository = DonationRepository(database)
+    assert await repository.ensure_schema()
+    assert await repository.configure_channel(
+        guild=guild,
+        channel_id=456,
+        title="Donations",
+        description="",
+    )
+    donation_type = DonationType("Credits", "simple", "Credits", "free", (), ())
+    assert await repository.configure_type(
+        guild=guild, channel_id=456, donation_type=donation_type
+    )
+    assert await database.execute(
+        """
+        CREATE TRIGGER FailDonationTypeDelete
+        BEFORE DELETE ON Donation_Channel_Types
+        BEGIN
+            SELECT RAISE(ABORT, 'simulated type deletion failure');
+        END
+        """
+    )
+
+    assert not await repository.delete_channel(guild=guild, channel_id=456)
+    assert await repository.get_channel(guild=guild, channel_id=456) is not None
+    assert await repository.get_type(guild=guild, channel_id=456) == donation_type
 
 
 @pytest.mark.asyncio

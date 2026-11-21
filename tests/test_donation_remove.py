@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, Mock
@@ -10,6 +11,27 @@ from hmwz import events
 from hmwz.modules.donation.models import DonationChannel, DonationSummary, DonationType
 from hmwz.modules.donation.module import DonationModule
 from hmwz.modules.donation.overview import DonationOverview
+
+
+@pytest.mark.asyncio
+async def test_donation_close_cancels_maintenance_task() -> None:
+    finished = asyncio.Event()
+
+    async def worker() -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            finished.set()
+
+    task = asyncio.create_task(worker())
+    module = cast(DonationModule, SimpleNamespace(_maintenance_task=task))
+    await asyncio.sleep(0)
+
+    await DonationModule.close(module)
+
+    assert task.cancelled()
+    assert finished.is_set()
+    assert module._maintenance_task is None
 
 
 @pytest.mark.asyncio
@@ -301,10 +323,18 @@ async def test_moving_ranking_removes_old_message_before_saving() -> None:
         ),
         configure_type=AsyncMock(return_value=True),
     )
+    connection = object()
+
+    @asynccontextmanager
+    async def transaction():
+        yield connection
+
+    database = SimpleNamespace(transaction=transaction)
     module = cast(
         DonationModule,
         SimpleNamespace(
             guild=guild,
+            database=database,
             client=SimpleNamespace(get_guild_timezone=AsyncMock(return_value="UTC")),
             donations=donations,
             _cycle_lock=lambda _: asyncio.Lock(),
@@ -330,4 +360,6 @@ async def test_moving_ranking_removes_old_message_before_saving() -> None:
         456, 502, ranking_channel_id=654
     )
     assert donations.configure_channel.await_args.kwargs["ranking_channel_id"] == 987
+    assert donations.configure_channel.await_args.kwargs["connection"] is connection
+    assert donations.configure_type.await_args.kwargs["connection"] is connection
     module.compose_overview.assert_awaited_once_with(456)

@@ -177,6 +177,7 @@ class DonationRepository(sqlite_db.Base):
     async def configure_channel(
         self,
         *,
+        connection: aiosqlite.Connection | None = None,
         guild: discord.Guild,
         channel_id: int,
         title: str,
@@ -228,8 +229,7 @@ class DonationRepository(sqlite_db.Base):
             else None
         )
         try:
-            return await self.database.execute(
-                f"""
+            query = f"""
                 INSERT INTO {self.channel_table_name}
                     (
                         Guild, Channel, Title, Description, GoalHours, RecentLimit,
@@ -250,27 +250,32 @@ class DonationRepository(sqlite_db.Base):
                     ExportChannel = excluded.ExportChannel,
                     TargetAt = excluded.TargetAt,
                     RankingChannel = excluded.RankingChannel
-                """,
-                (
-                    guild.id,
-                    channel_id,
-                    title,
-                    description,
-                    goal_hours,
-                    recent_limit,
-                    int(show_ranking),
-                    stored_start,
-                    timezone_name,
-                    int(show_donations),
-                    int(donations_enabled),
-                    export_channel_id,
-                    target_at.astimezone(timezone.utc).isoformat()
-                    if target_at is not None
-                    else None,
-                    ranking_channel_id,
-                ),
+                """
+            params = (
+                guild.id,
+                channel_id,
+                title,
+                description,
+                goal_hours,
+                recent_limit,
+                int(show_ranking),
+                stored_start,
+                timezone_name,
+                int(show_donations),
+                int(donations_enabled),
+                export_channel_id,
+                target_at.astimezone(timezone.utc).isoformat()
+                if target_at is not None
+                else None,
+                ranking_channel_id,
             )
+            if connection is not None:
+                await connection.execute(query, params)
+                return True
+            return await self.database.execute(query, params)
         except Exception:
+            if connection is not None:
+                raise
             _logger.exception(
                 "%s Failed to configure donation channel %s.",
                 self.log_prefix(guild),
@@ -281,14 +286,14 @@ class DonationRepository(sqlite_db.Base):
     async def configure_type(
         self,
         *,
+        connection: aiosqlite.Connection | None = None,
         guild: discord.Guild,
         channel_id: int,
         donation_type: DonationType,
     ) -> bool:
         """Set the channel's only donation unit and its entry options."""
         try:
-            return await self.database.execute(
-                f"""
+            query = f"""
                 INSERT INTO {self.type_table_name}
                     (Guild, Channel, Name, Kind, Unit, InputMode, Choices, TimeReductions)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -299,19 +304,24 @@ class DonationRepository(sqlite_db.Base):
                     InputMode = excluded.InputMode,
                     Choices = excluded.Choices,
                     TimeReductions = excluded.TimeReductions
-                """,
-                (
-                    guild.id,
-                    channel_id,
-                    donation_type.name,
-                    donation_type.kind,
-                    donation_type.unit,
-                    donation_type.input_mode,
-                    json.dumps(donation_type.choices, ensure_ascii=False),
-                    json.dumps(donation_type.time_reductions, ensure_ascii=False),
-                ),
+                """
+            params = (
+                guild.id,
+                channel_id,
+                donation_type.name,
+                donation_type.kind,
+                donation_type.unit,
+                donation_type.input_mode,
+                json.dumps(donation_type.choices, ensure_ascii=False),
+                json.dumps(donation_type.time_reductions, ensure_ascii=False),
             )
+            if connection is not None:
+                await connection.execute(query, params)
+                return True
+            return await self.database.execute(query, params)
         except Exception:
+            if connection is not None:
+                raise
             _logger.exception(
                 "%s Failed to configure donation type in channel %s.",
                 self.log_prefix(guild),
@@ -928,41 +938,51 @@ class DonationRepository(sqlite_db.Base):
 
     async def delete_channel(self, *, guild: discord.Guild, channel_id: int) -> bool:
         """Permanently delete a channel's donation entries and configuration."""
-        for table_name in (
-            self.entry_table_name,
-            self.type_table_name,
-            self.channel_table_name,
-        ):
-            if not await self.database.execute(
-                f"DELETE FROM {table_name} WHERE Guild = ? AND Channel = ?",
-                (guild.id, channel_id),
-            ):
-                _logger.error(
-                    "%s Failed to delete donation data from table %s in channel %s.",
-                    self.log_prefix(guild),
-                    table_name,
-                    channel_id,
-                )
-                return False
-        return True
+        try:
+            async with self.database.transaction() as connection:
+                for table_name in (
+                    self.entry_table_name,
+                    self.type_table_name,
+                    self.channel_table_name,
+                ):
+                    await connection.execute(
+                        f"DELETE FROM {table_name} WHERE Guild = ? AND Channel = ?",
+                        (guild.id, channel_id),
+                    )
+            return True
+        except aiosqlite.Error:
+            _logger.exception(
+                "%s Failed to delete donation data in channel %s.",
+                self.log_prefix(guild),
+                channel_id,
+            )
+            return False
 
     async def remove_guild(self, *, guild: discord.Guild) -> bool:
         """Remove all donation data when the bot leaves a guild."""
-        for table_name in (
-            self.entry_table_name,
-            self.type_table_name,
-            self.channel_table_name,
-        ):
-            if not await self.database.execute(
-                f"DELETE FROM {table_name} WHERE Guild = ?", (guild.id,)
-            ):
-                return False
-        legacy_types = await self.database.fetch_one(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            ("Donation_Types",),
-        )
-        if legacy_types is not None and not await self.database.execute(
-            "DELETE FROM Donation_Types WHERE Guild = ?", (guild.id,)
-        ):
+        try:
+            async with self.database.transaction() as connection:
+                for table_name in (
+                    self.entry_table_name,
+                    self.type_table_name,
+                    self.channel_table_name,
+                ):
+                    await connection.execute(
+                        f"DELETE FROM {table_name} WHERE Guild = ?", (guild.id,)
+                    )
+                async with connection.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type = 'table' AND name = 'Donation_Types'"
+                ) as cursor:
+                    legacy_types = await cursor.fetchone()
+                if legacy_types is not None:
+                    await connection.execute(
+                        "DELETE FROM Donation_Types WHERE Guild = ?", (guild.id,)
+                    )
+            return True
+        except aiosqlite.Error:
+            _logger.exception(
+                "%s Failed to delete donation data for guild.",
+                self.log_prefix(guild),
+            )
             return False
-        return True

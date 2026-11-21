@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import discord
+import aiosqlite
 
 from hmwz import events, sqlite_db
 from hmwz.ui.messages import send_initial_response
@@ -161,28 +162,45 @@ class DonationModule(
                 )
             ):
                 return False
-            if not await self.donations.configure_channel(
-                guild=self.guild,
-                channel_id=channel_id,
-                title=title,
-                description=description,
-                goal_hours=goal_hours,
-                recent_limit=recent_limit,
-                show_ranking=show_ranking,
-                rush_start_at=rush_start_at,
-                timezone_name=timezone_name,
-                show_donations=show_donations,
-                donations_enabled=donations_enabled,
-                export_channel_id=export_channel_id,
-                target_at=target_at,
-                ranking_channel_id=ranking_channel_id,
-            ):
+            database = self.database
+            if database is None:
+                _logger.error("%s Donation module has no database.", self.guild.name)
                 return False
-            if not await self.donations.configure_type(
-                guild=self.guild,
-                channel_id=channel_id,
-                donation_type=donation_type,
-            ):
+            try:
+                async with database.transaction() as connection:
+                    configured = await self.donations.configure_channel(
+                        connection=connection,
+                        guild=self.guild,
+                        channel_id=channel_id,
+                        title=title,
+                        description=description,
+                        goal_hours=goal_hours,
+                        recent_limit=recent_limit,
+                        show_ranking=show_ranking,
+                        rush_start_at=rush_start_at,
+                        timezone_name=timezone_name,
+                        show_donations=show_donations,
+                        donations_enabled=donations_enabled,
+                        export_channel_id=export_channel_id,
+                        target_at=target_at,
+                        ranking_channel_id=ranking_channel_id,
+                    )
+                    if not configured:
+                        raise RuntimeError("Failed to configure donation channel.")
+                    configured_type = await self.donations.configure_type(
+                        connection=connection,
+                        guild=self.guild,
+                        channel_id=channel_id,
+                        donation_type=donation_type,
+                    )
+                    if not configured_type:
+                        raise RuntimeError("Failed to configure donation type.")
+            except (aiosqlite.Error, RuntimeError):
+                _logger.exception(
+                    "%s Failed to configure donation channel %s.",
+                    self.guild.name,
+                    channel_id,
+                )
                 return False
         result = await self.compose_overview(channel_id)
         if donation_type.kind == "time_reduction":
@@ -578,7 +596,10 @@ class DonationModule(
 
     def _ensure_maintenance_task(self) -> None:
         if self._maintenance_task is None or self._maintenance_task.done():
-            self._maintenance_task = asyncio.create_task(self._maintenance_loop())
+            self._maintenance_task = asyncio.create_task(
+                self._maintenance_loop(),
+                name=f"hmwz-donation-maintenance-{self.guild.id}",
+            )
 
     async def _maintenance_loop(self) -> None:
         while True:
@@ -589,6 +610,18 @@ class DonationModule(
             except Exception:
                 _logger.exception("%s Donation maintenance failed.", self.guild.name)
             await asyncio.sleep(30)
+
+    async def close(self) -> None:
+        """Stop the background donation maintenance worker."""
+        task = self._maintenance_task
+        if task is None:
+            return
+        self._maintenance_task = None
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     async def _sync_message(
         self,
@@ -687,9 +720,7 @@ class DonationModule(
         """Remove donation data when the bot leaves this guild."""
         if guild.id != self.guild.id:
             return False
-        if self._maintenance_task is not None:
-            self._maintenance_task.cancel()
-            self._maintenance_task = None
+        await self.close()
         return await self.donations.remove_guild(guild=guild)
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:

@@ -83,7 +83,14 @@ class Manager:
             for module in guild_modules:
                 close = getattr(module, "close", None)
                 if close is not None:
-                    await close()
+                    try:
+                        await close()
+                    except Exception:
+                        _logger.exception(
+                            "%s - Failed to close module %s.",
+                            getattr(module.guild, "name", "Unknown guild"),
+                            module.__class__.__name__,
+                        )
 
     async def on_disconnect(self) -> None:
         """Notify optional module workers of gateway disconnection."""
