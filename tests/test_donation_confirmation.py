@@ -223,13 +223,13 @@ def test_credit_overviews_do_not_show_times(
     assert all(embed.timestamp is None for embed in (overview, ranking, history))
 
 
-@pytest.mark.parametrize("hours", [1, 24, 191, 192])
-def test_requested_october_target_range_accepts_whole_hours(hours: int) -> None:
+@pytest.mark.parametrize("hours", [1, 24, 191, 192, 192.5, 216])
+def test_requested_october_target_range_accepts_valid_hours(hours: float) -> None:
     start = datetime(2026, 10, 31, 10, tzinfo=UTC)
     validate_rush_target(start, start + timedelta(hours=hours))
 
 
-@pytest.mark.parametrize("hours", [0, 192.5, 193, 216])
+@pytest.mark.parametrize("hours", [0, 216.5, 217, 240])
 def test_requested_october_target_range_rejects_invalid_times(hours: float) -> None:
     start = datetime(2026, 10, 31, 10, tzinfo=UTC)
     with pytest.raises(ValueError):

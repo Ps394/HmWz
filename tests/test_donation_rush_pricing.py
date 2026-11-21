@@ -183,10 +183,10 @@ def test_rush_cost_rejects_invalid_inputs(
         )
 
 
-def test_rush_stop_is_exactly_nine_days_after_start() -> None:
+def test_rush_stop_is_exactly_ten_days_after_start() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    assert RUSH_PERIOD_DURATION == timedelta(days=9)
-    assert start + RUSH_PERIOD_DURATION == start + timedelta(days=9)
+    assert RUSH_PERIOD_DURATION == timedelta(days=10)
+    assert start + RUSH_PERIOD_DURATION == start + timedelta(days=10)
 
     assert is_rush_donation_open(start, start)
     assert not is_rush_donation_open(
@@ -205,12 +205,12 @@ def test_available_rush_durations_respect_stop_minus_24_hours() -> None:
     ) == (24, 8, 1)
     assert available_rush_durations(
         started_at=start,
-        now=start + timedelta(hours=168),
+        now=start + timedelta(hours=192),
         accelerated_hours=8,
     ) == (8, 1)
     assert available_rush_durations(
         started_at=start,
-        now=start + timedelta(hours=191),
+        now=start + timedelta(hours=215),
         accelerated_hours=0,
     ) == (1,)
     assert (

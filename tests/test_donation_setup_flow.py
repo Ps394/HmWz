@@ -155,7 +155,7 @@ async def test_rush_setup_menu_splits_configuration_into_sections() -> None:
     assert RUSH_BUTTON_DURATIONS_HOURS == (24, 8, 1)
 
 
-def test_rush_setup_panel_shows_nine_day_stop_time() -> None:
+def test_rush_setup_panel_shows_ten_day_stop_time() -> None:
     start = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
     draft = DonationSetupDraft(
         module=cast(
@@ -181,8 +181,10 @@ def test_rush_setup_panel_shows_nine_day_stop_time() -> None:
 
     assert isinstance(panel, discord.Embed)
     fields = {field.name: field.value for field in panel.fields}
-    assert fields["🏁 Endzeit"] == discord.utils.format_dt(expected_stop, "F")
-    assert fields["🕒 Startzeit"] == discord.utils.format_dt(start, "F")
+    assert fields["🏁 voraussichtliche Eruption (berechnet)"] == (
+        discord.utils.format_dt(expected_stop, "F")
+    )
+    assert fields["🕒 Spendenbeginn"] == discord.utils.format_dt(start, "F")
     assert fields["Spendendauer"] == (
         f"{RUSH_PERIOD_DURATION.days} Tage "
         f"({int(RUSH_PERIOD_DURATION.total_seconds() // 3600)} Stunden)"

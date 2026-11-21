@@ -79,14 +79,14 @@ def test_target_preserves_start_and_24_hour_cutoff() -> None:
     )
     assert available_rush_durations(
         started_at=start,
-        now=start + timedelta(hours=191),
+        now=start + timedelta(hours=215),
         accelerated_hours=0,
         target_at=target,
     ) == (1,)
     assert (
         available_rush_durations(
             started_at=start,
-            now=start + timedelta(hours=192),
+            now=start + timedelta(hours=216),
             accelerated_hours=0,
             target_at=target,
         )
@@ -94,7 +94,7 @@ def test_target_preserves_start_and_24_hour_cutoff() -> None:
     )
 
 
-@pytest.mark.parametrize("hours", [0, 1, 23, 217, 49])
+@pytest.mark.parametrize("hours", [0, 1, 23, 241, 49])
 def test_invalid_targets_are_rejected(hours: float) -> None:
     start = datetime(2026, 1, 1, tzinfo=UTC)
     with pytest.raises(ValueError):
@@ -179,14 +179,14 @@ async def test_repository_persists_rounded_target_for_setup_and_reset(
     assert available_rush_durations(
         started_at=new_start,
         now=new_start,
-        accelerated_hours=131,
+        accelerated_hours=155,
         target_at=restored.target_at,
     ) == (1,)
     assert (
         available_rush_durations(
             started_at=new_start,
             now=new_start,
-            accelerated_hours=132,
+            accelerated_hours=156,
             target_at=restored.target_at,
         )
         == ()
@@ -260,10 +260,12 @@ async def test_persisted_target_moves_end_exactly_and_caps_stale_and_parallel_do
     embed = DonationOverview.create_embed(
         guild, restored, rush_start_at=start, accelerated_hours=33
     )
-    highlighted = next(f for f in embed.fields if f.name == "ZIELZEIT")
+    highlighted = next(
+        f for f in embed.fields if f.name == "🎯 geplanter Eruptionstermin"
+    )
     assert highlighted.inline is False
     assert highlighted.value.startswith(f"**{discord.utils.format_dt(target, 'F')}**")
-    assert "Ziel erreicht" in highlighted.value
+    assert "Beschleunigungsziel erreicht" in highlighted.value
 
     snapshot = await DonationSnapshotBuilder(guild=guild, donations=repo).build(
         configuration=restored,

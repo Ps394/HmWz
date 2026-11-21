@@ -938,7 +938,7 @@ async def test_multi_phase_signup_updates_both_overviews(
     embed = environment.messages[phase.members_message_id].edit.await_args.kwargs[
         "embeds"
     ][0]
-    assert embed.description == "🎯 #1 · <@100>"
+    assert embed.description == "🎯 #1 · Anzeigename nicht verfüg"
     await module.signups.toggle_phase(interaction(environment), 20, 1)
     assert await module.qs.members(10, 20, 1) == ()
     assert await module.qs.members(10, 20, 5) == (100,)
@@ -974,7 +974,7 @@ async def test_phase_signup_can_select_linked_account(
         "embeds"
     ][0]
     assert "Account-100" in updated.description
-    assert "<@100>" in updated.description
+    assert "<@100>" not in updated.description
 
     context = interaction(environment)
     await module.publisher.views[configuration.message_id].children[0].callback(context)
@@ -2672,7 +2672,10 @@ async def test_deleted_participant_embed_is_restored_without_duplicate_status(
     assert restored.message_id == phase.message_id
     message = environment.messages[restored.members_message_id]
     assert message.sent_kwargs["view"] is None
-    assert message.sent_kwargs["embeds"][0].description == "🎯 #1 · <@100>"
+    assert (
+        message.sent_kwargs["embeds"][0].description
+        == "🎯 #1 · Anzeigename nicht verfüg"
+    )
     assert len(environment.messages) == 12
 
 
@@ -3159,7 +3162,7 @@ async def test_selective_signup_update_recreates_deleted_participant_message(
         environment.messages[restored.members_message_id]
         .sent_kwargs["embeds"][0]
         .description
-        == "🎯 #1 · <@100>"
+        == "🎯 #1 · Anzeigename nicht verfüg"
     )
     environment.messages[phase.message_id].edit.assert_not_awaited()
 

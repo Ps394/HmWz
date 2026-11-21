@@ -287,7 +287,7 @@ async def test_donation_types_channels_and_entries_are_persisted(
     ]
     assert overview.fields[0].value == discord.utils.format_dt(rush_start, "F")
     assert "UTC" not in overview.fields[0].value
-    assert overview.fields[1].value == "9 Tage (216 Stunden)"
+    assert overview.fields[1].value == "10 Tage (240 Stunden)"
     expected_adjusted_end = (
         rush_start
         + RUSH_PERIOD_DURATION
@@ -297,7 +297,7 @@ async def test_donation_types_channels_and_entries_are_persisted(
         expected_adjusted_end, "F"
     )
     assert "Spenden verkürzen die Zeit" in overview.fields[3].value
-    assert overview.fields[4].value == "aktiviert"
+    assert overview.fields[4].value == "✅ aktiviert"
     ranking_embed = DonationOverview.create_ranking_embed(guild, crystal_type, ranking)
     assert "890 Kristalle" in ranking_embed.description
     assert "32h eingespart" in ranking_embed.description
@@ -549,7 +549,7 @@ async def test_reset_starts_new_current_cycle_and_keeps_all_time_ranking(
     assert not channel.show_ranking
     assert channel.rush_start_at is not None
     assert channel.rush_start_at == start + timedelta(days=10)
-    assert channel.rush_start_at + RUSH_PERIOD_DURATION == start + timedelta(days=19)
+    assert channel.rush_start_at + RUSH_PERIOD_DURATION == start + timedelta(days=20)
     assert (
         await repository.get_donations(
             guild=guild, channel_id=789, cycle=channel.current_cycle
