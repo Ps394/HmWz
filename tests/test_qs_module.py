@@ -1335,6 +1335,22 @@ async def test_report_view_paginates_more_than_twenty_five_aliases(
     assert view.next_button is not None and view.next_button.disabled
 
 
+def test_report_command_offers_phase_choices() -> None:
+    command = QsGroup().get_command("report")
+    assert isinstance(command, discord.app_commands.Command)
+    phase_parameter = next(
+        parameter for parameter in command.parameters if parameter.name == "phase"
+    )
+
+    assert [(choice.name, choice.value) for choice in phase_parameter.choices] == [
+        ("Phase 1", 1),
+        ("Phase 2", 2),
+        ("Phase 3", 3),
+        ("Phase 4", 4),
+        ("Phase 5", 5),
+    ]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("moderated", [False, True])
 async def test_main_account_is_default_even_with_linked_accounts(

@@ -13,6 +13,7 @@ from hmwz.i18n import t
 from hmwz.ui.messages import send_interaction_response
 from hmwz.utils.text import escape_discord_text
 
+from ..models import PHASE_COUNT
 from ..phases.accounts import AccountChoice
 from ..phases.bases.views import BaseReportConfirmation, reporting_choices
 from ..phases.embeds import report_name
@@ -133,11 +134,17 @@ async def report_dialog(
         "Add a base report for a player", key="qs.admin.report"
     ),
 )
+@app_commands.choices(
+    phase=[
+        app_commands.Choice(name=f"Phase {index}", value=index)
+        for index in range(1, PHASE_COUNT + 1)
+    ]
+)
 @app_commands.checks.has_any_role(*MODERATOR_ROLES)
 async def report(
     interaction: discord.Interaction,
     player: discord.Member,
-    phase: app_commands.Range[int, 1, 5],
+    phase: int,
 ) -> None:
     """Confirm a moderator-created player report in the configured main channel."""
     await report_dialog(interaction, player, phase)
