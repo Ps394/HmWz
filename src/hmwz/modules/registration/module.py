@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+import aiosqlite
 import discord
 
 from hmwz import events, sqlite_db
@@ -317,10 +318,48 @@ class RegistrationModule(
         return guild.id == self.guild.id and await self.sync(startup=True)
 
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
-        """Remove managed overview messages when the bot leaves its guild."""
+        """Remove managed messages and persisted registration data for a guild."""
         if guild.id != self.guild.id:
             return False
-        return await self._overview_module.on_guild_remove(guild)
+        overviews_removed = await self._overview_module.on_guild_remove(guild)
+        data_removed = await self._remove_guild_data(guild)
+        return overviews_removed and data_removed
+
+    async def _remove_guild_data(self, guild: discord.Guild) -> bool:
+        """Delete all registration-owned guild records in one transaction."""
+        table_names = (
+            self.registration_snapshot_messages.table_name,
+            self.registration_event_channel.table_name,
+            self.registration_event_channel.legacy_table_name,
+            self.registrations.table_name,
+            self.registrations.legacy_table_name,
+            self.roles.table_name,
+            self.roles.legacy_table_name,
+            "Registration_Messages",
+            self.registration.table_name,
+            self.game_accounts.table_name,
+        )
+        try:
+            async with self.database.connect() as connection:
+                await connection.execute("BEGIN IMMEDIATE")
+                existing_rows = await connection.execute_fetchall(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+                existing_tables = {row["name"] for row in existing_rows}
+                for table_name in table_names:
+                    if table_name is not None and table_name in existing_tables:
+                        await connection.execute(
+                            f'DELETE FROM "{table_name}" WHERE Guild = ?',
+                            (guild.id,),
+                        )
+                await connection.commit()
+            return True
+        except aiosqlite.Error:
+            _logger.exception(
+                "%s Failed to remove registration data for guild.",
+                self._overview_module.guild.name,
+            )
+            return False
 
     async def on_message_create(self, message: discord.Message) -> bool:
         """Ignore newly created messages not managed by the module."""

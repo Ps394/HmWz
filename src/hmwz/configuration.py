@@ -2,7 +2,7 @@
 Bot configuration loading and registration defaults.
 
 The ``config`` mapping is loaded from ``configuration.json`` and falls back
-to built-in defaults when the file is missing.
+to built-in defaults when the file is missing or invalid.
 
 Configuration keys include ``bot.prefix``, ``bot.delay_seconds``, and
 ``bot.token_env``; database ``folder`` and ``filename``; and monitoring
@@ -62,7 +62,7 @@ def _default_config() -> dict:
 
 
 def _load_configuration(path: str = "configuration.json") -> dict:
-    """Load configuration from a JSON file, creating defaults if it is missing.
+    """Load configuration, using defaults for a missing or invalid file.
 
     Args:
         path: Path to the configuration file.
@@ -70,23 +70,32 @@ def _load_configuration(path: str = "configuration.json") -> dict:
     Returns:
         The loaded or default configuration.
     """
+    default_conf = _default_config()
     try:
-        with open(path) as f:
-            return dict(json.load(f))
+        with open(path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        if not isinstance(loaded, dict):
+            raise TypeError("Configuration file must contain a JSON object.")
+        return loaded
     except FileNotFoundError:
-        _logger.error(f"Configuration file not found: {path}")
-        default_conf: dict = _default_config()
-        _logger.info(f"Using default configuration: {default_conf}")
+        _logger.error("Configuration file not found: %s", path)
+        _logger.info("Using default configuration: %s", default_conf)
         try:
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(default_conf, f, indent=4)
-            _logger.info(f"Default configuration file generated at: {path}")
+            _logger.info("Default configuration file generated at: %s", path)
             return default_conf
-        except Exception as e:
-            _logger.error(f"Failed to generate default configuration file: {e}")
+        except OSError as e:
+            _logger.error(
+                "Failed to generate default configuration file: %s", e, exc_info=True
+            )
             return default_conf
-    except json.JSONDecodeError as e:
-        _logger.error(f"Error decoding JSON from configuration file: {e}")
+    except (json.JSONDecodeError, TypeError) as e:
+        _logger.error(
+            "Invalid configuration file %s; using built-in defaults: %s",
+            path,
+            e,
+        )
         return default_conf
 
 

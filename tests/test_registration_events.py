@@ -12,6 +12,7 @@ from hmwz.modules.registration.repositories import RegistrationEventChannelRepos
 from hmwz.modules.snapshots import Snapshot, SnapshotExporter
 from hmwz.modules.snapshots.json_discord import DiscordJsonSnapshotExporter
 from hmwz.modules.registration.snapshot import RegistrationSnapshotExporter
+from hmwz.modules.registration.module import RegistrationModule
 from hmwz.modules.registration.repositories import (
     RegistrationSnapshotMessageRepository,
 )
@@ -34,6 +35,109 @@ async def test_registration_event_channel_repository_crud(tmp_path: Path) -> Non
     assert await repository.get(guild=guild) == 789
     assert await repository.remove(guild=guild)
     assert await repository.get(guild=guild) is None
+
+
+@pytest.mark.asyncio
+async def test_registration_module_removes_all_guild_data(
+    tmp_path: Path,
+) -> None:
+    database = Database(folder=str(tmp_path), filename="guild-removal.db")
+    client = SimpleNamespace(_database=database)
+    guild = SimpleNamespace(id=123, name="test guild")
+    module = RegistrationModule(guild, client)
+
+    assert await database.execute("CREATE TABLE Servers (Guild INTEGER PRIMARY KEY)")
+    assert await database.execute("INSERT INTO Servers (Guild) VALUES (123)")
+    assert await module._overview_module.sync()
+    assert await module._ensure_registration_schema()
+    assert await database.execute(
+        "CREATE TABLE Registration_Event_Channel "
+        "(Guild INTEGER PRIMARY KEY, Channel INTEGER NOT NULL)"
+    )
+    assert await database.execute(
+        "CREATE TABLE Registration_Messages "
+        "(Guild INTEGER, Channel INTEGER, Message INTEGER, Title TEXT, Text TEXT, "
+        "PRIMARY KEY (Guild, Message), FOREIGN KEY (Guild) REFERENCES Servers(Guild)) "
+        "WITHOUT ROWID"
+    )
+    assert await database.execute(
+        "CREATE TABLE Registrations_Member "
+        "(Guild INTEGER, Member INTEGER, Account TEXT, Role INTEGER)"
+    )
+    assert await database.execute(
+        "CREATE TABLE Roles (Guild INTEGER, Role INTEGER)"
+    )
+
+    inserts = (
+        (
+            "Registration_Settings (Guild, Channel)",
+            (guild.id, 10),
+        ),
+        (
+            "Registration_Roles (Guild, Channel, Role)",
+            (guild.id, 10, 20),
+        ),
+        (
+            "Registration_Members (Guild, Channel, Member, Alias, Role)",
+            (guild.id, 10, 30, "", 20),
+        ),
+        (
+            "Registration_Snapshot_Channel (Guild, Channel)",
+            (guild.id, 40),
+        ),
+        (
+            (
+                "Registration_Snapshot_Messages "
+                "(Guild, SourceChannel, DestinationChannel, Message)"
+            ),
+            (guild.id, 10, 40, 50),
+        ),
+        (
+            "GameAccounts (Guild, Member, Account)",
+            (guild.id, 30, "Account"),
+        ),
+        (
+            "Registration_Event_Channel (Guild, Channel)",
+            (guild.id, 60),
+        ),
+        (
+            "Registration_Messages (Guild, Channel, Message)",
+            (guild.id, 10, 70),
+        ),
+        (
+            "Registrations_Member (Guild, Member, Account, Role)",
+            (guild.id, 30, "", 20),
+        ),
+        (
+            "Roles (Guild, Role)",
+            (guild.id, 20),
+        ),
+    )
+    for columns, values in inserts:
+        placeholders = ", ".join("?" for _ in values)
+        assert await database.execute(
+            f"INSERT INTO {columns} VALUES ({placeholders})",
+            values,
+        )
+
+    assert await module.on_guild_remove(guild)
+
+    for table_name in (
+        "Registration_Settings",
+        "Registration_Roles",
+        "Registration_Members",
+        "Registration_Snapshot_Channel",
+        "Registration_Snapshot_Messages",
+        "GameAccounts",
+        "Registration_Event_Channel",
+        "Registration_Messages",
+        "Registrations_Member",
+        "Roles",
+    ):
+        count = await database.fetch_one(f"SELECT COUNT(*) FROM {table_name}")
+        assert count is not None and count[0] == 0
+
+    assert await database.execute("DELETE FROM Servers WHERE Guild = ?", (guild.id,))
 
 
 @pytest.mark.asyncio
