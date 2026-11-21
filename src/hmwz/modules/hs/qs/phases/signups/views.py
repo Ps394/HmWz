@@ -20,9 +20,7 @@ if TYPE_CHECKING:
 class PhaseButton(LocalizedButton):
     """Open account selection for signing up to one phase."""
 
-    def __init__(
-        self, module: QsModule, channel_id: int, phase: Phase
-    ) -> None:
+    def __init__(self, module: QsModule, channel_id: int, phase: Phase) -> None:
         super().__init__(
             module.guild,
             "qs.event.signup_label",
@@ -45,9 +43,7 @@ class PhaseButton(LocalizedButton):
 class PhaseUnregisterButton(LocalizedButton):
     """Open account selection for unregistering from one phase."""
 
-    def __init__(
-        self, module: QsModule, channel_id: int, phase: Phase
-    ) -> None:
+    def __init__(self, module: QsModule, channel_id: int, phase: Phase) -> None:
         super().__init__(
             module.guild,
             "qs.event.unregister_label",

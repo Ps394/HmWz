@@ -249,7 +249,6 @@ class CleanChannelsConfirmation(EntitySelectionView):
         await self.finish(interaction, t(interaction, "wz.clean_channels.cancelled"))
 
 
-
 @app_commands.command(
     name="reset-channels",
     description=app_commands.locale_str(

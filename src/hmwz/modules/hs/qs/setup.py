@@ -9,7 +9,6 @@ from typing import Literal
 
 import discord
 
-from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import t
 from hmwz.ui.components.entity_selection import EntitySelectionView
 from hmwz.ui.components.ephemeral_view import EphemeralView
@@ -102,13 +101,13 @@ class DateModal(discord.ui.Modal):
         local_start = datetime.fromtimestamp(
             panel.eruption_start, resolve_timezone(panel.timezone)
         )
-        self.date_input = discord.ui.TextInput(
+        self.date_input: discord.ui.TextInput = discord.ui.TextInput(
             label=t(panel.module.guild, "qs.event.date"),
             default=local_start.strftime("%Y-%m-%d"),
             min_length=10,
             max_length=10,
         )
-        self.time_input = discord.ui.TextInput(
+        self.time_input: discord.ui.TextInput = discord.ui.TextInput(
             label=t(panel.module.guild, "qs.event.eruption_time"),
             default=local_start.strftime("%H:%M"),
             min_length=5,
@@ -171,7 +170,7 @@ class PhaseTimeModal(discord.ui.Modal):
         self.panel = panel
         self.phase_index = panel.selected_phase
         index = self.phase_index - 1
-        self.time_input = discord.ui.TextInput(
+        self.time_input: discord.ui.TextInput = discord.ui.TextInput(
             label=t(panel.module.guild, "qs.event.phase_start_time"),
             default=f"{panel.hours[index]:02}:{panel.minutes[index]:02}",
             min_length=5,

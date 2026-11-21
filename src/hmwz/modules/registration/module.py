@@ -327,6 +327,13 @@ class RegistrationModule(
 
     async def _remove_guild_data(self, guild: discord.Guild) -> bool:
         """Delete all registration-owned guild records in one transaction."""
+        database = self.database
+        if database is None:
+            _logger.error(
+                "%s Cannot remove registration data without a database.",
+                sqlite_db.Base.log_prefix(guild),
+            )
+            return False
         table_names = (
             self.registration_snapshot_messages.table_name,
             self.registration_event_channel.table_name,
@@ -340,7 +347,7 @@ class RegistrationModule(
             self.game_accounts.table_name,
         )
         try:
-            async with self.database.connect() as connection:
+            async with database.connect() as connection:
                 await connection.execute("BEGIN IMMEDIATE")
                 existing_rows = await connection.execute_fetchall(
                     "SELECT name FROM sqlite_master WHERE type = 'table'"

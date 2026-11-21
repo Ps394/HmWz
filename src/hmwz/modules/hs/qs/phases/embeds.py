@@ -60,11 +60,7 @@ def member_list(
             member = signup
             account = accounts.get(member) if accounts is not None else None
             base_destroyed = False
-        marker = (
-            emojis.get("qs-station", context)
-            if index <= PHASE_GOAL
-            else "➖"
-        )
+        marker = emojis.get("qs-station", context) if index <= PHASE_GOAL else "➖"
         if account:
             name = escape_discord_text(account[:24])
             line = t(

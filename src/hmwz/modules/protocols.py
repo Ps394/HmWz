@@ -13,6 +13,7 @@ import discord
 
 from hmwz import events
 
+
 @runtime_checkable
 class ModuleProtocol(Protocol):
     """Contract for a guild-scoped module.
@@ -31,9 +32,11 @@ class ModuleProtocol(Protocol):
         """Synchronize the module's persisted state."""
         ...
 
+
 @runtime_checkable
 class GuildModuleProtocol(Protocol):
     """Contract for modules that handle guild lifecycle events."""
+
     async def on_guild_join(self, guild: discord.Guild) -> bool:
         """Handle the bot joining a guild."""
         ...
@@ -41,6 +44,7 @@ class GuildModuleProtocol(Protocol):
     async def on_guild_remove(self, guild: discord.Guild) -> bool:
         """Handle the bot leaving a guild."""
         ...
+
 
 @runtime_checkable
 class MessageModuleProtocol(Protocol):
@@ -54,7 +58,9 @@ class MessageModuleProtocol(Protocol):
         """Handle a newly created message."""
         ...
 
-    async def on_message_update(self, before: discord.Message, after: discord.Message) -> bool:
+    async def on_message_update(
+        self, before: discord.Message, after: discord.Message
+    ) -> bool:
         """Handle a message update."""
         ...
 
@@ -62,7 +68,9 @@ class MessageModuleProtocol(Protocol):
         """Handle a cached message deletion."""
         ...
 
-    async def on_raw_message_delete(self, payload: events.RawMessageDeleteEvent) -> bool:
+    async def on_raw_message_delete(
+        self, payload: events.RawMessageDeleteEvent
+    ) -> bool:
         """Handle a message deletion regardless of cache state."""
         ...
 
@@ -72,6 +80,7 @@ class MessageModuleProtocol(Protocol):
         """Handle a bulk message deletion regardless of cache state."""
         ...
 
+
 @runtime_checkable
 class RoleModuleProtocol(Protocol):
     """Contract for modules that handle guild role events."""
@@ -80,13 +89,16 @@ class RoleModuleProtocol(Protocol):
         """Handle creation of a guild role."""
         ...
 
-    async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> bool:
+    async def on_guild_role_update(
+        self, before: discord.Role, after: discord.Role
+    ) -> bool:
         """Handle an update to a guild role."""
         ...
 
     async def on_guild_role_delete(self, role: discord.Role) -> bool:
         """Handle deletion of a guild role."""
         ...
+
 
 @runtime_checkable
 class ChannelModuleProtocol(Protocol):
@@ -106,11 +118,14 @@ class ChannelModuleProtocol(Protocol):
         """Handle deletion of a guild channel."""
         ...
 
+
 @runtime_checkable
 class MemberModuleProtocol(Protocol):
     """Contract for modules that handle guild member events."""
 
-    async def on_member_update(self, before: discord.Member, after: discord.Member) -> bool:
+    async def on_member_update(
+        self, before: discord.Member, after: discord.Member
+    ) -> bool:
         """Handle an update to a guild member."""
         ...
 

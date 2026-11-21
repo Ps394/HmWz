@@ -9,7 +9,6 @@ from hmwz.configuration import MODERATOR_ROLES
 from hmwz.i18n import t
 from hmwz.ui.messages import send_interaction_response
 
-from ..module import QsModule
 from .common import get_module
 from .maintenance import QsMaintenanceConfirmation
 

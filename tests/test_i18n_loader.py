@@ -44,7 +44,9 @@ def test_registration_runtime_catalog_uses_independent_namespace(language: str) 
     modules = Path(__file__).resolve().parents[1] / "src" / "hmwz" / "modules"
     catalogs = load_translations(modules / "registration" / "i18n" / "runtime")
     catalog = catalogs[language]
-    hs_catalog = load_translation(modules / "hs" / "i18n" / "runtime" / f"{language}.json")
+    hs_catalog = load_translation(
+        modules / "hs" / "i18n" / "runtime" / f"{language}.json"
+    )
 
     assert catalog.keys() == catalogs["de"].keys() == catalogs["en"].keys()
     assert all(key.startswith("registration.") for key in catalog)

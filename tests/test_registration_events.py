@@ -64,9 +64,7 @@ async def test_registration_module_removes_all_guild_data(
         "CREATE TABLE Registrations_Member "
         "(Guild INTEGER, Member INTEGER, Account TEXT, Role INTEGER)"
     )
-    assert await database.execute(
-        "CREATE TABLE Roles (Guild INTEGER, Role INTEGER)"
-    )
+    assert await database.execute("CREATE TABLE Roles (Guild INTEGER, Role INTEGER)")
 
     inserts = (
         (

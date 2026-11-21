@@ -131,6 +131,7 @@ async def purge_messages(
         discord.HTTPException: If fetching or deleting messages fails.
         discord.RateLimited: If Discord's rate limit cannot be handled.
     """
+
     def should_delete(message: discord.Message) -> bool:
         return not message.is_system() and (check is None or check(message))
 

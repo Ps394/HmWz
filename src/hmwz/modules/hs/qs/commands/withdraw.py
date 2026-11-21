@@ -17,8 +17,6 @@ from .report import report_dialog
     ),
 )
 @app_commands.checks.has_any_role(*MODERATOR_ROLES)
-async def withdraw(
-    interaction: discord.Interaction, player: discord.Member
-) -> None:
+async def withdraw(interaction: discord.Interaction, player: discord.Member) -> None:
     """Confirm withdrawal of a player's report from this channel's eruption."""
     await report_dialog(interaction, player, None)

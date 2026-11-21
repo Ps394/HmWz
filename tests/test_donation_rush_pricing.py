@@ -20,6 +20,7 @@ from hmwz.modules.donation.type.rush.pricing import (
     rush_end_at,
 )
 
+
 def test_rush_cost_ignores_elapsed_wall_clock_time() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     now = start + timedelta(hours=60)

@@ -116,7 +116,7 @@ async def csv(interaction: Interaction, ephemeral: bool = True):
                 content=t(interaction, "registration.csv.success"),
                 file=csv_file,
                 ephemeral=ephemeral,
-                delay=None
+                delay=None,
             )
         finally:
             bio.close()

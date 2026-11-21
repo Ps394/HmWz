@@ -76,7 +76,9 @@ async def configuration_embed(
         ),
     )
     if draft is not None:
-        embed.description += "\n" + t(context, "wz.setup.menu.pending")
+        embed.description = (
+            (embed.description or "") + "\n" + t(context, "wz.setup.menu.pending")
+        )
     names = [f"<@&{role_id}>" for role_id in role_ids]
     visible_roles = names[:25]
     if len(names) > len(visible_roles):

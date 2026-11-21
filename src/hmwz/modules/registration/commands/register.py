@@ -160,7 +160,6 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
             )
             return
 
-        is_update = current is not None
         if not await module.registrations.add(
             guild=guild,
             member=member.id,

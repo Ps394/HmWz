@@ -31,14 +31,14 @@ async def report_dialog(
     module = await get_module(interaction)
     if module is None or interaction.channel_id is None:
         return
-    if not await module.access.authorize_moderation(interaction, interaction.channel_id):
+    if not await module.access.authorize_moderation(
+        interaction, interaction.channel_id
+    ):
         return
     reports = await module.qs.reports(module.guild.id, interaction.channel_id)
     choices: tuple[AccountChoice, ...]
     if phase is None:
-        player_reports = tuple(
-            item for item in reports if item.member_id == player.id
-        )
+        player_reports = tuple(item for item in reports if item.member_id == player.id)
         if not player_reports:
             await send_interaction_response(
                 interaction, t(interaction, "qs.event.withdraw_missing")
@@ -50,9 +50,7 @@ async def report_dialog(
                 key=f"report-{index}",
                 game_account=report.game_account,
                 label=report_name(module.guild, report),
-                description=t(
-                    interaction, "qs.event.phase", index=report.phase_index
-                ),
+                description=t(interaction, "qs.event.phase", index=report.phase_index),
                 report_key=report.report_key,
             )
             for index, report in enumerate(player_reports)
@@ -61,9 +59,7 @@ async def report_dialog(
         phase_index = phase
         if not any(
             item.index == phase
-            for item in await module.qs.phases(
-                module.guild.id, interaction.channel_id
-            )
+            for item in await module.qs.phases(module.guild.id, interaction.channel_id)
         ):
             await send_interaction_response(
                 interaction, t(interaction, "qs.event.not_configured")
@@ -101,8 +97,7 @@ async def report_dialog(
             interaction,
             (
                 "qs.event.withdraw_confirmation_display_name"
-                if len(player_reports) == 1
-                and player_reports[0].game_account is None
+                if len(player_reports) == 1 and player_reports[0].game_account is None
                 else (
                     "qs.event.withdraw_confirmation_default"
                     if any(report.game_account is None for report in player_reports)
@@ -121,9 +116,7 @@ async def report_dialog(
     )
     view.message = await send_interaction_response(
         interaction,
-        view.content()
-        if phase is None and len(player_reports) > 1
-        else view.prompt,
+        view.content() if phase is None and len(player_reports) > 1 else view.prompt,
         view=view,
     )
 

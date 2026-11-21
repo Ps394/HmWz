@@ -14,7 +14,7 @@ from hmwz.ui.messages import delete_temporary_message, send_interaction_response
 from hmwz.utils.text import escape_discord_text
 
 from ...models import BaseReport
-from ..accounts import ACCOUNT_OPTIONS_PER_PAGE, AccountChoice, AccountConfirmation
+from ..accounts import AccountChoice, AccountConfirmation
 from ..embeds import report_name
 
 if TYPE_CHECKING:
@@ -50,9 +50,9 @@ def reporting_choices(
             )
         )
     choices.extend(
-            AccountChoice(key=f"account-{index}", game_account=account, label=account)
-            for index, account in enumerate(accounts)
-            if account.casefold() not in reported_accounts
+        AccountChoice(key=f"account-{index}", game_account=account, label=account)
+        for index, account in enumerate(accounts)
+        if account.casefold() not in reported_accounts
     )
     return tuple(choices)
 

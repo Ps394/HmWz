@@ -67,6 +67,7 @@ async def _purge_configured_channels(
                 error,
             )
 
+
 @app_commands.command(
     name="reset",
     description=app_commands.locale_str(
@@ -76,7 +77,6 @@ async def _purge_configured_channels(
         key="wz.registration.reset.description",
     ),
 )
-
 @app_commands.describe(
     ephemeral=app_commands.locale_str(
         CommandLocalizations.get("en", {}).get("parameter.description.ephemeral", "-"),
@@ -178,7 +178,6 @@ async def reset(
                 )
             }
 
-            
             await module.export_registration_snapshot(channel_id, "sync")
 
             await _remove_registration_roles(guild, roles_to_remove)

@@ -233,6 +233,7 @@ class ResetRolesConfirmation(EntitySelectionView):
         self.stop()
         await self.finish(interaction, t(interaction, "wz.reset_roles.cancelled"))
 
+
 @app_commands.command(
     name="reset-roles",
     description=app_commands.locale_str(

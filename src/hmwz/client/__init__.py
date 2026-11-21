@@ -363,7 +363,8 @@ class Client(discord.Client):
         from hmwz.modules.donation.commands import DonationGroup
         from hmwz.modules.hs.qs.commands import QsGroup
         from hmwz.modules.hs.wz.commands import WzGroup
-        #from hmwz.modules.queue.commands import QueueGroup
+
+        # from hmwz.modules.queue.commands import QueueGroup
         from hmwz.modules.registration.commands import RegistrationGroup
 
         _logger.info("Registering commands...")
@@ -376,7 +377,7 @@ class Client(discord.Client):
         self.add_command(QsGroup())
         self.add_command(RegistrationGroup())
         self.add_command(DonationGroup())
-        #self.add_command(QueueGroup())
+        # self.add_command(QueueGroup())
 
         @self.CommandTree.error
         async def tree_on_error(

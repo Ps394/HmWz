@@ -9,7 +9,7 @@ import discord
 
 from hmwz import events
 
-from .protocols import ModuleProtocol, Modules, ModuleType, ChannelModuleProtocol, MemberModuleProtocol, RoleModuleProtocol, MessageModuleProtocol
+from .protocols import ModuleProtocol, Modules, ModuleType, MessageModuleProtocol
 from .registry import REGISTRY
 
 _logger = logging.getLogger(__name__)

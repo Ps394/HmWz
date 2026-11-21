@@ -20,8 +20,8 @@ from hmwz.utils.timezones import DEFAULT_GUILD_TIMEZONE, validate_iana_timezone
 
 _logger = logging.getLogger(__name__)
 _PREFERRED_TIMEZONE_ALIASES = {"UTC": "Etc/UTC", "GMT": "Etc/GMT"}
-_timezone_data = files("tzdata.zoneinfo").joinpath("tzdata.zi").read_text(
-    encoding="utf-8"
+_timezone_data = (
+    files("tzdata.zoneinfo").joinpath("tzdata.zi").read_text(encoding="utf-8")
 )
 _TIMEZONE_ALIASES = {
     fields[2]
@@ -101,8 +101,7 @@ _POPULAR_TIMEZONE_ORDER = (
     "Pacific/Auckland",
 )
 _TIMEZONE_PRIORITY = {
-    timezone_name: index
-    for index, timezone_name in enumerate(_POPULAR_TIMEZONE_ORDER)
+    timezone_name: index for index, timezone_name in enumerate(_POPULAR_TIMEZONE_ORDER)
 }
 
 
@@ -148,10 +147,7 @@ def _suggested_timezones(now: datetime) -> list[tuple[str, int]]:
 
     for timezone_name in _FRACTIONAL_TIMEZONES:
         fractional_offset_minutes = offset_by_timezone.get(timezone_name)
-        if (
-            fractional_offset_minutes is not None
-            and fractional_offset_minutes % 60
-        ):
+        if fractional_offset_minutes is not None and fractional_offset_minutes % 60:
             suggestions[timezone_name] = fractional_offset_minutes
 
     return sorted(

@@ -40,7 +40,9 @@ class RegistrationConfigView(RegistrationSetupView):
             ),
             "wz_registration_config_add_role": "registration.setup.config.add_role",
             "wz_registration_config_remove_role": "registration.setup.config.remove_role",
-            "wz_registration_config_export_channel": ("registration.setup.config.edit_export_channel"),
+            "wz_registration_config_export_channel": (
+                "registration.setup.config.edit_export_channel"
+            ),
             "wz_registration_config_apply": "registration.setup.config.save",
             "wz_registration_config_cancel": "registration.setup.config.cancel",
         }
@@ -291,7 +293,10 @@ class RegistrationExportChannelSelect(discord.ui.ChannelSelect):
         if not permissions.send_messages or not permissions.attach_files:
             await send_initial_response(
                 interaction,
-                t(interaction, "registration.setup.config.export_channel_missing_permissions"),
+                t(
+                    interaction,
+                    "registration.setup.config.export_channel_missing_permissions",
+                ),
                 ephemeral=True,
                 delete_after=5,
             )
@@ -326,7 +331,9 @@ class RegistrationExportChannelView(RegistrationSetupView):
         )
         self.add_item(self.channel_select)
         labels = {
-            "wz_registration_config_export_disable": ("registration.setup.config.export_disable"),
+            "wz_registration_config_export_disable": (
+                "registration.setup.config.export_disable"
+            ),
             "wz_registration_config_export_back": "registration.setup.config.back",
         }
         for item in self.children:
@@ -387,7 +394,9 @@ class RegistrationTitleModal(discord.ui.Modal):
     """Collect a registration overview title into the current draft."""
 
     def __init__(self, draft: RegistrationSetupDraft) -> None:
-        super().__init__(title=t(draft.module.guild, "registration.setup.config.title_modal"))
+        super().__init__(
+            title=t(draft.module.guild, "registration.setup.config.title_modal")
+        )
         self.draft = draft
         self.title_input: discord.ui.TextInput = discord.ui.TextInput(
             label=t(draft.module.guild, "registration.setup.config.title_label"),
@@ -428,7 +437,9 @@ class RegistrationTextModal(discord.ui.Modal):
     """Collect registration overview text into the current draft."""
 
     def __init__(self, draft: RegistrationSetupDraft) -> None:
-        super().__init__(title=t(draft.module.guild, "registration.setup.config.text_modal"))
+        super().__init__(
+            title=t(draft.module.guild, "registration.setup.config.text_modal")
+        )
         self.draft = draft
         self.text_input: discord.ui.TextInput = discord.ui.TextInput(
             label=t(draft.module.guild, "registration.setup.config.text_label"),
@@ -476,7 +487,9 @@ class RegistrationRoleSelect(discord.ui.RoleSelect):
 
     def __init__(self, config_view: RegistrationRoleView) -> None:
         super().__init__(
-            placeholder=t(config_view.guild, "registration.setup.config.role_select_prompt"),
+            placeholder=t(
+                config_view.guild, "registration.setup.config.role_select_prompt"
+            ),
             min_values=1,
             max_values=1,
         )
@@ -931,7 +944,10 @@ async def _save_registration_draft(
         if not permissions.send_messages or not permissions.attach_files:
             await send_followup(
                 interaction,
-                t(interaction, "registration.setup.config.export_channel_missing_permissions"),
+                t(
+                    interaction,
+                    "registration.setup.config.export_channel_missing_permissions",
+                ),
                 ephemeral=True,
             )
             return None

@@ -22,6 +22,7 @@ __all__ = [
     "t",
 ]
 
+
 def register_translations(directory: Path) -> None:
     """Merge an extension's command and runtime catalogs into the bot catalogs.
 

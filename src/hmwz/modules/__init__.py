@@ -2,7 +2,7 @@
 
 # Import built-in modules so decorators register them.
 from . import registration, donation
-from .protocols import  ModuleProtocol, Modules, ModuleType
+from .protocols import ModuleProtocol, Modules, ModuleType
 from .manager import Manager
 
 __all__ = [

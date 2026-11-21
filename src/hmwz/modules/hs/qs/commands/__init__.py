@@ -32,5 +32,12 @@ class QsGroup(app_commands.Group):
                 "Qs event commands", key="qs.event.group"
             ),
         )
-        for command in (report, withdraw, setup, remove, reset):
+        commands: tuple[app_commands.Command, ...] = (
+            report,
+            withdraw,
+            setup,
+            remove,
+            reset,
+        )
+        for command in commands:
             self.add_command(command)

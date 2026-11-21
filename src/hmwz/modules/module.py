@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import discord
 
-from hmwz import events, sqlite_db, client
+from hmwz import sqlite_db, client
+
 
 class Module:
     """Base class for guild-scoped modules."""
 
-    def __init__(self, guild: discord.Guild, client : client.Client):
+    def __init__(self, guild: discord.Guild, client: client.Client):
         """Initialize a module for a guild and Discord client.
 
         Args:
