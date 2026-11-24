@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import discord
 import pytest
 
-from hmwz.modules.overview import OverviewModule
+from hmwz.modules.managed_messages import ManagedMessagesModule
 from hmwz.modules.registration.overview import RegistrationHandler, RegistrationOverview
 from hmwz.modules.registration.repositories import (
     MemberRegistrationRepository,
@@ -27,7 +27,7 @@ def overview() -> RegistrationOverview:
         roles=cast(RegistrationRoleRepository, SimpleNamespace()),
         registrations=cast(MemberRegistrationRepository, SimpleNamespace()),
         registration_handler=cast(RegistrationHandler, AsyncMock()),
-        overview_module=cast(OverviewModule, SimpleNamespace()),
+        managed_messages=cast(ManagedMessagesModule, SimpleNamespace()),
         channel_id=123,
     )
     result._compose_min_interval_seconds = 0

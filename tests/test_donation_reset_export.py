@@ -86,6 +86,8 @@ async def test_reset_exports_the_all_time_history_before_advancing() -> None:
     )
     module._cycle_lock = lambda channel_id: asyncio.Lock()
     module.compose_overview = AsyncMock(return_value=True)
+    module.queue_donation_refresh = AsyncMock(return_value=True)
+    module.queue_donation_refresh = AsyncMock(return_value=True)
 
     async def export_current_cycle(channel_id: int) -> bool:
         return await DonationModule.export_current_cycle(module, channel_id)

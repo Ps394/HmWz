@@ -12,7 +12,8 @@ import discord
 
 from hmwz.configuration import registration_defaults
 from hmwz.i18n import t
-from hmwz.modules.overview import Overview, OverviewButton, OverviewModule
+from hmwz.modules.overview import OverviewButton
+from hmwz.modules.managed_messages import ManagedMessagesModule
 from hmwz.utils.loaders import fetch_channel
 
 from . import models
@@ -20,6 +21,7 @@ from .list_overview import RegistrationListOverview
 
 if TYPE_CHECKING:
     from . import repositories
+    from .managed_messages import RegistrationManagedMessagesAdapter
 
 _logger = logging.getLogger(__name__)
 RegistrationHandler = Callable[[discord.Interaction, discord.Role], Awaitable[None]]
@@ -36,10 +38,11 @@ class RegistrationOverview:
         roles: repositories.RegistrationRoleRepository,
         registrations: repositories.MemberRegistrationRepository,
         registration_handler: RegistrationHandler,
-        overview_module: OverviewModule,
+        managed_messages: ManagedMessagesModule,
         channel_id: int,
         module_key: str = "registration",
         max_players: int | None = None,
+        managed_messages_adapter: RegistrationManagedMessagesAdapter | None = None,
     ) -> None:
         self.guild = guild
         self.channel_id = channel_id
@@ -50,7 +53,8 @@ class RegistrationOverview:
         self.roles = roles
         self.registrations = registrations
         self.registration_handler = registration_handler
-        self.overview_module = overview_module
+        self.managed_messages = managed_messages
+        self.managed_messages_adapter = managed_messages_adapter
         self.overview_id = f"{module_key}-{channel_id}"
         self._compose_task: asyncio.Task[bool] | None = None
         self._compose_requested = False
@@ -60,7 +64,7 @@ class RegistrationOverview:
         self._list_overview = RegistrationListOverview(
             guild=guild,
             registrations=registrations,
-            overview_module=overview_module,
+            managed_messages=managed_messages,
             overview_id=self.overview_id,
             module_key=module_key,
             max_players=max_players,
@@ -158,11 +162,12 @@ class RegistrationOverview:
                 await self.registration_handler(interaction, role)
 
             button_id = str(role.id)
-            self.overview_module.register_handler(
-                overview_id=self.overview_id,
-                button_id=button_id,
-                handler=handle,
-            )
+            if self.managed_messages_adapter is not None:
+                self.managed_messages_adapter.register_handler(
+                    managed_id=self.overview_id,
+                    button_id=button_id,
+                    handler=handle,
+                )
             buttons.append(
                 OverviewButton(
                     button_id=button_id,
@@ -228,43 +233,21 @@ class RegistrationOverview:
 
         title = configuration.title or default_title
         description = configuration.description or default_description
-        if not await self.overview_module.sync():
+        buttons = self._build_buttons(configuration.registration_roles)
+        if self.managed_messages_adapter is None:
             _logger.error(
-                "%s (%s) - Failed to initialize the overview service.",
+                "%s (%s) - Managed messages are not initialized.",
                 self.guild.name,
                 self.guild.id,
             )
             return False
-        buttons = self._build_buttons(configuration.registration_roles)
-        existing_overview = await self.overview_module.overviews.get(
-            guild=self.guild,
-            overview_id=self.overview_id,
-        )
-        if existing_overview is None and configuration.message_id is not None:
-            legacy_overview = Overview(
-                guild_id=self.guild.id,
-                overview_id=self.overview_id,
-                channel_id=channel.id,
-                message_id=configuration.message_id,
-                title=title,
-                description=description,
-                buttons=buttons,
-            )
-            if not await self.overview_module.overviews.save(legacy_overview):
-                _logger.error(
-                    "%s (%s) - Failed to adopt registration overview message %s.",
-                    self.guild.name,
-                    self.guild.id,
-                    configuration.message_id,
-                )
-                return False
-        if not await self.overview_module.publish(
-            overview_id=self.overview_id,
+        published = await self.managed_messages_adapter.publish_main(
             channel_id=channel.id,
             title=title,
             description=description,
             buttons=buttons,
-        ):
+        )
+        if not published:
             _logger.warning(
                 "%s (%s) - Failed to publish registration overview in #%s (%s).",
                 self.guild.name,
@@ -273,11 +256,10 @@ class RegistrationOverview:
                 channel.id,
             )
             return False
-        overview = await self.overview_module.overviews.get(
-            guild=self.guild,
-            overview_id=self.overview_id,
+        overview_message_id = await self.managed_messages_adapter.get_message_id(
+            self.overview_id
         )
-        if overview is None or overview.message_id is None:
+        if overview_message_id is None:
             _logger.error(
                 "%s (%s) - Registration overview %s was published without a message ID.",
                 self.guild.name,
@@ -289,7 +271,7 @@ class RegistrationOverview:
         if not await self.registration.upsert(
             guild=self.guild,
             channel_id=channel.id,
-            message_id=overview.message_id,
+            message_id=overview_message_id,
             title=title,
             description=description,
         ):
@@ -297,13 +279,13 @@ class RegistrationOverview:
                 "%s (%s) - Failed to save registration overview message %s.",
                 self.guild.name,
                 self.guild.id,
-                overview.message_id,
+                overview_message_id,
             )
             return False
         list_embeds = await self._list_overview.create_embeds(
             registrations,
-            get_color=lambda: self.overview_module.client_color,
-            get_client_avatar=lambda: self.overview_module.client_avatar,
+            get_color=lambda: discord.Color.blurple(),
+            get_client_avatar=lambda: None,
             show_lock_emojis=configuration.show_lock_emojis,
         )
         if not await self._list_overview.sync_messages(channel, list_embeds):
@@ -320,7 +302,7 @@ class RegistrationOverview:
             "%s (%s) - Synchronized registration overview message %s in %s(%s).",
             self.guild.name,
             self.guild.id,
-            overview.message_id,
+            overview_message_id,
             channel.name,
             channel.id,
         )

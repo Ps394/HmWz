@@ -78,7 +78,9 @@ def test_merge_preserves_data_and_adopts_overview_messages(
             "SELECT 1 FROM sqlite_master WHERE name = 'Registration_Members'"
         ).fetchall()
     with sqlite3.connect(legacy_database) as connection:
-        assert connection.execute("SELECT * FROM Servers").fetchall() == [(1, "Guild")]
+        assert connection.execute("SELECT Guild, Name FROM Servers").fetchall() == [
+            (1, "Guild")
+        ]
         assert connection.execute("SELECT * FROM Registration_Roles").fetchall() == [
             (1, 10, 20, 1, 3)
         ]

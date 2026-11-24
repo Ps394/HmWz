@@ -198,7 +198,7 @@ async def reset(
         if purge:
             await _purge_configured_channels(guild, {channel_id})
 
-        await module.compose_registration_overview(force=True, channel_id=channel_id)
+        await module.queue_registration_refresh(channel_id)
         timestamp = discord.utils.format_dt(discord.utils.utcnow(), style="F")
         await send_temporary_followup(
             interaction,

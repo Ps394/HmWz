@@ -17,7 +17,7 @@ _logger = logging.getLogger(__name__)
 class RegistrationMessageRepository(sqlite_db.Base):
     """Deprecated legacy storage for registration-list messages.
 
-    The standalone RegistrationModule stores these messages through OverviewModule.
+    The standalone RegistrationModule stores these messages through ManagedMessagesModule.
     This repository remains for compatibility with older WZ/QS module instances.
     """
 

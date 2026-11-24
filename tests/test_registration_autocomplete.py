@@ -34,10 +34,10 @@ def test_account_commands_have_an_independent_root_group() -> None:
         == "Account-Befehle"
     )
     assert {command.name for command in group.commands} == {
-        "account-add",
-        "account-import",
-        "account-list",
-        "account-remove",
+        "add",
+        "import",
+        "list",
+        "remove",
     }
 
 

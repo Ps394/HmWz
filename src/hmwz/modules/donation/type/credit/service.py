@@ -97,4 +97,5 @@ async def record_donation(
             cycle=configuration.current_cycle,
         ):
             return False, False
-    return True, await module.compose_overview(channel_id)
+    await module.queue_donation_refresh(channel_id)
+    return True, True

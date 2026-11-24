@@ -19,6 +19,8 @@ from hmwz.modules.protocols import (
     MessageModuleProtocol,
 )
 from hmwz.modules.registry import register
+from hmwz.modules.managed_messages import ManagedMessagesModule
+from .managed_messages import DonationManagedMessagesAdapter
 
 from .overview import DonationOverview
 from .confirmation import DonationConfirmationView
@@ -67,6 +69,82 @@ class DonationModule(
         self._cycle_locks: dict[int, asyncio.Lock] = {}
         self._pending_donations: dict[int, DonationConfirmationView] = {}
         self._confirmation_locks: dict[int, asyncio.Lock] = {}
+        self._managed_messages: ManagedMessagesModule | None = None
+        self._managed_messages_adapter: DonationManagedMessagesAdapter | None = None
+
+    async def _managed_messages_adapter_for(self) -> DonationManagedMessagesAdapter:
+        if getattr(self, "_managed_messages_adapter", None) is not None:
+            adapter = getattr(self, "_managed_messages_adapter")
+            if adapter is not None:
+                return adapter
+        client = getattr(self, "client", None)
+        if client is None:
+            raise RuntimeError("Donation managed messages require a client.")
+        manager = getattr(client, "module_manager", None)
+        if manager is not None:
+            managed_messages = await manager.get_module(
+                self.guild,
+                ManagedMessagesModule,
+            )
+        else:
+            managed_messages = ManagedMessagesModule(self.guild, self.client)
+        await managed_messages.sync()
+        self._managed_messages = managed_messages
+        adapter = DonationManagedMessagesAdapter(
+            guild=self.guild,
+            managed_messages=managed_messages,
+        )
+        self._managed_messages_adapter = adapter
+        managed_messages.register_batch_refresh_handler(
+            owner_id="donation",
+            handler=self._refresh_managed_donations,
+        )
+        managed_messages.register_channel_delete_handler(
+            owner_id="donation",
+            handler=self._delete_managed_donation_channel,
+        )
+        return self._managed_messages_adapter
+
+    async def _refresh_managed_donations(
+        self,
+        managed_ids: frozenset[str],
+    ) -> bool:
+        adapter = await self._managed_messages_adapter_for()
+        channel_ids = {
+            channel_id
+            for managed_id in managed_ids
+            if (channel_id := adapter.channel_id(managed_id)) is not None
+        }
+        results = [
+            await self.compose_overview(channel_id) for channel_id in channel_ids
+        ]
+        return all(results)
+
+    async def _delete_managed_donation_channel(
+        self,
+        channel_id: int,
+        managed_ids,
+    ) -> bool:
+        del managed_ids
+        adapter = await self._managed_messages_adapter_for()
+        return await adapter.delete(channel_id=channel_id)
+
+    async def queue_donation_refresh(self, channel_id: int) -> bool:
+        if getattr(self, "_managed_messages", None) is None:
+            compose_overview = getattr(self, "compose_overview", None)
+            if callable(compose_overview):
+                return await compose_overview(channel_id)
+            raise RuntimeError("Donation managed messages are not initialized.")
+        adapter = getattr(self, "_managed_messages_adapter", None)
+        if adapter is None:
+            raise RuntimeError("Donation managed messages adapter is not initialized.")
+        managed_messages = getattr(self, "_managed_messages")
+        task = managed_messages.queue_refresh(
+            "donation",
+            adapter.main_id(channel_id),
+            force=True,
+        )
+        return await task
 
     async def clear_donation_confirmation(self, owner_id: int) -> None:
         """Invalidate and remove this user's previous unconfirmed donation."""
@@ -106,12 +184,11 @@ class DonationModule(
 
     async def ensure(self) -> bool:
         """Refresh configured overviews and register their persistent views."""
+        await self._managed_messages_adapter_for()
         channels = await self.donations.get_channels(guild=self.guild)
         if not channels:
             return True
-        results = await asyncio.gather(
-            *(self.compose_overview(channel_id) for channel_id in channels)
-        )
+        results = [await self.compose_overview(channel_id) for channel_id in channels]
         self._ensure_maintenance_task()
         return all(results)
 
@@ -202,7 +279,8 @@ class DonationModule(
                     channel_id,
                 )
                 return False
-        result = await self.compose_overview(channel_id)
+        await self.queue_donation_refresh(channel_id)
+        result = True
         if donation_type.kind == "time_reduction":
             self._ensure_maintenance_task()
         return result
@@ -412,7 +490,8 @@ class DonationModule(
                 target_at=target_at,
             ):
                 return False, False, False
-        return True, await self.compose_overview(channel_id), False
+        await self.queue_donation_refresh(channel_id)
+        return True, True, False
 
     async def export_current_cycle(self, channel_id: int) -> bool:
         """Export the all-time donation history when a destination is set."""
@@ -447,6 +526,14 @@ class DonationModule(
         )
         if configuration is None or donation_type is None:
             return False
+
+        adapter = await self._managed_messages_adapter_for()
+        await adapter.adopt_legacy_ids(
+            channel_id=channel_id,
+            overview_message_id=configuration.overview_message_id,
+            ranking_message_id=configuration.ranking_message_id,
+            history_message_id=configuration.history_message_id,
+        )
 
         channel = self.guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
@@ -525,10 +612,10 @@ class DonationModule(
                 donations_enabled=configuration.donations_enabled,
             )
             self._views[channel_id] = view
-        overview_ok = await self._sync_message(
-            channel=channel,
+        overview_ok = await adapter.publish(
             channel_id=channel_id,
-            message_id=configuration.overview_message_id,
+            managed_id=adapter.main_id(channel_id),
+            target_channel_id=channel.id,
             embed=overview_embed,
             view=view,
         )
@@ -553,12 +640,11 @@ class DonationModule(
                     ranking,
                     donation_title=configuration.title,
                 )
-                ranking_ok = await self._sync_message(
-                    channel=ranking_channel,
+                ranking_ok = await adapter.publish(
                     channel_id=channel_id,
-                    message_id=configuration.ranking_message_id,
+                    managed_id=adapter.ranking_id(channel_id),
+                    target_channel_id=ranking_channel.id,
                     embed=ranking_embed,
-                    ranking=True,
                 )
         else:
             ranking_ok = await self._clear_ranking_message(
@@ -573,12 +659,11 @@ class DonationModule(
                 donations,
                 summary,
             )
-            history_ok = await self._sync_message(
-                channel=channel,
+            history_ok = await adapter.publish(
                 channel_id=channel_id,
-                message_id=configuration.history_message_id,
+                managed_id=adapter.history_id(channel_id),
+                target_channel_id=channel.id,
                 embed=history_embed,
-                history=True,
             )
         else:
             history_ok = await self._clear_history_message(
@@ -721,12 +806,18 @@ class DonationModule(
         if guild.id != self.guild.id:
             return False
         await self.close()
-        return await self.donations.remove_guild(guild=guild)
+        managed_removed = True
+        if self._managed_messages is not None:
+            managed_removed = await self._managed_messages.on_guild_remove(guild)
+        return managed_removed and await self.donations.remove_guild(guild=guild)
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         """Remove the channel setup and detach rankings when a channel is deleted."""
         if channel.guild.id != self.guild.id:
             return False
+        managed_messages = getattr(self, "_managed_messages", None)
+        if managed_messages is not None:
+            await managed_messages.on_guild_channel_delete(channel)
         configuration = await self.donations.get_channel(
             guild=self.guild, channel_id=channel.id
         )
@@ -796,14 +887,17 @@ class DonationModule(
                     )
                 ):
                     return False
-                return await self.compose_overview(payload.channel_id)
+                await self.queue_donation_refresh(payload.channel_id)
+                return True
             if payload.message_id == configuration.history_message_id:
                 return await self.donations.set_message(
                     guild=self.guild,
                     channel_id=payload.channel_id,
                     message_id=None,
                     history=True,
-                ) and await self.compose_overview(payload.channel_id)
+                )
+            await self.queue_donation_refresh(payload.channel_id)
+            return True
         for owner in await self.donations.get_channels_by_ranking_message(
             guild=self.guild, message_ids=(payload.message_id,)
         ):
@@ -814,7 +908,9 @@ class DonationModule(
                 channel_id=owner.channel_id,
                 message_id=None,
                 ranking=True,
-            ) and await self.compose_overview(owner.channel_id)
+            )
+            await self.queue_donation_refresh(owner.channel_id)
+            return True
         return True
 
     async def on_raw_bulk_message_delete(
@@ -868,8 +964,7 @@ class DonationModule(
                 return False
             refresh.add(owner.channel_id)
         for channel_id in refresh:
-            if not await self.compose_overview(channel_id):
-                return False
+            await self.queue_donation_refresh(channel_id)
         return True
 
     async def _clear_ranking_message(

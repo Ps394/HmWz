@@ -270,6 +270,7 @@ async def test_confirmed_rush_donation_records_the_quoted_price_in_current_cycle
             _cycle_locks={},
             _cycle_lock=lambda channel_id: asyncio.Lock(),
             compose_overview=AsyncMock(return_value=True),
+            queue_donation_refresh=AsyncMock(return_value=True),
         ),
     )
     interaction = cast(discord.Interaction, SimpleNamespace(guild=guild, user=member))

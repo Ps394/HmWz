@@ -188,7 +188,8 @@ async def record_donation(
             rush_quoted_at=quoted_at,
         ):
             return False, False
-    return True, await module.compose_overview(channel_id)
+    await module.queue_donation_refresh(channel_id)
+    return True, True
 
 
 async def refresh_overviews(module: DonationModule) -> None:
@@ -231,10 +232,4 @@ async def refresh_overviews(module: DonationModule) -> None:
             tuple(rush_prices.get(hours) for hours in RUSH_BUTTON_DURATIONS_HOURS),
         )
         if module._rush_view_states.get(channel_id) != rush_state:
-            if not await module.compose_overview(channel_id):
-                _logger.error(
-                    "%s Failed to refresh Rush overview in channel %s "
-                    "after a price or availability change.",
-                    module.guild.name,
-                    channel_id,
-                )
+            await module.queue_donation_refresh(channel_id)

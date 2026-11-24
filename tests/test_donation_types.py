@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import discord
@@ -37,6 +38,9 @@ def module() -> Mock:
     module.guild.id = 123
     module.guild.name = "Test guild"
     module.guild.locale = "de"
+    module.client = SimpleNamespace(
+        get_guild_timezone=AsyncMock(return_value="UTC"),
+    )
     module.donations = Mock(spec=DonationRepository)
     module.donations.get_channels = AsyncMock(return_value=(456,))
     module.donations.get_channel = AsyncMock(
@@ -262,7 +266,7 @@ async def test_rush_maintenance_only_refreshes_changed_prices(
         )
     await refresh_overviews(module)
     if changed:
-        module.compose_overview.assert_awaited_once_with(456)
+        module.queue_donation_refresh.assert_awaited_once_with(456)
     else:
         module.compose_overview.assert_not_awaited()
 

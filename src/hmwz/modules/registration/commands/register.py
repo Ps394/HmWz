@@ -143,7 +143,13 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
                 await member.add_roles(
                     selected_role, reason="WZ game account registration"
                 )
-                await module.compose_registration_overview(force=True)
+                for configured_channel in (
+                    await module.registration.get_all(guild=guild) or ()
+                ):
+                    if configured_channel.channel is not None:
+                        await module.queue_registration_refresh(
+                            configured_channel.channel
+                        )
             await send_temporary_followup(
                 interaction,
                 t(
@@ -197,7 +203,7 @@ async def register(interaction: Interaction, account: str, role: str) -> None:
         if selected_role not in member.roles:
             await member.add_roles(selected_role, reason="WZ game account registration")
 
-        await module.compose_registration_overview(force=True, channel_id=channel_id)
+        await module.queue_registration_refresh(channel_id)
         await send_temporary_followup(
             interaction,
             t(

@@ -104,7 +104,9 @@ async def account_remove(interaction: Interaction, account: str) -> None:
             ),
             ephemeral=True,
         )
-        await module.compose_registration_overview(force=True)
+        for registration in registrations or ():
+            if registration.channel_id is not None:
+                await module.queue_registration_refresh(registration.channel_id)
     except discord.HTTPException:
         logger.exception(
             "%s Failed to remove Discord roles for game account %r.",

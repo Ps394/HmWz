@@ -134,20 +134,9 @@ class RegistrationRemoveConfirmation(EphemeralView):
                 message_ids, bot_id=bot_user.id if bot_user is not None else None
             )
 
-            overview_id = module._overview_for(self.channel_id).overview_id
-            overview_records = await module._overview_module.overviews.get_all(
-                guild=self.guild
-            )
-            managed_overview_ids = {
-                record.overview_id
-                for record in overview_records
-                if record.overview_id == overview_id
-                or record.overview_id.startswith(f"{overview_id}-list-")
-            }
-            for managed_overview_id in managed_overview_ids:
-                if not await module._overview_module.delete(
-                    overview_id=managed_overview_id
-                ):
+            if hasattr(module, "_managed_messages_adapter_for"):
+                adapter = await module._managed_messages_adapter_for()
+                if not await adapter.delete_channel(self.channel_id):
                     message_removal_failed = True
 
             await self._finish(

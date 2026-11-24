@@ -105,14 +105,20 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
             side_effect=lambda **_: removal_operations.append("settings") or True
         ),
     )
-    overview = SimpleNamespace(forget_message=Mock())
+    managed_adapter = SimpleNamespace(
+        delete_channel=AsyncMock(
+            side_effect=lambda channel_id: (
+                removal_operations.append("managed-messages") or True
+            )
+        )
+    )
     module = SimpleNamespace(
         registration=settings,
         registrations=registrations,
         list=list_repository,
         roles=role_repository,
         purge_channels=purge_channels,
-        _overview_for=Mock(return_value=overview),
+        _managed_messages_adapter_for=AsyncMock(return_value=managed_adapter),
     )
     manager = SimpleNamespace(get_module=AsyncMock(return_value=module))
     response = SimpleNamespace(defer=AsyncMock())
@@ -193,23 +199,9 @@ async def test_confirm_removes_channel_data_messages_and_only_unshared_roles(
     remove_member_roles.assert_awaited_once_with(
         set() if shared_elsewhere else {(30, 99)}
     )
-    assert set(deleted_ids) == {501, 502, 503, 504}
-    first_message_removal = removal_operations.index("message")
-    assert all(
-        removal_operations.index(operation) < first_message_removal
-        for operation in ("registrations", "roles", "list", "purge", "settings")
-    )
-    assert {call.args[0] for call in overview.forget_message.call_args_list} == {
-        501,
-        502,
-        503,
-    }
+    managed_adapter.delete_channel.assert_awaited_once_with(20)
     registrations.remove.assert_awaited_once_with(guild=guild, channel_id=20)
     role_repository.remove.assert_awaited_once_with(guild=guild, channel_id=20)
-    list_repository.remove.assert_awaited_once_with(guild=guild, channel=20)
-    purge_channels.remove.assert_awaited_once_with(
-        guild=guild, registration_channel_id=20
-    )
     settings.remove.assert_awaited_once_with(guild=guild, channel_id=20)
     interaction.edit_original_response.assert_awaited_once()
     assert interaction.edit_original_response.await_args.kwargs["view"] is None

@@ -85,6 +85,15 @@ class OverviewModule(Module):
         """Remove a previously registered overview button callback."""
         self._handlers.pop((overview_id, button_id), None)
 
+    async def dispatch_button(
+        self,
+        interaction: discord.Interaction,
+        overview_id: str,
+        button_id: str,
+    ) -> None:
+        """Dispatch a persistent overview button to its registered handler."""
+        await self._dispatch_button(interaction, overview_id, button_id)
+
     async def publish(
         self,
         *,

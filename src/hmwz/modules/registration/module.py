@@ -17,14 +17,15 @@ from hmwz.modules.protocols import (
     MessageModuleProtocol,
     RoleModuleProtocol,
 )
-from hmwz.modules.overview import OverviewModule
+from hmwz.modules.managed_messages import ManagedMessagesModule
+from .managed_messages import RegistrationManagedMessagesAdapter
+from .services import RegistrationMutationService
 from hmwz.modules.registry import register
 from hmwz.modules.registration.snapshot import (
     RegistrationEventType,
     RegistrationSnapshotExporter,
 )
 from hmwz.ui.messages import send_temporary_followup
-from hmwz.utils.loaders import fetch_role
 
 from .overview import RegistrationOverview
 from .repositories import (
@@ -102,9 +103,10 @@ class RegistrationModule(
             registrations=self.registrations,
             snapshot_messages=self.registration_snapshot_messages,
         )
-        self._overview_module = OverviewModule(self.guild, self.client)
+        self._managed_messages: ManagedMessagesModule | None = None
+        self._managed_messages_adapter: RegistrationManagedMessagesAdapter | None = None
         self._overviews: dict[int, RegistrationOverview] = {}
-        self._registration_locks: dict[int, asyncio.Lock] = {}
+        self._mutations = RegistrationMutationService(self)
 
     def _overview_for(self, channel_id: int) -> RegistrationOverview:
         overview = self._overviews.get(channel_id)
@@ -116,13 +118,96 @@ class RegistrationModule(
                 roles=self.roles,
                 registrations=self.registrations,
                 registration_handler=self._handle_registration,
-                overview_module=self._overview_module,
+                managed_messages=ManagedMessagesModule(self.guild, self.client),
                 channel_id=channel_id,
                 module_key=self.module_key,
                 max_players=self.max_players,
+                managed_messages_adapter=None,
             )
             self._overviews[channel_id] = overview
         return overview
+
+    async def _managed_messages_adapter_for(self) -> RegistrationManagedMessagesAdapter:
+        if self._managed_messages_adapter is not None:
+            return self._managed_messages_adapter
+        manager = getattr(self.client, "module_manager", None)
+        if manager is not None:
+            managed_messages = await manager.get_module(
+                self.guild, ManagedMessagesModule
+            )
+        else:
+            managed_messages = ManagedMessagesModule(self.guild, self.client)
+        await managed_messages.sync()
+        self._managed_messages = managed_messages
+        self._managed_messages_adapter = RegistrationManagedMessagesAdapter(
+            guild=self.guild,
+            managed_messages=managed_messages,
+        )
+        managed_messages.register_batch_refresh_handler(
+            owner_id="registration",
+            handler=self._refresh_managed_registration_messages,
+        )
+        managed_messages.register_channel_delete_handler(
+            owner_id="registration",
+            handler=self._delete_managed_registration_channel,
+        )
+        return self._managed_messages_adapter
+
+    async def _managed_messages_for(self) -> ManagedMessagesModule:
+        adapter = await self._managed_messages_adapter_for()
+        return adapter.managed_messages
+
+    async def _delete_managed_registration_channel(
+        self, channel_id: int, managed_ids
+    ) -> bool:
+        del managed_ids
+        adapter = await self._managed_messages_adapter_for()
+        return await adapter.delete_channel(channel_id)
+
+    async def _refresh_managed_registration_messages(
+        self, managed_ids: frozenset[str]
+    ) -> bool:
+        channel_ids: set[int] = set()
+        adapter = await self._managed_messages_adapter_for()
+        for managed_id in managed_ids:
+            channel_id = adapter.channel_id(managed_id)
+            if channel_id is not None:
+                channel_ids.add(channel_id)
+        results = [
+            await self.compose_registration_overview(
+                force=True,
+                channel_id=channel_id,
+            )
+            for channel_id in channel_ids
+        ]
+        return all(results)
+
+    async def activate_managed_messages_for_channel(
+        self, channel_id: int
+    ) -> RegistrationManagedMessagesAdapter:
+        """Activate the shared publisher for one registration channel."""
+        adapter = await self._managed_messages_adapter_for()
+        overview = self._overview_for(channel_id)
+        overview.managed_messages_adapter = adapter
+        overview._list_overview.managed_messages_adapter = adapter
+        return adapter
+
+    def queue_registration_refresh(self, channel_id: int) -> asyncio.Task[bool]:
+        """Queue one shared 250 ms refresh for a registration channel."""
+        adapter = self._managed_messages_adapter
+        if adapter is None:
+            raise RuntimeError("Registration managed messages are not initialized.")
+        return adapter.managed_messages.queue_refresh(
+            "registration",
+            adapter.main_id(channel_id),
+            force=True,
+        )
+
+    async def _queue_all_registration_refreshes(self) -> None:
+        configurations = await self.registration.get_all(guild=self.guild)
+        for configuration in configurations or ():
+            if configuration.channel is not None:
+                await self.queue_registration_refresh(configuration.channel)
 
     async def _handle_registration(
         self,
@@ -131,38 +216,12 @@ class RegistrationModule(
         *,
         response_deferred: bool = False,
     ) -> None:
-        """Add, change, or remove the invoking member's registration."""
-        guild = interaction.guild
-        member = interaction.user
-        channel_id = interaction.channel_id
-        if (
-            guild is None
-            or not isinstance(member, discord.Member)
-            or channel_id is None
-        ):
-            return
-
-        if not response_deferred:
-            await interaction.response.defer(ephemeral=True)
-
-        lock = self._registration_locks.setdefault(channel_id, asyncio.Lock())
-        async with lock:
-            records = await self.registrations.get(
-                guild=guild,
-                member=member.id,
-                account="",
-                channel_id=channel_id,
-            )
-            current = records[0] if records else None
-            if current is not None and current.role == role.id:
-                await self._remove_member_registration(
-                    interaction, guild, member, role, channel_id
-                )
-                return
-
-            await self._add_member_registration(
-                interaction, guild, member, role, channel_id, current
-            )
+        """Delegate the member mutation to the focused registration service."""
+        await self._mutations.handle(
+            interaction,
+            role,
+            response_deferred=response_deferred,
+        )
 
     async def _remove_member_registration(
         self,
@@ -172,34 +231,13 @@ class RegistrationModule(
         role: discord.Role,
         channel_id: int,
     ) -> None:
-        if not await self.registrations.remove(
-            guild=guild,
-            member=member.id,
-            account="",
-            channel_id=channel_id,
-        ):
-            await self._send_registration_error(interaction)
-            return
-
-        remaining = await self.registrations.get(
-            guild=guild, member=member.id, channel_id=channel_id
-        )
-        if role.id not in {
-            item.role for item in remaining or () if item.role is not None
-        }:
-            await member.remove_roles(
-                role, reason=f"{self.module_key.upper()} deregistration"
-            )
-        await send_temporary_followup(
+        await self._mutations.remove(
             interaction,
-            t(
-                interaction,
-                f"{self.module_key}.overview.registration.remove_registration",
-                role_name=role.name,
-            ),
-            ephemeral=True,
+            guild,
+            member,
+            role,
+            channel_id,
         )
-        await self.compose_registration_overview(force=True, channel_id=channel_id)
 
     async def _add_member_registration(
         self,
@@ -210,48 +248,14 @@ class RegistrationModule(
         channel_id: int,
         current: MemberRegistrationRepository._Data | None,
     ) -> None:
-        if current is None and self.max_players is not None:
-            count = await self.registrations.count(guild=guild, channel_id=channel_id)
-            if count >= self.max_players:
-                await send_temporary_followup(
-                    interaction,
-                    t(
-                        interaction,
-                        f"{self.module_key}.overview.registration.full",
-                        max_players=self.max_players,
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-        if not await self.registrations.add(
-            guild=guild,
-            member=member.id,
-            role=role.id,
-            account="",
-            channel_id=channel_id,
-            member_username=member.name,
-            member_display_name=member.display_name,
-            role_name=role.name,
-        ):
-            await self._send_registration_error(interaction)
-            return
-
-        is_update = current is not None and current.role != role.id
-        if current is not None and current.role is not None and current.role != role.id:
-            await self._remove_previous_role(guild, member, current.role, channel_id)
-        await member.add_roles(role, reason=f"{self.module_key.upper()} registration")
-        response_key = "update_registration" if is_update else "new_registration"
-        await send_temporary_followup(
+        await self._mutations.add(
             interaction,
-            t(
-                interaction,
-                f"{self.module_key}.overview.registration.{response_key}",
-                role_name=role.name,
-            ),
-            ephemeral=True,
+            guild,
+            member,
+            role,
+            channel_id,
+            current,
         )
-        await self.compose_registration_overview(force=True, channel_id=channel_id)
 
     async def _remove_previous_role(
         self,
@@ -260,17 +264,12 @@ class RegistrationModule(
         role_id: int,
         channel_id: int,
     ) -> None:
-        remaining = await self.registrations.get(
-            guild=guild, member=member.id, channel_id=channel_id
+        await self._mutations._remove_previous_role(
+            guild,
+            member,
+            role_id,
+            channel_id,
         )
-        if any(item.role == role_id for item in remaining or ()):
-            return
-        old_role = await fetch_role(guild, role_id)
-        if old_role is not None:
-            await member.remove_roles(
-                old_role,
-                reason=f"{self.module_key.upper()} registration update",
-            )
 
     async def export_registration_snapshot(
         self, channel_id: int, event_type: RegistrationEventType
@@ -296,22 +295,21 @@ class RegistrationModule(
         Returns:
             Whether every configured overview was synchronized successfully.
         """
-        if not await self._overview_module.sync():
+        adapter = await self._managed_messages_adapter_for()
+        if not await adapter.managed_messages.sync():
             return False
         configurations = await self.registration.get_all(guild=self.guild)
         if not configurations:
             return True
-        return all(
-            await asyncio.gather(
-                *(
-                    self.compose_registration_overview(
-                        force=True, channel_id=configuration.channel
-                    )
-                    for configuration in configurations
-                    if configuration.channel is not None
-                )
+        results = [
+            await self.compose_registration_overview(
+                force=True,
+                channel_id=configuration.channel,
             )
-        )
+            for configuration in configurations
+            if configuration.channel is not None
+        ]
+        return all(results)
 
     async def on_guild_join(self, guild: discord.Guild) -> bool:
         """Initialize this module when the bot joins its guild."""
@@ -321,9 +319,12 @@ class RegistrationModule(
         """Remove managed messages and persisted registration data for a guild."""
         if guild.id != self.guild.id:
             return False
-        overviews_removed = await self._overview_module.on_guild_remove(guild)
+        if self._managed_messages is not None:
+            managed_removed = await self._managed_messages.on_guild_remove(guild)
+        else:
+            managed_removed = True
         data_removed = await self._remove_guild_data(guild)
-        return overviews_removed and data_removed
+        return managed_removed and data_removed
 
     async def _remove_guild_data(self, guild: discord.Guild) -> bool:
         """Delete all registration-owned guild records in one transaction."""
@@ -364,7 +365,7 @@ class RegistrationModule(
         except aiosqlite.Error:
             _logger.exception(
                 "%s Failed to remove registration data for guild.",
-                self._overview_module.guild.name,
+                guild.name,
             )
             return False
 
@@ -381,24 +382,30 @@ class RegistrationModule(
     async def on_message_delete(self, message: discord.Message) -> bool:
         """Forward a cached message deletion for this guild to the overview service."""
         if message.guild is not None and message.guild.id == self.guild.id:
-            return await self._overview_module.on_message_delete(message)
+            if self._managed_messages is not None:
+                return await self._managed_messages.on_message_delete(message)
+            return True
         return True
 
     async def on_raw_message_delete(
         self, payload: events.RawMessageDeleteEvent
     ) -> bool:
-        """Forward a raw message deletion for this guild to the overview service."""
+        """Forward a raw message deletion to managed Registration messages."""
         if payload.guild_id != self.guild.id:
             return False
-        return await self._overview_module.on_raw_message_delete(payload)
+        if self._managed_messages is not None:
+            return await self._managed_messages.on_raw_message_delete(payload)
+        return True
 
     async def on_raw_bulk_message_delete(
         self, payload: events.RawBulkMessageDeleteEvent
     ) -> bool:
-        """Forward a bulk message deletion for this guild to the overview service."""
+        """Forward a bulk message deletion to managed Registration messages."""
         if payload.guild_id != self.guild.id:
             return False
-        return await self._overview_module.on_raw_bulk_message_delete(payload)
+        if self._managed_messages is not None:
+            return await self._managed_messages.on_raw_bulk_message_delete(payload)
+        return True
 
     async def on_guild_role_create(self, role: discord.Role) -> bool:
         """Confirm that a newly created role belongs to this module's guild."""
@@ -410,7 +417,8 @@ class RegistrationModule(
         """Refresh this guild's overview after a role is updated."""
         if before.guild.id != self.guild.id:
             return False
-        return await self.compose_registration_overview(force=True)
+        await self._queue_all_registration_refreshes()
+        return True
 
     async def on_guild_role_delete(self, role: discord.Role) -> bool:
         """Remove a deleted role and its registrations from the guild."""
@@ -420,7 +428,8 @@ class RegistrationModule(
             return False
         if not await self.registrations.remove(guild=self.guild, role=role.id):
             return False
-        return await self.compose_registration_overview(force=True)
+        await self._queue_all_registration_refreshes()
+        return True
 
     async def on_raw_member_remove(self, payload: events.RawMemberRemoveEvent) -> bool:
         """Remove registrations belonging to a member who left this guild."""
@@ -430,7 +439,8 @@ class RegistrationModule(
             guild=self.guild, member=payload.user.id
         ):
             return False
-        return await self.compose_registration_overview(force=True)
+        await self._queue_all_registration_refreshes()
+        return True
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> bool:
         """Confirm that a newly created channel belongs to this guild."""
@@ -444,25 +454,16 @@ class RegistrationModule(
         """Refresh this guild's registration overview after a channel update."""
         if before.guild.id != self.guild.id:
             return False
-        return await self.compose_registration_overview(force=True)
+        await self.queue_registration_refresh(after.id)
+        return True
 
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> bool:
         """Remove configuration and overview data for a deleted channel."""
         if channel.guild.id != self.guild.id:
             return False
-        overview_id = self._overview_for(channel.id).overview_id
-        overview_records = await self._overview_module.overviews.get_all(
-            guild=self.guild
-        )
+        if self._managed_messages is not None:
+            await self._managed_messages.on_guild_channel_delete(channel)
         status = True
-        for overview in overview_records:
-            if overview.overview_id == overview_id or overview.overview_id.startswith(
-                f"{overview_id}-list-"
-            ):
-                status = (
-                    await self._overview_module.delete(overview_id=overview.overview_id)
-                    and status
-                )
         status = (
             await self.registrations.remove(guild=self.guild, channel_id=channel.id)
             and status
@@ -627,25 +628,34 @@ class RegistrationModule(
 
     async def _publish_registration_changes(self, channel_ids: set[int]) -> None:
         for channel_id in channel_ids:
-            await self.compose_registration_overview(force=True, channel_id=channel_id)
+            await self.queue_registration_refresh(channel_id)
 
     async def compose_registration_overview(
         self, force: bool = False, channel_id: int | None = None
     ) -> bool:
         """Compose one registration overview or all configured overviews."""
         if channel_id is not None:
+            await self.activate_managed_messages_for_channel(channel_id)
             return await self._overview_for(channel_id).compose(force=force)
         configurations = await self.registration.get_all(guild=self.guild)
         if not configurations:
             return False
         results = await asyncio.gather(
             *(
-                self._overview_for(configuration.channel).compose(force=force)
+                self._compose_configured_registration_overview(
+                    configuration.channel, force
+                )
                 for configuration in configurations
                 if configuration.channel is not None
             )
         )
         return all(results)
+
+    async def _compose_configured_registration_overview(
+        self, channel_id: int, force: bool
+    ) -> bool:
+        await self.activate_managed_messages_for_channel(channel_id)
+        return await self._overview_for(channel_id).compose(force=force)
 
     async def _ensure_registration_schema(self) -> bool:
         database = self.database

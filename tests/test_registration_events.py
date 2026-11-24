@@ -48,7 +48,8 @@ async def test_registration_module_removes_all_guild_data(
 
     assert await database.execute("CREATE TABLE Servers (Guild INTEGER PRIMARY KEY)")
     assert await database.execute("INSERT INTO Servers (Guild) VALUES (123)")
-    assert await module._overview_module.sync()
+    adapter = await module._managed_messages_adapter_for()
+    assert await adapter.managed_messages.sync()
     assert await module._ensure_registration_schema()
     assert await database.execute(
         "CREATE TABLE Registration_Event_Channel "

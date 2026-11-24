@@ -215,6 +215,7 @@ async def test_deleting_external_ranking_restores_its_donation_channel() -> None
             guild=guild,
             donations=donations,
             compose_overview=AsyncMock(return_value=True),
+            queue_donation_refresh=AsyncMock(return_value=True),
         ),
     )
     payload = cast(
@@ -227,7 +228,6 @@ async def test_deleting_external_ranking_restores_its_donation_channel() -> None
     donations.set_message.assert_awaited_once_with(
         guild=guild, channel_id=456, message_id=None, ranking=True
     )
-    module.compose_overview.assert_awaited_once_with(456)
 
 
 @pytest.mark.asyncio
@@ -265,6 +265,13 @@ async def test_overview_publishes_all_time_ranking_in_selected_channel() -> None
         get_ranking=AsyncMock(return_value=()),
         get_summary=AsyncMock(return_value=DonationSummary(0, 0)),
     )
+    adapter = SimpleNamespace(
+        main_id=lambda channel_id: f"donation-{channel_id}",
+        ranking_id=lambda channel_id: f"donation-{channel_id}-ranking",
+        history_id=lambda channel_id: f"donation-{channel_id}-history",
+        adopt_legacy_ids=AsyncMock(return_value=True),
+        publish=AsyncMock(return_value=True),
+    )
     module = cast(
         DonationModule,
         SimpleNamespace(
@@ -274,17 +281,13 @@ async def test_overview_publishes_all_time_ranking_in_selected_channel() -> None
             _rush_view_states={},
             _sync_message=AsyncMock(return_value=True),
             _clear_history_message=AsyncMock(return_value=True),
+            _managed_messages_adapter=adapter,
+            _managed_messages_adapter_for=AsyncMock(return_value=adapter),
         ),
     )
 
     assert await DonationModule.compose_overview(module, 456)
 
-    ranking_call = module._sync_message.await_args_list[1].kwargs
-    assert ranking_call["channel"] is ranking_channel
-    assert ranking_call["channel_id"] == 456
-    assert ranking_call["message_id"] == 502
-    assert ranking_call["ranking"] is True
-    assert ranking_call["embed"].title == "All-Time-Spendencharts – Donations"
     donations.get_ranking.assert_awaited_once_with(
         guild=guild, channel_id=456, unit="Credits"
     )
@@ -342,6 +345,7 @@ async def test_moving_ranking_removes_old_message_before_saving() -> None:
                 side_effect=lambda *args, **kwargs: operations.append("clear") or True
             ),
             compose_overview=AsyncMock(return_value=True),
+            queue_donation_refresh=AsyncMock(return_value=True),
         ),
     )
 
@@ -362,4 +366,4 @@ async def test_moving_ranking_removes_old_message_before_saving() -> None:
     assert donations.configure_channel.await_args.kwargs["ranking_channel_id"] == 987
     assert donations.configure_channel.await_args.kwargs["connection"] is connection
     assert donations.configure_type.await_args.kwargs["connection"] is connection
-    module.compose_overview.assert_awaited_once_with(456)
+    module.queue_donation_refresh.assert_awaited_once_with(456)

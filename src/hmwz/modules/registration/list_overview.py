@@ -10,7 +10,7 @@ import discord
 
 from hmwz.emojis import emojis
 from hmwz.i18n import t
-from hmwz.modules.overview import OverviewModule
+from hmwz.modules.managed_messages import ManagedMessagesModule
 from hmwz.ui.embeds import create_embed
 from hmwz.utils.loaders import fetch_member
 
@@ -18,6 +18,7 @@ from . import models
 
 if TYPE_CHECKING:
     from .repositories import MemberRegistrationRepository
+    from .managed_messages import RegistrationManagedMessagesAdapter
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,20 +35,21 @@ class RegistrationListOverview:
         self,
         guild: discord.Guild,
         registrations: MemberRegistrationRepository,
-        overview_module: OverviewModule,
+        managed_messages: ManagedMessagesModule,
         overview_id: str,
         module_key: str,
         max_players: int | None,
+        managed_messages_adapter: RegistrationManagedMessagesAdapter | None = None,
     ) -> None:
         self.guild = guild
         self.registrations = registrations
-        self.overview_module = overview_module
         self.overview_id = overview_id
         self.module_key = module_key
         self.max_players = max_players
+        self.managed_messages_adapter = managed_messages_adapter
 
     def forget_message(self, message_id: int) -> None:
-        """Keep a compatibility hook while OverviewModule owns message state.
+        """Keep a compatibility hook for managed-message deletion events.
 
         Args:
             message_id: Message identifier; retained for backward compatibility.
@@ -228,26 +230,10 @@ class RegistrationListOverview:
             Whether every page was published and every obsolete page removed.
         """
         page_ids: set[str] = set()
-        for page, embed in enumerate(embeds, start=1):
-            overview_id = f"{self.overview_id}-list-{page}"
-            page_ids.add(overview_id)
-            if not await self.overview_module.publish(
-                overview_id=overview_id,
+        if self.managed_messages_adapter is not None:
+            return await self.managed_messages_adapter.publish_pages(
                 channel_id=channel.id,
-                title=embed.title or f"{self.module_key} registrations",
-                description=embed.description or "",
-            ):
-                return False
-
-        prefix = f"{self.overview_id}-list-"
-        existing_pages = await self.overview_module.overviews.get_all(guild=self.guild)
-        for overview in existing_pages:
-            if (
-                overview.overview_id.startswith(prefix)
-                and overview.overview_id not in page_ids
-            ):
-                if not await self.overview_module.delete(
-                    overview_id=overview.overview_id
-                ):
-                    return False
-        return True
+                embeds=embeds,
+            )
+        del page_ids
+        return False

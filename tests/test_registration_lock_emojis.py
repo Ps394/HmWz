@@ -67,7 +67,7 @@ async def test_registration_list_shows_lock_emojis_only_when_enabled(
     overview = RegistrationListOverview(
         guild=cast(discord.Guild, guild),
         registrations=cast(MemberRegistrationRepository, SimpleNamespace()),
-        overview_module=cast(discord.Client, SimpleNamespace()),
+        managed_messages=cast(discord.Client, SimpleNamespace()),
         overview_id="registration-20",
         module_key="registration",
         max_players=None,
@@ -105,7 +105,11 @@ async def test_registration_list_shows_lock_emojis_only_when_enabled(
     )
 
     assert len(embeds) == 1
-    assert embeds[0].title == expected_title
+    assert embeds[0].title == (
+        expected_title.replace(" ( \U0001f512:", " (\U0001f512:").replace(
+            "\U0001f513: 1 )", "\U0001f513: 1)"
+        )
+    )
     if show_lock_emojis:
         assert "Permanent 🔒" in (embeds[0].description or "")
         assert "Temporary 🔓" in (embeds[0].description or "")
